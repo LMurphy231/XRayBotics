@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from mpl_toolkits.mplot3d import Axes3D 
 
+
 import numpy
 
 
@@ -20,6 +21,11 @@ class Coordinate:
     
     def get(self):
         return self.x, self.y, self.z
+    
+@dataclass 
+class Position:
+    local: Coordinate
+    
     
 @dataclass
 class Limit:
@@ -146,21 +152,6 @@ class Bbox:
 
         return points, lines
 
-        
-
-        
-
-@dataclass
-class Shape:
-    l  : float
-    w  : float
-    h  : float
-    x1 : float
-    x2 : float
-    y1 : float
-    y2 : float
-    z1 : float
-    z2 : float
 
 @dataclass 
 class Terminal:
@@ -267,8 +258,8 @@ class LineGraphApp:
         self.root.bind('<Destroy>', self._quit)
         
 
-        tk.Scale(root, tickinterval=1, resolution=0.01, from_=-numpy.pi/2, to=numpy.pi/2, command=lambda e: self.update_plot(phi=e)).pack(side='left')
-        tk.Scale(root, tickinterval=1, resolution=0.01, from_=-numpy.pi, to=numpy.pi, command=lambda e: self.update_plot(theta=e)).pack(side='left')
+        tk.Scale(root, resolution=0.1, label='Phi',   from_=-numpy.pi/2, to=numpy.pi/2, command=lambda e: self.update_plot(phi=e)).pack(side='left')
+        tk.Scale(root, resolution=0.1, label='Theta', from_=-numpy.pi,   to=numpy.pi,   command=lambda e: self.update_plot(theta=e)).pack(side='left')
 
 
 
@@ -276,8 +267,8 @@ class LineGraphApp:
         connection_direction = Direction(numpy.pi/3, 0)
         angle_limits = AngleLimit(Limit(-numpy.pi, numpy.pi), Limit(0, 0))
         
-        bbox = Bbox(5, 2, 1, Coordinate(0, 1, 1))
-        bbox1 = Bbox(1, 1, 3, Coordinate(.5, 0, .5), Coordinate(.5, 1, 2.5))
+        bbox = Bbox(5, 2, 1, Coordinate(.5, .5, 0))
+        bbox1 = Bbox(1, 1, 3, Coordinate(.5, .5, 0), Coordinate(.5, 1, 2.5))
         self.terminal = Terminal(connection_point, connection_direction, angle_limits, bbox, bbox1)
 
 
@@ -291,7 +282,7 @@ class LineGraphApp:
 
 
         self.update_plot()
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
     
     def _quit(self, *args):
         self.root.quit()     # stops mainloop

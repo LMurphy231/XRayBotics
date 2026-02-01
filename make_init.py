@@ -2,7 +2,7 @@ import os
 import glob
 import importlib.util
 import sys
-#from api import Robot
+from api.farinoAPI.fairino import Robot
 
 def get_lower_files(dir_):
     '''
@@ -13,9 +13,11 @@ def get_lower_files(dir_):
         # Ignore any examples and this file
         if 'example' in file or file == os.path.relpath(__file__, os.getcwd()) or '__init__' in file:
             continue
-        if os.path.relpath(os.path.dirname(file), dir_) not in files:
-            files[os.path.relpath(os.path.dirname(file), dir_)] = []
-        files[os.path.relpath(os.path.dirname(file), dir_)].append(os.path.basename(file))
+        key = os.path.relpath(os.path.dirname(file), dir_) if dir_ != '' else os.path.dirname(file).split('\\')[0]
+        print((os.path.dirname(file), dir_))
+        if key not in files:
+            files[key] = []
+        files[key].append(os.path.basename(file))
     return files
 
 def write_init(files, dir_):
@@ -24,18 +26,23 @@ def write_init(files, dir_):
     '''
     print(files)
     with open(os.path.join(dir_, '__init__.py'), 'w') as f:
-        for folder in files:
-            folder_location = folder.replace("\\",".")
-            if isinstance(files[folder], (list, tuple)):
-                file_list = ", ".join([file.replace('.py','') for file in files[folder]])
-            else:
-                file_list = files[folder].replace('.py','')
-
-            if folder == dir_ or folder_location == '.' :
-                f.write(f'import {file_list}\n')
-            else:
-                f.write(f'from {folder_location} import {file_list}\n')
-        f.write(f'\n\nif __name__ == "__main__":\n    pass')
+        #f.write(f'import os, sys\n')
+        #f.write(f'sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n\n')
+        #for folder in files:
+        #    folder_location = folder.split('\\')[0].replace("\\",".")
+        #    
+        #    if isinstance(files[folder], (list, tuple)):
+        #        file_list = ", ".join([file.replace('.py','') for file in files[folder]])
+        #    else:
+        #        file_list = files[folder].replace('.py','')
+        #    print((folder, folder_location, dir_))
+        #    if folder == dir_ or folder_location == '.' :
+        #        #f.write(f'import {file_list}\n')
+        #        pass
+        #    else:
+        #        f.write(f'from {folder_location} import {file_list}\n')
+        #f.write(f'\n\nif __name__ == "__main__":\n    pass')
+        pass
 
 if __name__ == "__main__":
     folders = []
