@@ -1,0 +1,5 @@
+from fairino import Robot, setup
+
+
+if __name__ == "__main__":
+    pass

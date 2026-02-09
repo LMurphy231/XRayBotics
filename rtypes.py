@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from collections import UserDict
 from typing import Union
 import tkinter as tk
+import time
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
@@ -10,6 +11,11 @@ from mpl_toolkits.mplot3d import Axes3D
 
 import numpy
 
+class Position:
+    pass
+
+class Section:
+    pass
 
 @dataclass
 class Coordinate:
@@ -22,40 +28,387 @@ class Coordinate:
     def get(self):
         return self.x, self.y, self.z
     
-@dataclass 
-class Position:
-    local: Coordinate
+    def __add__(self, other):
+        if isinstance(other, Coordinate):
+            return Coordinate(self.x+other.x, self.y+other.y, self.z+other.z)
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self).__name__}' and '{type(other).__name__}'")
     
+    def __iadd__(self, other):
+        if isinstance(other, Coordinate):
+            self.x += other.x 
+            self.y += other.y 
+            self.z += other.z
+            return self
+        raise TypeError(f"unsupported operand type(s) for +=: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __sub__(self, other):
+        if isinstance(other, Coordinate):
+            return Coordinate(self.x-other.x, self.y-other.y, self.z-other.z)
+        raise TypeError(f"unsupported operand type(s) for -: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __isub__(self, other):
+        if isinstance(other, Coordinate):
+            self.x -= other.x 
+            self.y -= other.y 
+            self.z -= other.z
+            return
+        raise TypeError(f"unsupported operand type(s) for -=: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __mul__(self, other):
+        if isinstance(other, (Coordinate)):
+            return self.x*other.x + self.y*other.y+ self.z*other.z
+        if isinstance(other, (float, int)):
+            return Coordinate(self.x*other, self.y*other, self.z*other)
+        if isinstance(other, Direction):
+            nx, ny, nz = _rotatex(self.x, self.y, self.z, other.delta)
+            nx, ny, nz = _rotatey(nx, ny, nz, other.phi)
+            nx, ny, nz = _rotatez(nx, ny, nz, other.theta)
+            return Coordinate(nx, ny, nz)
+        raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
+
+    def __imul__(self, other):
+        if isinstance(other, Direction):
+            nx, ny, nz = _rotatex(self.x, self.y, self.z, other.delta)
+            nx, ny, nz = _rotatey(nx, ny, nz, other.phi)
+            self.x, self.y, self.z = _rotatez(nx, ny, nz, other.theta)
+            return self
+        if isinstance(other, (float, int)):
+            self.x *= other
+            self.y *= other
+            self.z *= other
+            return self
+        raise TypeError(f"unsupported operand type(s) for +=: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __iter__(self):
+        yield self.x
+        yield self.y
+        yield self.z
+
+    # TODO Make power ** function so that returns x**2 + y**2 + z**2 (used for radius calculations)
+
+class Line:
+    def __init__(self, pos1: Coordinate, pos2: Coordinate):
+        self.pos1 = pos1
+        self.pos2 = pos2
+        self.radius = self._radius()
+
+    def __add__(self, other):
+        if isinstance(other, Coordinate):
+            return Line(self.pos1+other, self.pos2+other)
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __iadd__(self, other):
+        if isinstance(other, Coordinate):
+            self.pos1 += other 
+            self.pos2 += other
+            return self
+        raise TypeError(f"unsupported operand type(s) for +=: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __sub__(self, other):
+        if isinstance(other, Coordinate):
+            return Line(self.pos1-other, self.pos2-other)
+        raise TypeError(f"unsupported operand type(s) for -: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __isub__(self, other):
+        if isinstance(other, Coordinate):
+            self.pos1 -= other 
+            self.pos2 -= other
+            return self
+        raise TypeError(f"unsupported operand type(s) for -=: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __mul__(self, other):
+        if isinstance(other, (float, int, Direction)):
+            return Line(self.pos1 * other, self.pos2 * other)
+        raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
+
+    def __imul__(self, other):
+        if isinstance(other, Direction):
+            self.pos1 *= other
+            self.pos2 *= other
+            return self
+        raise TypeError(f"unsupported operand type(s) for +=: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __iter__(self):
+        return (axis for axis in [*zip(self.pos1, self.pos2)])
+    
+    def _radius(self):
+        return _get_radius(self.pos1, self.pos2)
+
+@dataclass
+class Dimension:
+    l: Union[float, int]
+    w: Union[float, int]
+    h: Union[float, int]
+
+
     
 @dataclass
 class Limit:
     min: float
     max: float
+    # TODO add check for value fitting within the range
+    def __contains__(self, item):
+        if isinstance(item, (float, int)):
+            return item >= self.min and item <= self.max
+    
+    def __str__(self):
+        return f'[{self.min}, {self.max}]'
+    def __iter__(self):
+        yield self.min
+        yield self.max
 
 @dataclass
-class AngleLimit:
-    theta: Union[Limit, None]
-    phi  : Union[Limit, None]
+class Locked:
+    theta: bool
+    phi  : bool
+    delta: bool
+    
+    def __iter__(self):
+        yield self.theta
+        yield self.phi  
+        yield self.delta
 
 @dataclass
 class Direction:
     theta: float
     phi  : float
-    def __str__ (self):
-        return f'Theta: {self.theta}, Phi: {self.phi}'
+    delta: float
+    # TODO Rename Direction to angle or something
     
-@dataclass 
-class TerminalPoint:
-    coord  : Coordinate
-    tangent: Direction
-    name: Union[str, None] = None
+    def __str__ (self):
+        return f'Theta: {self.theta}, Phi: {self.phi}, Delta: {self.delta}'
+    
+    def __add__(self, other):
+        if isinstance(other, Direction):
+            return Direction(self.theta+other.theta, self.phi+other.phi, self.delta+other.delta)
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __iadd__(self, other):
+        if isinstance(other, Direction):
+            self.theta += other.theta 
+            self.phi   += other.phi 
+            self.delta += other.delta
+            return self
+        raise TypeError(f"unsupported operand type(s) for +=: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __sub__(self, other):
+        if isinstance(other, Direction):
+            return Direction(self.theta-other.theta, self.phi-other.phi, self.delta-other.delta)
+        raise TypeError(f"unsupported operand type(s) for -: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __isub__(self, other):
+        if isinstance(other, Direction):
+            self.theta -= other.theta 
+            self.phi   -= other.phi 
+            self.delta -= other.delta
+            return self
+        raise TypeError(f"unsupported operand type(s) for -=: '{type(self).__name__}' and '{type(other).__name__}'")
+
+    def __mul__(self, other):
+        if isinstance(other, Direction):
+            return Direction(self.theta*other.theta, self.phi*other.phi, self.delta*other.delta)
+        if isinstance(other, (float, int)):
+            return Coordinate(1,0,0)*self
+        raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
+
+    def __rmul__(self, other):
+        if isinstance(other, (float, int)):
+            return Coordinate(other,0,0)*self
+        raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
+
+    def __imul__(self, other):
+        if isinstance(other, Direction):
+            self.theta *= other.theta 
+            self.phi   *= other.phi 
+            self.delta *= other.delta
+            return self
+        raise TypeError(f"unsupported operand type(s) for +=: '{type(self).__name__}' and '{type(other).__name__}'")
+
+
+class AngleLimit:
+    def __init__(self, theta: Union[Limit, None]=None, phi:Union[Limit, None]=None, delta:Union[Limit, None]=None):
+        self.locked = Locked(theta is None, phi is None, delta is None)
+        self.theta = theta if theta is not None else Limit(0, 0)
+        self.phi   = phi   if phi   is not None else Limit(0, 0)
+        self.delta = delta if delta is not None else Limit(0, 0)
+
+    def __contains__(self, item):
+        if isinstance(item, Direction):
+            if item.theta not in self.theta:
+                return False
+            if item.phi not in self.phi:
+                return False
+            if item.delta not in self.delta:
+                return False
+            return True
+        raise TypeError(f"Item type '{type(item).__name__}' must be a Direction")
+    
     def __str__(self):
-        return f'{self.coord} at {self.tangent}'
+        return f'Theta: {self.theta} Phi: {self.phi} Delta: {self.delta}  '
+    def __iter__(self):
+        yield self.theta
+        yield self.phi
+        yield self.delta
 
 
-class BboxCorners(UserDict):
+@dataclass 
+class Position:
+    def __init__(self, base: Coordinate, set_angle:Direction = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Direction = None): 
+        self.base = base
+        self.local: Coordinate
+        self.glob : Coordinate
+        self.cur_angle = set_angle
+
+
+
+        self.cur_angle = set_angle if isinstance(set_angle, Direction) else Direction(0,0,0)
+        self.parent_angle = parent_angle if isinstance(parent_angle, Direction) else Direction(0,0,0)
+
+        self._update(set_angle, offset=offset, parent_angle=parent_angle)
+    
+    def __str__(self):
+        return f'Base:   {self.base}\nLocal:  {self.local}\nGloabl: {self.glob}'
+    
+    def _update(self, set_angle:Direction = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Direction = None):
+        if isinstance(parent_angle, Direction):
+            self.parent_angle = parent_angle
+        if isinstance(set_angle, Direction):
+            self.cur_angle = set_angle
+
+        # Updates local and global positions from on base position
+        glob  = Coordinate(self.base.x, self.base.y, self.base.z)
+
+        # Update current angle and get new local coordinate based on that angle
+        self.local = self.base * self.cur_angle
+         
+        # Update Global position
+        self.glob = offset + glob * (self.parent_angle + self.cur_angle)
+
+    
+    
+class Segment:
+    def __init__(self, dim: Dimension, end_terminal_coord: Coordinate, radius: Union[float, int], set_angle:Direction = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Direction = None):
+        self.dim = dim
+        # TODO make bbox for joint
+
+        self.main_terminal = Position(Coordinate(0,0,0), set_angle, offset, parent_angle)
+        self.end_terminal = Position(end_terminal_coord, set_angle, offset, parent_angle)
+        self.path = self._create_path()
+        self.radius = radius
+        self.affected_radius = 0.0
+
+    def _update(self, set_angle:Direction = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Direction = None):
+        self.main_terminal._update(set_angle, offset, parent_angle)
+        self.end_terminal._update(set_angle, offset, parent_angle)
+
+        for point in self.path:
+            point._update(set_angle, offset, parent_angle)
+
+    def _get_lines(self) -> tuple[Line]:
+        lines = []
+        prev_pos = self.main_terminal
+        for pos in self.path:
+            lines.append(Line(prev_pos.glob, pos.glob))
+            prev_pos = pos
+        lines.append(Line(prev_pos.glob, self.end_terminal.glob))
+        return tuple(lines)
+
+    def _get_length(self):
+        return self.end_terminal.glob - self.main_terminal.glob
+    
+    def _create_path(self) -> tuple[Position]:
+        x1, y1, z1 = self.main_terminal.base
+        x2, y2, z2 = self.end_terminal.base
+        path = []
+        if z1 != z2:
+            path.append(Position(Coordinate(x1, y1, z2), self.main_terminal.cur_angle, self.main_terminal.glob, self.main_terminal.parent_angle))
+        if y1 != y2:
+            path.append(Position(Coordinate(x1, y2, z2), self.main_terminal.cur_angle, self.main_terminal.glob, self.main_terminal.parent_angle))
+        if x1 != x2:
+            path.append(Position(Coordinate(x2, y2, z2), self.main_terminal.cur_angle, self.main_terminal.glob, self.main_terminal.parent_angle))
+        
+        
+        return tuple(path)
+        
+    def _plot(self, ax: plt.Axes, annotate=False):
+        ax.scatter(*(self.end_terminal.glob), marker='+')
+        ax.scatter(*(self.main_terminal.glob), marker='o')
+        if annotate:
+            ax.text(*self.end_terminal.glob, s=f'{self.end_terminal.glob}')
+        lines = self._get_lines()
+        for line in lines:
+            ax.plot(*line)
+            
+
+
+class Joint:
+    def __init__(self, id, parent: Segment, child: Segment, connection_angle_limit: AngleLimit):
+        self.id = id
+        self.parent = parent
+        self.child = child
+        self.angle_lim = connection_angle_limit
+        self.parent.affected_radius = self._affected_radius(self.parent)
+        self.child.affected_radius = self._affected_radius(self.child)
+        self.radius = _get_radius(self.parent.end_terminal.base, self.child.end_terminal.base)
+
+    def _set_angle(self, set_angle:Direction):
+        if set_angle not in self.angle_lim:
+            print(f'{set_angle} not in {self.angle_lim}')
+        self.child._update(set_angle, self.parent.end_terminal.glob, self.parent.end_terminal.parent_angle+self.parent.end_terminal.cur_angle)
+    
+    def _set(self, set_angle:Direction = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Direction = None):
+        self.child._update(set_angle, offset, parent_angle)
+
+    def _update(self):
+        self.child._update(offset=self.parent.end_terminal.glob, parent_angle=self.parent.end_terminal.parent_angle+self.parent.end_terminal.cur_angle)
+
+    def _angle_is_allowed(self, set_angle: Direction):
+        return set_angle in self.angle_lim
+
+    def _plot(self, ax: plt.Axes, main=False, annotate=False):
+        self.child._plot(ax, annotate)
+        if main:
+            self.parent._plot(ax, annotate)
+
+    def _affected_radius(self, seg: Segment):
+        return seg.end_terminal.base.z
+        #if not self.angle_lim.locked.theta:
+        #    return seg.end_terminal.base.z
+        #if not self.angle_lim.locked.phi:
+        #    return seg.end_terminal.base.y
+        #if not self.angle_lim.locked.delta:
+        #    return seg.end_terminal.base.x
+
+    
+class Effector:
+    def __init__(self, x_wrist: Joint, z_wrist: Joint):
+        self.z_wrist = z_wrist
+        self.x_wrist = x_wrist
+        # For now, use the x_write end terminal as the point of reference
+        self.effector_pos = self.x_wrist.child.end_terminal
+
+    def _set(self, cord: Coordinate, angle: Direction):
+        print(self.z_wrist.parent is self.x_wrist.child)
+        # TODO
+        self.x_wrist.child._update(set_angle=Direction(0, 0, angle.delta ), parent_angle=Direction(angle.theta, 0, 0), offset=cord-self.x_wrist.child.radius*Direction(angle.theta, 0, angle.delta))
+        self.z_wrist.child._update(set_angle=Direction(angle.theta , 0, 0), parent_angle=Direction(0,0,0), offset=self.x_wrist.child.main_terminal.glob - self.z_wrist.child.radius*Direction(angle.theta, 0, 0))
+        print(self.z_wrist.child.radius*Direction(angle.theta + numpy.pi, 0, 0))
+        print(self.z_wrist.child.radius)
+        print(self.x_wrist.child.end_terminal.glob)
+        print(self.x_wrist.child.main_terminal.glob)
+        print(self.z_wrist.child.end_terminal.glob)
+        print(self.z_wrist.child.main_terminal.glob)
+
+    def __contains__(self, item):
+        if isinstance(item, (Joint)):
+            return item is self.z_wrist or item is self.x_wrist
+        raise TypeError(f"Item type '{type(item).__name__}' must be a Joint")
+
+
+class Bbox(UserDict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # TODO Change from dict class and make it solely for bbox 
         
     def __setitem__(self, keys, value):
         path = self.data
@@ -91,7 +444,16 @@ class BboxCorners(UserDict):
         for keys, data in items:
             yield keys, data 
     
-class Bbox:
+    def __contains__(self, data):
+        #TODO Check to see if data is within Bbox, compare with global coordinates
+        raise NotImplementedError
+    
+    def _lines(self):
+        # TODO create lines here instead of 
+        raise NotImplementedError
+
+    
+class Segment1:
     def __init__(self, l: float, w: float, h: float, main_terminal_point: Coordinate, sub_terminal_points: Union[tuple[Coordinate], list[Coordinate]] = ()):
         self.l = l
         self.w = w
@@ -105,7 +467,7 @@ class Bbox:
         self.shape = self._get_shape()
     
     def _setup(self):
-        self.corner = BboxCorners()
+        self.bbox = Bbox()
         coord =  self.main_terminal_point
         for z in range(2):
             for y in range(2):
@@ -113,25 +475,25 @@ class Bbox:
                     cx = (x*self.l - coord.x)
                     cy = (y*self.w - coord.y)
                     cz = (z*self.h - coord.z)
-                    self.corner[x, y, z] = Coordinate(cx, cy, cz)
+                    self.bbox[x, y, z] = Coordinate(cx, cy, cz)
+    
     def __str__(self):
         item_name = f'Main Terminal:\n{self.main_terminal_point}\n\nWith corners:\n'
-        for key, coordinate in self.corner:
+        for key, coordinate in self.bbox:
             item_name += f'{key} = {coordinate}\n'
         return item_name
 
-
     def _get_shape(self):
+        # TODO move to Bbox
         def _flip_bit(key):
             return 1 if key == 0 else 0
         
         lines = []
         points = []
         data = {}
-        for keys, coordinate in self.corner:
-            point = (coordinate.x, coordinate.y, coordinate.z)
-            points.append(point)
-            data[keys] = point
+        for keys, coordinate in self.bbox:
+            points.append(coordinate)
+            data[keys] = coordinate
         used_keys = []
         for keys in data:
             for i, key in enumerate(keys):
@@ -139,16 +501,8 @@ class Bbox:
                 key_pair[i] = _flip_bit(key)
                 if key_pair in used_keys:
                     continue
-                x1, y1, z1 = data[keys]
-                x2, y2, z2 = data[tuple(key_pair)]
-                x = numpy.linspace(x1, x2, 2)
-                y = numpy.linspace(y1, y2, 2)
-                z = numpy.linspace(z1, z2, 2)
-                
-                lines.append((x, y, z))
-
+                lines.append(Line(data[keys], data[tuple(key_pair)]))
             used_keys.append(list(keys))
-            
 
         return points, lines
 
@@ -157,13 +511,14 @@ class Bbox:
 class Terminal:
     position : Coordinate
     normal   : Direction
-    angle_lim: Limit
-    parent   : Bbox
-    child    : Bbox
+    cur_dir  : Direction
+    parent   : Segment
+    child    : Segment
+
 
 def _rotatex(x, y, z, angle):
     if numpy.isnan(angle):
-        return x, y, z
+        raise ValueError(f'Invalid angle: {angle}')
     nx = x
     ny = y * numpy.cos(angle) - z * numpy.sin(angle)
     nz = y * numpy.sin(angle) + z * numpy.cos(angle)
@@ -171,7 +526,7 @@ def _rotatex(x, y, z, angle):
 
 def _rotatey(x, y, z, angle):
     if numpy.isnan(angle):
-        return x, y, z
+        raise ValueError(f'Invalid angle: {angle}')
     nx = x * numpy.cos(angle) + z * numpy.sin(angle)
     ny = y
     nz = -x * numpy.sin(angle) + z * numpy.cos(angle)
@@ -179,20 +534,175 @@ def _rotatey(x, y, z, angle):
 
 def _rotatez(x, y, z, angle):
     if numpy.isnan(angle):
-        return x, y, z
+        raise ValueError(f'Invalid angle: {angle}')
     nx = x * numpy.cos(angle) - y * numpy.sin(angle)
     ny = x * numpy.sin(angle) + y * numpy.cos(angle)
     nz = z
     return nx, ny, nz
 
-def _rotatexyz(x, y, z, theta, phi):   
+def _rotatexyz(x, y, z, theta, phi, delta):   
     nx, ny, nz = _rotatey(x, y, z, phi)
     nx, ny, nz = _rotatez(nx, ny, nz, theta)
+    nx, ny, nz = _rotatex(nx, ny, nz, delta)
     return nx, ny, nz
 
+def _get_radius(c1:Coordinate, c2=Coordinate(0,0,0)):
+    return numpy.sqrt((c1.x-c2.x)**2 + (c1.y-c2.y)**2 + (c1.z-c2.z)**2)
 
-def _get_radius(x, y, z):
-    return numpy.sqrt(x**1 + y**2 + z**2)
+def _rad_to_degree(angle):
+    return 180*angle/numpy.pi
+
+def _degree_to_rad(angle):
+    return angle*numpy.pi/180
+
+
+
+def _get_2dim_angle(r1, r2, x1, y1):
+    a = numpy.arccos((r1**2 - x1**2 - y1**2 - r2**2)/(2*r2*numpy.sqrt(x1**2 + y1**2)))
+    b = numpy.arctan(y1/x1)
+    theta =  (-a+b, a+b)
+    return theta
+
+def _get_3dim_angles(r1, r2, x1, y1, z1, theta):
+    a = z1
+    b = lambda theta: numpy.sqrt(x1**2+y1**2) * numpy.cos(theta - numpy.atan(y1/x1))
+    c = (r1**2 - x1**2 - y1**2 - z1**2 - r2**2)/(2*r2)    
+    
+    phi = lambda theta: numpy.acos(c/numpy.sqrt(a**2 + b(theta)**2))+ numpy.acos(b(theta)/a)
+
+    test = lambda theta: numpy.sqrt(a**2 + b(theta)**2) * numpy.cos(phi(theta) - numpy.atan(b(theta)/a))
+    results = []
+    list = numpy.column_stack((theta, phi(theta), test(theta)))
+    for i, (th, ph, ts) in enumerate(list):
+        if i == 0:
+            continue
+        #print(i, list[i-1,2])
+        if (ts >= 0 and list[i-1,2] <= 0) or (ts <= 0 and list[i-1,2] >= 0): 
+            x = r2*numpy.cos(th)*numpy.sin(ph) + x1
+            y = r2*numpy.sin(th)*numpy.sin(ph) + y1
+            z = r2*numpy.cos(ph) + z1
+            r = numpy.sqrt(x**2 + y**2 + z**2)
+            R = numpy.sqrt((x - x1)**2 + (y - y1)**2 + (z - z1)**2)
+            print(f'{th:<4.3f}: {ph:<4.3f}, ts: {ts:>4.3f}, x: {x:>3.3f}, y: {y:>3.3f}, z: {z:>3.3f}, r: {r:>3.3f} R: {R:>3.3f}')
+            results.append(th, ph)
+    return results
+
+def _translate_angle_to_direction(direction: Direction):
+    x = numpy.cos(direction.theta)*numpy.sin(direction.phi)
+    y = numpy.sin(direction.theta)*numpy.sin(direction.phi)
+    z = numpy.cos(direction.phi)
+    return _get_axis_angles(Coordinate(x,y,z))
+
+def _get_axis_angles(cord: Coordinate):
+    delta = numpy.arccos(cord.y/cord.z)
+    phi = numpy.arccos(cord.x/cord.z)
+    theta = numpy.arccos(cord.y/cord.x)
+    return Direction(theta, phi, delta)
+
+# Base
+bs = Segment(Dimension(0, 0, 0), Coordinate(0,0,0), 138)
+# Segment 1
+s1 = Segment(Dimension(149, 149, 217.375), Coordinate(138, 0, 152), 152)
+# Segment 2 
+s2 = Segment(Dimension(143.392, 116, 541), Coordinate(-138, 0, 425), 425)
+# Segment 3
+s3 = Segment(Dimension(114.287, 116, 493), Coordinate(102, 0, 395), 395)
+# Segment 4
+s4 = Segment(Dimension(88.798, 80, 107.687), Coordinate(0, 0, 102), 102)
+# Segment 5
+s5 = Segment(Dimension(107.687, 80,  88.798), Coordinate(100, 0, 0), 100)
+
+# Joint 1
+j1 = Joint(1, bs, s1, AngleLimit(Limit(_degree_to_rad(-175), _degree_to_rad(175)), None, None))
+# Joint 2
+j2 = Joint(2, s1, s2, AngleLimit(None, None, Limit(_degree_to_rad(-85), _degree_to_rad(265))))
+# Joint 3
+j3 = Joint(3, s2, s3, AngleLimit(None, None, Limit(_degree_to_rad(-160), _degree_to_rad(160))))
+# Joint 4
+j4 = Joint(4, s3, s4, AngleLimit(None, None, Limit(_degree_to_rad(-265), _degree_to_rad(85))))
+# Joint 5
+j5 = Joint(5, s4, s5, AngleLimit(Limit(_degree_to_rad(-175), _degree_to_rad(175)), None, None))
+
+
+
+class Robot:
+    def __init__(self, joints: tuple[Joint]):
+        self.joints = joints
+        self.effector = Effector(self.joints[3],self.joints[4])
+        self._update_joints()
+
+    def _update_joints(self):
+        for joint in self.joints:
+            joint._update()
+            
+    def _set_angle(self, joint_id, angle:Direction):
+        for joint in self.joints:
+            if joint.id == joint_id:
+                joint._set_angle(angle)
+            else:
+                joint._update()
+            
+    def get_joints_positions(self):
+        points = []
+        for i, joint in enumerate(joints):
+            points.append(joint.child.end_terminal.glob)
+            print(f'Terminal {i}: {joint.child.end_terminal.glob}')
+        return points
+    
+    def get_joint(self, joint_id) -> Joint:
+        for joint in joints:
+            if joint.id == joint_id:
+                return joint
+        return None
+
+    def get_length(self):
+        length = self.joints[0].parent._get_length()
+        for joint in self.joints:
+            length += joint.child._get_length()
+        return length
+
+
+    def _get_affected_radius(self, joint_id):
+        start_recording = False
+        total_length = 0.0
+        for joint in reversed(self.joints):
+            if start_recording:
+                total_length += joint.child.affected_radius
+            if joint.id == joint_id:
+                start_recording = True
+                #total_length -= joint.parent.affected_radius
+        return total_length
+    
+    def _go_to_coords(self, cord: Coordinate):
+        angle = _get_axis_angles(cord)
+        r = _get_radius(cord)
+        print(f'r: {r}, Theta: {angle.theta}, phi: {angle.phi}, Delta: {angle.delta}')
+        for joint in reversed(self.joints):
+            t, p, d = joint.angle_lim.locked
+            r1 = self._get_affected_radius(joint.id)
+            r2 = joint.parent.affected_radius
+            if r1+r2 < r:
+                raise ValueError(f'Coordinate outside range')
+            
+            if not t:
+                print(f'{joint.id}: Theta Unlocked {joint.angle_lim.theta}')
+            if not p:
+                print(f'{joint.id}: Phi Unlocked {joint.angle_lim.phi  }')
+            if not d:
+                print(f'{joint.id}: Delta Unlocked {joint.angle_lim.delta}')
+
+        #for joint in reversed(self.joints):
+        #    theta = numpy.arange(0, 2*numpy.pi, step=0.01)
+        #    r1 = self._get_affected_radius(joint.id)
+        #    r2 = joint.parent.affected_radius
+        #    
+        #    if r2 == 0 or joint.id != self.joints[-2].id:
+        #        continue
+        #    print(f'{joint.id}: r1: {self._get_affected_radius(joint.id)}, r2: {joint.child.affected_radius}')
+        #    
+        #    print(_get_3dim_angles(self._get_affected_radius(joint.id), joint.child.affected_radius, x, y, z, theta))
+            
+           
 
 
 
@@ -200,44 +710,41 @@ def _get_radius(x, y, z):
 
 
 
-def plot_terminal(ax, terminal: Terminal):
+def plot_terminal(ax, terminal: Terminal, offset: Coordinate = Coordinate(1, 0.0, 0.0)):
     pos = terminal.position
     norm = terminal.normal
 
     parent = terminal.parent
     child = terminal.child
-    
-    plot_bbox(ax, parent, dx=pos.x, dy=pos.y, dz=pos.z, terminal_color='red')
-    plot_bbox(ax, child, theta=norm.theta, phi=norm.phi, dx=pos.x, dy=pos.y, dz=pos.z)
 
-def plot_bbox(ax: plt.Axes, bbox: Bbox, theta=0.0, phi=numpy.pi/2, dx=0.0, dy=0.0, dz=0.0, pointcolor='purple', linecolor= 'green', terminal_color='orange'):
+    plot_bbox(ax, parent, terminal_color='red')
+    plot_bbox(ax, child, direction=norm)
+
+def plot_bbox(ax: plt.Axes, bbox: Segment, direction: Direction=Direction(0.0,numpy.pi/2,0.0), offset: Coordinate = Coordinate(0.0, 0.0, 0.0), 
+              show_bbox=True, pointcolor='purple', linecolor= 'green', terminal_color='orange'):
+    
     points, lines = bbox.shape
     terminal_coord = bbox.main_terminal_point
 
-    # Create the plot
-    for x, y, z in points: 
-        nx, ny, nz = _rotatexyz(x, y, z, theta, phi)
-        ax.scatter(nx, ny, nz, c=pointcolor) # 'c' sets the color based on 'z' values
-
-
-    x1, y1, z1 = points[0]
-    nx, ny, nz = _rotatexyz(x1 + terminal_coord.x, y1 + terminal_coord.y, z1 + terminal_coord.z, theta, phi)
-    ax.scatter(nx, ny, nz, c=terminal_color, marker='+') # 'c' sets the color based on 'z' values
+    # Plot Bbox Points
+    for point in points: 
+        ax.scatter(*(offset+point*direction), c=pointcolor) 
+    print(points[0])
+    # Plot Main Terminal
+    ax.scatter(*(offset+(points[0]+bbox.main_terminal_point)*direction), c=terminal_color, marker='+') 
     
+    # Plot Bbox Lines
     for terminal in bbox.sub_terminal_points:
-        x1, y1, z1 = points[0]
-        nx, ny, nz = _rotatexyz(x1 + terminal.x, y1 + terminal.y, z1 + terminal.z, theta, phi)
-        ax.scatter(nx, ny, nz, c=terminal_color, marker='+') # 'c' sets the color based on 'z' values
+        ax.scatter(*(offset+(points[0]+terminal)*direction), c=terminal_color, marker='+') 
 
     # Set labels
     ax.set_xlabel('X Label')
     ax.set_ylabel('Y Label')
     ax.set_zlabel('Z Label')
 
-    for x, y, z in lines:
+    for line in lines:
         # Create the plot
-        nx, ny, nz = _rotatexyz(x, y, z, theta, phi)
-        ax.plot(nx, ny, nz, color=linecolor)
+        ax.plot(*((line+offset)*direction), color=linecolor)
 
     # Set labels
     ax.set_xlabel('X Label')
@@ -252,25 +759,12 @@ def plot_bbox(ax: plt.Axes, bbox: Bbox, theta=0.0, phi=numpy.pi/2, dx=0.0, dy=0.
 
 
 class LineGraphApp:
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: tk.Tk, robot: Robot):
         self.root = root
         self.root.title("Line Graph")
         self.root.bind('<Destroy>', self._quit)
         
-
-        tk.Scale(root, resolution=0.1, label='Phi',   from_=-numpy.pi/2, to=numpy.pi/2, command=lambda e: self.update_plot(phi=e)).pack(side='left')
-        tk.Scale(root, resolution=0.1, label='Theta', from_=-numpy.pi,   to=numpy.pi,   command=lambda e: self.update_plot(theta=e)).pack(side='left')
-
-
-
-        connection_point = Coordinate(1, 1, 1)
-        connection_direction = Direction(numpy.pi/3, 0)
-        angle_limits = AngleLimit(Limit(-numpy.pi, numpy.pi), Limit(0, 0))
-        
-        bbox = Bbox(5, 2, 1, Coordinate(.5, .5, 0))
-        bbox1 = Bbox(1, 1, 3, Coordinate(.5, .5, 0), Coordinate(.5, 1, 2.5))
-        self.terminal = Terminal(connection_point, connection_direction, angle_limits, bbox, bbox1)
-
+        self.robot = robot
 
         fig = plt.figure()
         self.ax = fig.add_subplot(projection='3d')
@@ -279,40 +773,76 @@ class LineGraphApp:
         toolbar = NavigationToolbar2Tk(self.canvas, root)
         toolbar.update()
         toolbar.pack(side=tk.BOTTOM, fill=tk.X)
+        
 
+        self.joint_id = tk.Scale(root, resolution=1, label='Joint',   from_=1, to=len(self.robot.joints), command=lambda e=None: self._update_angle_sliders())
+        self.joint_id.pack(side='left')
 
+        self.phi = tk.Scale(root, resolution=0.01, label='Phi',   from_=-numpy.pi/2, to=numpy.pi/2, command=lambda e=None: self.update_plot())
+        self.phi.pack(side='left') 
+        self.theta = tk.Scale(root, resolution=0.01, label='Theta', from_=-numpy.pi, to=numpy.pi,   command=lambda e=None: self.update_plot())
+        self.theta.pack(side='left')
+        self.delta = tk.Scale(root, resolution=0.01, label='Delta', from_=0,         to=2*numpy.pi, command=lambda e=None: self.update_plot())
+        self.delta.pack(side='left')
+
+        
+
+        self._update_angle_sliders()
         self.update_plot()
+        
+        
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.ax.set_autoscale_on(False)
     
     def _quit(self, *args):
         self.root.quit()     # stops mainloop
 
         
-    def update_plot(self, theta=None, phi=None):
-        if theta is not None: 
-            self.terminal.normal.theta = float(theta)
-        if phi is not None: 
-            self.terminal.normal.phi = float(phi)
+    def update_plot(self, *args):
+        set_angle = Direction(self.theta.get(), self.phi.get(), self.delta.get())
+        self.robot._set_angle(int(self.joint_id.get()), set_angle)
+
         self.ax.clear()
+        self.ax.text(*self.robot.joints[0].parent.end_terminal.glob, s=f'{self.robot.joints[0].parent.end_terminal.glob}')
+        for joint in self.robot.joints:
+            joint._plot(self.ax, annotate=True)
 
-        plot_terminal(self.ax, self.terminal)
+        self.ax.scatter(-1000, -1000, 0, marker='+') # 'c' sets the color based on 'z' values
+        self.ax.scatter(1000, 1000, 1500, marker='+') # 'c' sets the color based on 'z' values
+        self.robot._go_to_coords(Coordinate(202, 0, 1074))
+        self.canvas.draw_idle()
 
-        self.ax.scatter(-6, -6, -6, marker='+') # 'c' sets the color based on 'z' values
-        self.ax.scatter(6, 6, 6, marker='+') # 'c' sets the color based on 'z' values
+    def _update_angle_sliders(self, *args):
+        joint_id = int(self.joint_id.get())
+        joint = self.robot.get_joint(joint_id) 
+        cur_angle = joint.child.main_terminal.cur_angle
 
-        self.canvas.draw()
+        # Update Limit on sliders
+        theta_lim, phi_lim, delta_lim = joint.angle_lim
+        self.phi.config(from_=phi_lim.min, to=phi_lim.max)
+        self.theta.config(from_=theta_lim.min, to=theta_lim.max)
+        self.delta.config(from_=delta_lim.min, to=delta_lim.max)
+
+        # Set slider to current angles for selected joint
+        self.phi.set(cur_angle.phi)
+        self.theta.set(cur_angle.theta)
+        self.delta.set(cur_angle.delta)
         
         
-
 
 
 
 if __name__ == "__main__":
-    
-    #plot_bbox(ax, bbox1)
-    
-    root = tk.Tk()
-    app = LineGraphApp(root)
-    root.mainloop()
+    joints = (j1, j2, j3, j4, j5)
+    robot = Robot(joints)
+    eff = Effector(j4,j5)
+    eff._set(cord=Coordinate(202,0, 1074), angle=Direction(0, 0, numpy.pi/2))
+    #robot.get_joints_positions()
+#
+    #robot._set_angle(1, Direction(numpy.pi/2, 0, 0))
+#
+    #robot.get_joints_positions()
 
-    
+    #root = tk.Tk()
+    #app = LineGraphApp(root, robot)
+    #root.mainloop()
