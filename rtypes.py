@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+import dataclasses 
 from collections import UserDict
 from typing import Union
 import tkinter as tk
@@ -17,7 +17,7 @@ class Position:
 class Section:
     pass
 
-@dataclass
+@dataclasses.dataclass()
 class Coordinate:
     x: float
     y: float
@@ -84,7 +84,11 @@ class Coordinate:
         yield self.y
         yield self.z
 
-    # TODO Make power ** function so that returns x**2 + y**2 + z**2 (used for radius calculations)
+    @property
+    def radius(self):
+        return _get_radius(self)
+
+
 
 class Line:
     def __init__(self, pos1: Coordinate, pos2: Coordinate):
@@ -134,7 +138,7 @@ class Line:
     def _radius(self):
         return _get_radius(self.pos1, self.pos2)
 
-@dataclass
+@dataclasses.dataclass()
 class Dimension:
     l: Union[float, int]
     w: Union[float, int]
@@ -142,7 +146,7 @@ class Dimension:
 
 
     
-@dataclass
+@dataclasses.dataclass()
 class Limit:
     min: float
     max: float
@@ -153,11 +157,12 @@ class Limit:
     
     def __str__(self):
         return f'[{self.min}, {self.max}]'
+    
     def __iter__(self):
         yield self.min
         yield self.max
 
-@dataclass
+@dataclasses.dataclass()
 class Locked:
     theta: bool
     phi  : bool
@@ -168,7 +173,19 @@ class Locked:
         yield self.phi  
         yield self.delta
 
-@dataclass
+class Radius:
+    def __init__(self, r: Union[float, int]):
+        self.r = r
+
+    def __mul__(self, other):
+        if isinstance(other, Direction):
+            x = self.r*numpy.cos(other.theta) * numpy.sin(other.phi)
+            y = self.r*numpy.sin(other.theta) * numpy.sin(other.phi)
+            z = self.r*numpy.cos(other.phi)
+            return Coordinate(x,y,z)
+        raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
+
+@dataclasses.dataclass()
 class Direction:
     theta: float
     phi  : float
@@ -208,7 +225,7 @@ class Direction:
         if isinstance(other, Direction):
             return Direction(self.theta*other.theta, self.phi*other.phi, self.delta*other.delta)
         if isinstance(other, (float, int)):
-            return Coordinate(1,0,0)*self
+            return Coordinate(other,0,0)*self
         raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
 
     def __rmul__(self, other):
@@ -224,6 +241,8 @@ class Direction:
             return self
         raise TypeError(f"unsupported operand type(s) for +=: '{type(self).__name__}' and '{type(other).__name__}'")
 
+    def __neg__(self):
+        return Direction(-self.theta, -self.phi, -self.delta)
 
 class AngleLimit:
     def __init__(self, theta: Union[Limit, None]=None, phi:Union[Limit, None]=None, delta:Union[Limit, None]=None):
@@ -251,7 +270,7 @@ class AngleLimit:
         yield self.delta
 
 
-@dataclass 
+@dataclasses.dataclass()
 class Position:
     def __init__(self, base: Coordinate, set_angle:Direction = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Direction = None): 
         self.base = base
@@ -330,8 +349,8 @@ class Segment:
         
         return tuple(path)
         
-    def _plot(self, ax: plt.Axes, annotate=False):
-        ax.scatter(*(self.end_terminal.glob), marker='+')
+    def _plot(self, ax: plt.Axes, annotate=False, color='red'):
+        ax.scatter(*(self.end_terminal.glob), marker='+', c=color)
         ax.scatter(*(self.main_terminal.glob), marker='o')
         if annotate:
             ax.text(*self.end_terminal.glob, s=f'{self.end_terminal.glob}')
@@ -379,6 +398,11 @@ class Joint:
         #if not self.angle_lim.locked.delta:
         #    return seg.end_terminal.base.x
 
+def _get_angle(c1: Coordinate, c2: Coordinate):
+    theta = numpy.arctan((c2.y-c1.y)/(c2.x-c1.x))
+    phi = numpy.arccos((c2.z-c1.z)/(numpy.sqrt((c2.x-c1.x)**2 + (c2.y-c1.y)**2 + (c2.z-c1.z)**2)))
+    return Direction(theta, phi, 0.0)
+
     
 class Effector:
     def __init__(self, x_wrist: Joint, z_wrist: Joint):
@@ -389,15 +413,28 @@ class Effector:
 
     def _set(self, cord: Coordinate, angle: Direction):
         print(self.z_wrist.parent is self.x_wrist.child)
-        # TODO
-        self.x_wrist.child._update(set_angle=Direction(0, 0, angle.delta ), parent_angle=Direction(angle.theta, 0, 0), offset=cord-self.x_wrist.child.radius*Direction(angle.theta, 0, angle.delta))
-        self.z_wrist.child._update(set_angle=Direction(angle.theta , 0, 0), parent_angle=Direction(0,0,0), offset=self.x_wrist.child.main_terminal.glob - self.z_wrist.child.radius*Direction(angle.theta, 0, 0))
-        print(self.z_wrist.child.radius*Direction(angle.theta + numpy.pi, 0, 0))
-        print(self.z_wrist.child.radius)
-        print(self.x_wrist.child.end_terminal.glob)
-        print(self.x_wrist.child.main_terminal.glob)
+        #c1 = cord-Radius(self.x_wrist.child.radius)*angle
+        print(self.z_wrist.child.end_terminal.base)
+        print(self.x_wrist.child.end_terminal.base)
+        print(_get_radius(self.z_wrist.child.end_terminal.base + self.x_wrist.child.end_terminal.base))
+        print(_translate_angle_to_direction(_get_radius(self.z_wrist.child.end_terminal.base + self.x_wrist.child.end_terminal.base),angle))
+        #print(f'Radius: {self.x_wrist.child.radius}')
+        #print(f'c1:   {c1}')
+        #print(f'cord: {cord}')
+        #print(f'test: { _translate_angle_to_direction(self.x_wrist.child.radius, angle)}')
+        #dir_ = _get_rotational_angles(c1, cord)
+        #print(f' dir: {dir_}')
+        #r = _get_radius()
+        #self.z_wrist.child._update(set_angle=Direction(0, 0, angle.delta), parent_angle=Direction(-angle.theta, -angle.phi, numpy.pi/2), offset=cord-_translate_angle_to_direction(self.z_wrist.child.radius,  Direction(angle.theta, angle.phi , angle.delta-numpy.pi/2)))
+        #self.x_wrist.child._update(set_angle=Direction(angle.theta , 0, numpy.pi/2), parent_angle=Direction(0, -angle.phi, 0), offset=self.z_wrist.child.main_terminal.glob - _translate_angle_to_direction(self.x_wrist.child.radius, Direction(angle.theta, angle.phi , numpy.pi/2)))
+        #print(self.z_wrist.child.main_terminal.glob,  _translate_angle_to_direction(self.x_wrist.child.radius, Direction(angle.theta, angle.phi , 0)))
+        #print(self.z_wrist.child.radius*Direction(angle.theta + numpy.pi, 0, 0))
+        #print(self.z_wrist.child.radius)
         print(self.z_wrist.child.end_terminal.glob)
         print(self.z_wrist.child.main_terminal.glob)
+        print(self.x_wrist.child.end_terminal.glob)
+        print(self.x_wrist.child.main_terminal.glob)
+        
 
     def __contains__(self, item):
         if isinstance(item, (Joint)):
@@ -507,7 +544,7 @@ class Segment1:
         return points, lines
 
 
-@dataclass 
+@dataclasses.dataclass()
 class Terminal:
     position : Coordinate
     normal   : Direction
@@ -587,16 +624,16 @@ def _get_3dim_angles(r1, r2, x1, y1, z1, theta):
             results.append(th, ph)
     return results
 
-def _translate_angle_to_direction(direction: Direction):
-    x = numpy.cos(direction.theta)*numpy.sin(direction.phi)
-    y = numpy.sin(direction.theta)*numpy.sin(direction.phi)
-    z = numpy.cos(direction.phi)
-    return _get_axis_angles(Coordinate(x,y,z))
+def _translate_angle_to_direction(r: float, angle: Direction):
+    x = numpy.sqrt(r**2/(1 + numpy.tan(angle.theta)**2 + numpy.tan(angle.phi)**2))
+    y = x * numpy.tan(angle.theta)
+    z = x * numpy.tan(angle.phi)
+    return Coordinate(x,y,z)
 
-def _get_axis_angles(cord: Coordinate):
-    delta = numpy.arccos(cord.y/cord.z)
-    phi = numpy.arccos(cord.x/cord.z)
-    theta = numpy.arccos(cord.y/cord.x)
+def _get_rotational_angles(c1: Coordinate, c2: Coordinate = Coordinate(0,0,0)):
+    theta = numpy.arctan((c1.y - c2.y)/(c1.x - c2.x))
+    phi = numpy.arctan((c1.z - c2.z)/(c1.x - c2.x))
+    delta = numpy.arctan((c1.z - c2.z)/(c1.y - c2.y))
     return Direction(theta, phi, delta)
 
 # Base
@@ -630,6 +667,8 @@ class Robot:
         self.joints = joints
         self.effector = Effector(self.joints[3],self.joints[4])
         self._update_joints()
+        self.eff = Effector(j4,j5)
+        
 
     def _update_joints(self):
         for joint in self.joints:
@@ -674,7 +713,7 @@ class Robot:
         return total_length
     
     def _go_to_coords(self, cord: Coordinate):
-        angle = _get_axis_angles(cord)
+        angle = _get_rotational_angles(cord)
         r = _get_radius(cord)
         print(f'r: {r}, Theta: {angle.theta}, phi: {angle.phi}, Delta: {angle.delta}')
         for joint in reversed(self.joints):
@@ -730,7 +769,7 @@ def plot_bbox(ax: plt.Axes, bbox: Segment, direction: Direction=Direction(0.0,nu
     for point in points: 
         ax.scatter(*(offset+point*direction), c=pointcolor) 
     print(points[0])
-    # Plot Main Terminal
+    # Plot Main Termina
     ax.scatter(*(offset+(points[0]+bbox.main_terminal_point)*direction), c=terminal_color, marker='+') 
     
     # Plot Bbox Lines
@@ -778,11 +817,11 @@ class LineGraphApp:
         self.joint_id = tk.Scale(root, resolution=1, label='Joint',   from_=1, to=len(self.robot.joints), command=lambda e=None: self._update_angle_sliders())
         self.joint_id.pack(side='left')
 
-        self.phi = tk.Scale(root, resolution=0.01, label='Phi',   from_=-numpy.pi/2, to=numpy.pi/2, command=lambda e=None: self.update_plot())
+        self.phi = tk.Scale(root, resolution=0.0001, label='Phi',   from_=-numpy.pi/2, to=numpy.pi/2, command=lambda e=None: self.update_plot())
         self.phi.pack(side='left') 
-        self.theta = tk.Scale(root, resolution=0.01, label='Theta', from_=-numpy.pi, to=numpy.pi,   command=lambda e=None: self.update_plot())
+        self.theta = tk.Scale(root, resolution=0.0001, label='Theta', from_=-numpy.pi, to=numpy.pi,   command=lambda e=None: self.update_plot())
         self.theta.pack(side='left')
-        self.delta = tk.Scale(root, resolution=0.01, label='Delta', from_=0,         to=2*numpy.pi, command=lambda e=None: self.update_plot())
+        self.delta = tk.Scale(root, resolution=0.0001, label='Delta', from_=0,         to=2*numpy.pi, command=lambda e=None: self.update_plot())
         self.delta.pack(side='left')
 
         
@@ -804,12 +843,13 @@ class LineGraphApp:
 
         self.ax.clear()
         self.ax.text(*self.robot.joints[0].parent.end_terminal.glob, s=f'{self.robot.joints[0].parent.end_terminal.glob}')
+        self.robot.eff._set(cord=Coordinate(202,0, 1074), angle=Direction(numpy.pi, numpy.pi, 0))
         for joint in self.robot.joints:
-            joint._plot(self.ax, annotate=True)
+            joint._plot(self.ax, main=True, annotate=True)
 
         self.ax.scatter(-1000, -1000, 0, marker='+') # 'c' sets the color based on 'z' values
         self.ax.scatter(1000, 1000, 1500, marker='+') # 'c' sets the color based on 'z' values
-        self.robot._go_to_coords(Coordinate(202, 0, 1074))
+        #self.robot._go_to_coords(Coordinate(202, 0, 1074))
         self.canvas.draw_idle()
 
     def _update_angle_sliders(self, *args):
@@ -835,14 +875,9 @@ class LineGraphApp:
 if __name__ == "__main__":
     joints = (j1, j2, j3, j4, j5)
     robot = Robot(joints)
-    eff = Effector(j4,j5)
-    eff._set(cord=Coordinate(202,0, 1074), angle=Direction(0, 0, numpy.pi/2))
-    #robot.get_joints_positions()
-#
-    #robot._set_angle(1, Direction(numpy.pi/2, 0, 0))
-#
-    #robot.get_joints_positions()
+    
 
-    #root = tk.Tk()
-    #app = LineGraphApp(root, robot)
-    #root.mainloop()
+
+    root = tk.Tk()
+    app = LineGraphApp(root, robot)
+    root.mainloop()

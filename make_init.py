@@ -2,7 +2,8 @@ import os
 import glob
 import importlib.util
 import sys
-from api.farinoAPI.fairino import Robot
+#from api.farinoAPI.fairino import Robot
+#from api import Robot
 
 def get_lower_files(dir_):
     '''
@@ -14,7 +15,7 @@ def get_lower_files(dir_):
         if 'example' in file or file == os.path.relpath(__file__, os.getcwd()) or '__init__' in file:
             continue
         key = os.path.relpath(os.path.dirname(file), dir_) if dir_ != '' else os.path.dirname(file).split('\\')[0]
-        print((os.path.dirname(file), dir_))
+        #print((os.path.dirname(file), dir_))
         if key not in files:
             files[key] = []
         files[key].append(os.path.basename(file))
@@ -35,13 +36,15 @@ def write_init(files, dir_):
         #        file_list = ", ".join([file.replace('.py','') for file in files[folder]])
         #    else:
         #        file_list = files[folder].replace('.py','')
-        #    print((folder, folder_location, dir_))
+        #    print((os.path.join(dir_, '__init__.py'), folder, folder_location, dir_, file_list))
         #    if folder == dir_ or folder_location == '.' :
-        #        #f.write(f'import {file_list}\n')
+        #        
+        #        #f.write(f'try:\n    import {file_list}\nexcept:\n    from . import {file_list}\n')
         #        pass
         #    else:
-        #        f.write(f'from {folder_location} import {file_list}\n')
-        #f.write(f'\n\nif __name__ == "__main__":\n    pass')
+        #        f.write(f'try:\n    from {folder_location} import {file_list}\nexcept:\n    from . import {file_list}\n')
+        #        #f.write(f'from {folder_location} import {file_list}\n')
+        f.write(f'\n\nif __name__ == "__main__":\n    pass')
         pass
 
 if __name__ == "__main__":
