@@ -8,8 +8,9 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from mpl_toolkits.mplot3d import Axes3D 
 
-
 import numpy
+
+
 
 class Position:
     pass
@@ -59,7 +60,7 @@ class Coordinate:
             return self.x*other.x + self.y*other.y+ self.z*other.z
         if isinstance(other, (float, int)):
             return Coordinate(self.x*other, self.y*other, self.z*other)
-        if isinstance(other, Direction):
+        if isinstance(other, Rotation):
             nx, ny, nz = _rotatex(self.x, self.y, self.z, other.delta)
             nx, ny, nz = _rotatey(nx, ny, nz, other.phi)
             nx, ny, nz = _rotatez(nx, ny, nz, other.theta)
@@ -67,7 +68,7 @@ class Coordinate:
         raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
 
     def __imul__(self, other):
-        if isinstance(other, Direction):
+        if isinstance(other, Rotation):
             nx, ny, nz = _rotatex(self.x, self.y, self.z, other.delta)
             nx, ny, nz = _rotatey(nx, ny, nz, other.phi)
             self.x, self.y, self.z = _rotatez(nx, ny, nz, other.theta)
@@ -87,8 +88,6 @@ class Coordinate:
     @property
     def radius(self):
         return _get_radius(self)
-
-
 
 class Line:
     def __init__(self, pos1: Coordinate, pos2: Coordinate):
@@ -121,12 +120,12 @@ class Line:
         raise TypeError(f"unsupported operand type(s) for -=: '{type(self).__name__}' and '{type(other).__name__}'")
     
     def __mul__(self, other):
-        if isinstance(other, (float, int, Direction)):
+        if isinstance(other, (float, int, Rotation)):
             return Line(self.pos1 * other, self.pos2 * other)
         raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
 
     def __imul__(self, other):
-        if isinstance(other, Direction):
+        if isinstance(other, Rotation):
             self.pos1 *= other
             self.pos2 *= other
             return self
@@ -146,21 +145,23 @@ class Dimension:
 
 
     
-@dataclasses.dataclass()
+@dataclasses.dataclass
 class Limit:
-    min: float
-    max: float
-    # TODO add check for value fitting within the range
-    def __contains__(self, item):
-        if isinstance(item, (float, int)):
-            return item >= self.min and item <= self.max
-    
+    min: Union[float, int]
+    max: Union[float, int]
+    tolerance: float = 1e-3
+
+    def __contains__(self, other):
+        if isinstance(other, (float, int)):
+            return other >= self.min * (1 - self.tolerance) and other <= self.max * (1 + self.tolerance)
+        raise TypeError(f"unsupported operand type(s) for contains: '{type(self).__name__}' and '{type(other).__name__}'")
+
     def __str__(self):
         return f'[{self.min}, {self.max}]'
-    
-    def __iter__(self):
-        yield self.min
-        yield self.max
+
+    @property
+    def locked(self):
+        return True if self.min == self.max else False
 
 @dataclasses.dataclass()
 class Locked:
@@ -178,7 +179,7 @@ class Radius:
         self.r = r
 
     def __mul__(self, other):
-        if isinstance(other, Direction):
+        if isinstance(other, Rotation):
             x = self.r*numpy.cos(other.theta) * numpy.sin(other.phi)
             y = self.r*numpy.sin(other.theta) * numpy.sin(other.phi)
             z = self.r*numpy.cos(other.phi)
@@ -186,22 +187,59 @@ class Radius:
         raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
 
 @dataclasses.dataclass()
-class Direction:
+class Angle:
+    theta: float=0
+    phi  : float=numpy.pi/2
+
+    def __add__(self, other):
+        if isinstance(other, Angle):
+            return Angle(self.theta+other.theta, self.phi+other.phi)
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __iadd__(self, other):
+        if isinstance(other, Angle):
+            self.theta += other.theta
+            self.phi   += other.phi
+            return self
+        raise TypeError(f"unsupported operand type(s) for +=: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __sub__(self, other):
+        if isinstance(other, Angle):
+            return Angle(self.theta-other.theta, self.phi-other.phi)
+        raise TypeError(f"unsupported operand type(s) for -: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+    def __isub__(self, other):
+        if isinstance(other, Angle):
+            self.theta -= other.theta
+            self.phi   -= other.phi
+            return self
+        raise TypeError(f"unsupported operand type(s) for -=: '{type(self).__name__}' and '{type(other).__name__}'")
+
+    def __mult__(self, other):
+        if isinstance(other, Angle):
+            return Angle(self.theta*other.theta, self.phi*other.phi)
+        if isinstance(other, Coordinate):
+            return rotate(other, self)
+        if isinstance(other, Radius):
+            return _spherical(other.r, self.theta, self.phi)
+        raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
+    
+@dataclasses.dataclass()
+class Rotation:
     theta: float
     phi  : float
     delta: float
-    # TODO Rename Direction to angle or something
     
     def __str__ (self):
         return f'Theta: {self.theta}, Phi: {self.phi}, Delta: {self.delta}'
     
     def __add__(self, other):
-        if isinstance(other, Direction):
-            return Direction(self.theta+other.theta, self.phi+other.phi, self.delta+other.delta)
+        if isinstance(other, Rotation):
+            return Rotation(self.theta+other.theta, self.phi+other.phi, self.delta+other.delta)
         raise TypeError(f"unsupported operand type(s) for +: '{type(self).__name__}' and '{type(other).__name__}'")
     
     def __iadd__(self, other):
-        if isinstance(other, Direction):
+        if isinstance(other, Rotation):
             self.theta += other.theta 
             self.phi   += other.phi 
             self.delta += other.delta
@@ -209,12 +247,12 @@ class Direction:
         raise TypeError(f"unsupported operand type(s) for +=: '{type(self).__name__}' and '{type(other).__name__}'")
     
     def __sub__(self, other):
-        if isinstance(other, Direction):
-            return Direction(self.theta-other.theta, self.phi-other.phi, self.delta-other.delta)
+        if isinstance(other, Rotation):
+            return Rotation(self.theta-other.theta, self.phi-other.phi, self.delta-other.delta)
         raise TypeError(f"unsupported operand type(s) for -: '{type(self).__name__}' and '{type(other).__name__}'")
     
     def __isub__(self, other):
-        if isinstance(other, Direction):
+        if isinstance(other, Rotation):
             self.theta -= other.theta 
             self.phi   -= other.phi 
             self.delta -= other.delta
@@ -222,8 +260,8 @@ class Direction:
         raise TypeError(f"unsupported operand type(s) for -=: '{type(self).__name__}' and '{type(other).__name__}'")
 
     def __mul__(self, other):
-        if isinstance(other, Direction):
-            return Direction(self.theta*other.theta, self.phi*other.phi, self.delta*other.delta)
+        if isinstance(other, Rotation):
+            return Rotation(self.theta*other.theta, self.phi*other.phi, self.delta*other.delta)
         if isinstance(other, (float, int)):
             return Coordinate(other,0,0)*self
         raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
@@ -234,7 +272,7 @@ class Direction:
         raise TypeError(f"unsupported operand type(s) for *: '{type(self).__name__}' and '{type(other).__name__}'")
 
     def __imul__(self, other):
-        if isinstance(other, Direction):
+        if isinstance(other, Rotation):
             self.theta *= other.theta 
             self.phi   *= other.phi 
             self.delta *= other.delta
@@ -242,17 +280,17 @@ class Direction:
         raise TypeError(f"unsupported operand type(s) for +=: '{type(self).__name__}' and '{type(other).__name__}'")
 
     def __neg__(self):
-        return Direction(-self.theta, -self.phi, -self.delta)
+        return Rotation(-self.theta, -self.phi, -self.delta)
 
-class AngleLimit:
+        
+class RotationalLimit:
     def __init__(self, theta: Union[Limit, None]=None, phi:Union[Limit, None]=None, delta:Union[Limit, None]=None):
-        self.locked = Locked(theta is None, phi is None, delta is None)
         self.theta = theta if theta is not None else Limit(0, 0)
         self.phi   = phi   if phi   is not None else Limit(0, 0)
         self.delta = delta if delta is not None else Limit(0, 0)
 
     def __contains__(self, item):
-        if isinstance(item, Direction):
+        if isinstance(item, Rotation):
             if item.theta not in self.theta:
                 return False
             if item.phi not in self.phi:
@@ -260,38 +298,40 @@ class AngleLimit:
             if item.delta not in self.delta:
                 return False
             return True
-        raise TypeError(f"Item type '{type(item).__name__}' must be a Direction")
+        raise TypeError(f"Item type '{type(item).__name__}' must be a Rotation")
     
     def __str__(self):
         return f'Theta: {self.theta} Phi: {self.phi} Delta: {self.delta}  '
+    
     def __iter__(self):
         yield self.theta
         yield self.phi
         yield self.delta
 
+    @property
+    def lock(self):
+        return Rotation(0.0 if self.theta.locked else 1.0, 0.0 if self.phi.locked else 1.0, 0.0 if self.delta.locked else 1.0)
 
 @dataclasses.dataclass()
 class Position:
-    def __init__(self, base: Coordinate, set_angle:Direction = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Direction = None): 
+    def __init__(self, base: Coordinate, set_angle:Rotation = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Rotation = None): 
         self.base = base
         self.local: Coordinate
         self.glob : Coordinate
         self.cur_angle = set_angle
 
-
-
-        self.cur_angle = set_angle if isinstance(set_angle, Direction) else Direction(0,0,0)
-        self.parent_angle = parent_angle if isinstance(parent_angle, Direction) else Direction(0,0,0)
+        self.cur_angle = set_angle if isinstance(set_angle, Rotation) else Rotation(0,0,0)
+        self.parent_angle = parent_angle if isinstance(parent_angle, Rotation) else Rotation(0,0,0)
 
         self._update(set_angle, offset=offset, parent_angle=parent_angle)
     
     def __str__(self):
         return f'Base:   {self.base}\nLocal:  {self.local}\nGloabl: {self.glob}'
     
-    def _update(self, set_angle:Direction = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Direction = None):
-        if isinstance(parent_angle, Direction):
+    def _update(self, set_angle:Rotation = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Rotation = None):
+        if isinstance(parent_angle, Rotation):
             self.parent_angle = parent_angle
-        if isinstance(set_angle, Direction):
+        if isinstance(set_angle, Rotation):
             self.cur_angle = set_angle
 
         # Updates local and global positions from on base position
@@ -304,9 +344,8 @@ class Position:
         self.glob = offset + glob * (self.parent_angle + self.cur_angle)
 
     
-    
 class Segment:
-    def __init__(self, dim: Dimension, end_terminal_coord: Coordinate, radius: Union[float, int], set_angle:Direction = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Direction = None):
+    def __init__(self, dim: Dimension, end_terminal_coord: Coordinate, radius: Union[float, int], set_angle:Rotation = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Rotation = None):
         self.dim = dim
         # TODO make bbox for joint
 
@@ -316,7 +355,7 @@ class Segment:
         self.radius = radius
         self.affected_radius = 0.0
 
-    def _update(self, set_angle:Direction = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Direction = None):
+    def _update(self, set_angle:Rotation = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Rotation = None):
         self.main_terminal._update(set_angle, offset, parent_angle)
         self.end_terminal._update(set_angle, offset, parent_angle)
 
@@ -358,31 +397,31 @@ class Segment:
         for line in lines:
             ax.plot(*line)
             
-
+    # TODO: Create a _place function that allows segment to be placed a specific coordinate using either main or end terminal
 
 class Joint:
-    def __init__(self, id, parent: Segment, child: Segment, connection_angle_limit: AngleLimit):
-        self.id = id
+    def __init__(self, id_, parent: Segment, child: Segment, connection_rotation_limit: RotationalLimit):
+        self.id = id_
         self.parent = parent
         self.child = child
-        self.angle_lim = connection_angle_limit
+        self.rotation_lim = connection_rotation_limit
         self.parent.affected_radius = self._affected_radius(self.parent)
         self.child.affected_radius = self._affected_radius(self.child)
         self.radius = _get_radius(self.parent.end_terminal.base, self.child.end_terminal.base)
 
-    def _set_angle(self, set_angle:Direction):
-        if set_angle not in self.angle_lim:
-            print(f'{set_angle} not in {self.angle_lim}')
-        self.child._update(set_angle, self.parent.end_terminal.glob, self.parent.end_terminal.parent_angle+self.parent.end_terminal.cur_angle)
+    def _set_angle(self, set_angle:Rotation):
+        if set_angle * self.rotation_lim.lock not in self.rotation_lim:
+            print(f'{set_angle} not in {self.rotation_lim}')
+        self.child._update(set_angle * self.rotation_lim.lock, self.parent.end_terminal.glob, self.parent.end_terminal.parent_angle+self.parent.end_terminal.cur_angle)
     
-    def _set(self, set_angle:Direction = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Direction = None):
-        self.child._update(set_angle, offset, parent_angle)
+    def _set(self, set_angle:Rotation = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Rotation = None):
+        self.child._update(set_angle * self.rotation_lim.lock, offset, parent_angle)
 
     def _update(self):
         self.child._update(offset=self.parent.end_terminal.glob, parent_angle=self.parent.end_terminal.parent_angle+self.parent.end_terminal.cur_angle)
 
-    def _angle_is_allowed(self, set_angle: Direction):
-        return set_angle in self.angle_lim
+    def _angle_is_allowed(self, set_angle: Rotation):
+        return set_angle in self.rotation_lim
 
     def _plot(self, ax: plt.Axes, main=False, annotate=False):
         self.child._plot(ax, annotate)
@@ -391,17 +430,27 @@ class Joint:
 
     def _affected_radius(self, seg: Segment):
         return seg.end_terminal.base.z
-        #if not self.angle_lim.locked.theta:
+        #if not self.rotation_lim.locked.theta:
         #    return seg.end_terminal.base.z
-        #if not self.angle_lim.locked.phi:
+        #if not self.rotation_lim.locked.phi:
         #    return seg.end_terminal.base.y
-        #if not self.angle_lim.locked.delta:
+        #if not self.rotation_lim.locked.delta:
         #    return seg.end_terminal.base.x
+
+    # TODO: Create a _place function that allows joint to be placed a specific coordinate
+
+
 
 def _get_angle(c1: Coordinate, c2: Coordinate):
     theta = numpy.arctan((c2.y-c1.y)/(c2.x-c1.x))
     phi = numpy.arccos((c2.z-c1.z)/(numpy.sqrt((c2.x-c1.x)**2 + (c2.y-c1.y)**2 + (c2.z-c1.z)**2)))
-    return Direction(theta, phi, 0.0)
+    return Rotation(theta, phi, 0.0)
+
+def _spherical(r, theta, phi):
+    x = r * numpy.cos(theta) * numpy.sin(phi)
+    y = r * numpy.sin(theta) * numpy.sin(phi)
+    z = r * numpy.cos(phi) 
+    return Coordinate(x,y,z)
 
     
 class Effector:
@@ -411,29 +460,8 @@ class Effector:
         # For now, use the x_write end terminal as the point of reference
         self.effector_pos = self.x_wrist.child.end_terminal
 
-    def _set(self, cord: Coordinate, angle: Direction):
-        print(self.z_wrist.parent is self.x_wrist.child)
-        #c1 = cord-Radius(self.x_wrist.child.radius)*angle
-        print(self.z_wrist.child.end_terminal.base)
-        print(self.x_wrist.child.end_terminal.base)
-        print(_get_radius(self.z_wrist.child.end_terminal.base + self.x_wrist.child.end_terminal.base))
-        print(_translate_angle_to_direction(_get_radius(self.z_wrist.child.end_terminal.base + self.x_wrist.child.end_terminal.base),angle))
-        #print(f'Radius: {self.x_wrist.child.radius}')
-        #print(f'c1:   {c1}')
-        #print(f'cord: {cord}')
-        #print(f'test: { _translate_angle_to_direction(self.x_wrist.child.radius, angle)}')
-        #dir_ = _get_rotational_angles(c1, cord)
-        #print(f' dir: {dir_}')
-        #r = _get_radius()
-        #self.z_wrist.child._update(set_angle=Direction(0, 0, angle.delta), parent_angle=Direction(-angle.theta, -angle.phi, numpy.pi/2), offset=cord-_translate_angle_to_direction(self.z_wrist.child.radius,  Direction(angle.theta, angle.phi , angle.delta-numpy.pi/2)))
-        #self.x_wrist.child._update(set_angle=Direction(angle.theta , 0, numpy.pi/2), parent_angle=Direction(0, -angle.phi, 0), offset=self.z_wrist.child.main_terminal.glob - _translate_angle_to_direction(self.x_wrist.child.radius, Direction(angle.theta, angle.phi , numpy.pi/2)))
-        #print(self.z_wrist.child.main_terminal.glob,  _translate_angle_to_direction(self.x_wrist.child.radius, Direction(angle.theta, angle.phi , 0)))
-        #print(self.z_wrist.child.radius*Direction(angle.theta + numpy.pi, 0, 0))
-        #print(self.z_wrist.child.radius)
-        print(self.z_wrist.child.end_terminal.glob)
-        print(self.z_wrist.child.main_terminal.glob)
-        print(self.x_wrist.child.end_terminal.glob)
-        print(self.x_wrist.child.main_terminal.glob)
+    def _set(self, cord: Coordinate, angle: Rotation):
+        return
         
 
     def __contains__(self, item):
@@ -547,8 +575,8 @@ class Segment1:
 @dataclasses.dataclass()
 class Terminal:
     position : Coordinate
-    normal   : Direction
-    cur_dir  : Direction
+    normal   : Rotation
+    cur_dir  : Rotation
     parent   : Segment
     child    : Segment
 
@@ -593,6 +621,23 @@ def _degree_to_rad(angle):
     return angle*numpy.pi/180
 
 
+def _rotational_angle(angle:Angle):
+    c = _spherical(1, angle.theta, angle.phi)
+    theta = numpy.arctan(c.y/c.x)
+    phi = numpy.arctan(c.z/c.x)
+    delta = numpy.arctan(c.z/c.y)
+    
+    theta = theta if not numpy.isnan(theta) else 0.0
+    phi = phi if not numpy.isnan(phi) else 0.0
+    delta = delta if not numpy.isnan(delta) else 0.0
+    return theta, phi, delta
+
+def rotate(c: Coordinate, angle:Angle):   
+    theta, phi, delta = _rotational_angle(angle)
+    nx, ny, nz = _rotatey(c.x, c.y, c.z, phi)
+    nx, ny, nz = _rotatez(nx, ny, nz, theta)
+    nx, ny, nz = _rotatex(nx, ny, nz, delta)
+    return Coordinate(nx, ny, nz)
 
 def _get_2dim_angle(r1, r2, x1, y1):
     a = numpy.arccos((r1**2 - x1**2 - y1**2 - r2**2)/(2*r2*numpy.sqrt(x1**2 + y1**2)))
@@ -624,7 +669,7 @@ def _get_3dim_angles(r1, r2, x1, y1, z1, theta):
             results.append(th, ph)
     return results
 
-def _translate_angle_to_direction(r: float, angle: Direction):
+def _translate_angle_to_direction(r: float, angle: Rotation):
     x = numpy.sqrt(r**2/(1 + numpy.tan(angle.theta)**2 + numpy.tan(angle.phi)**2))
     y = x * numpy.tan(angle.theta)
     z = x * numpy.tan(angle.phi)
@@ -634,7 +679,7 @@ def _get_rotational_angles(c1: Coordinate, c2: Coordinate = Coordinate(0,0,0)):
     theta = numpy.arctan((c1.y - c2.y)/(c1.x - c2.x))
     phi = numpy.arctan((c1.z - c2.z)/(c1.x - c2.x))
     delta = numpy.arctan((c1.z - c2.z)/(c1.y - c2.y))
-    return Direction(theta, phi, delta)
+    return Rotation(theta, phi, delta)
 
 # Base
 bs = Segment(Dimension(0, 0, 0), Coordinate(0,0,0), 138)
@@ -650,15 +695,15 @@ s4 = Segment(Dimension(88.798, 80, 107.687), Coordinate(0, 0, 102), 102)
 s5 = Segment(Dimension(107.687, 80,  88.798), Coordinate(100, 0, 0), 100)
 
 # Joint 1
-j1 = Joint(1, bs, s1, AngleLimit(Limit(_degree_to_rad(-175), _degree_to_rad(175)), None, None))
+j1 = Joint(1, bs, s1, RotationalLimit(Limit(_degree_to_rad(-175), _degree_to_rad(175)), None, None))
 # Joint 2
-j2 = Joint(2, s1, s2, AngleLimit(None, None, Limit(_degree_to_rad(-85), _degree_to_rad(265))))
+j2 = Joint(2, s1, s2, RotationalLimit(None, None, Limit(_degree_to_rad(-85), _degree_to_rad(265))))
 # Joint 3
-j3 = Joint(3, s2, s3, AngleLimit(None, None, Limit(_degree_to_rad(-160), _degree_to_rad(160))))
+j3 = Joint(3, s2, s3, RotationalLimit(None, None, Limit(_degree_to_rad(-160), _degree_to_rad(160))))
 # Joint 4
-j4 = Joint(4, s3, s4, AngleLimit(None, None, Limit(_degree_to_rad(-265), _degree_to_rad(85))))
+j4 = Joint(4, s3, s4, RotationalLimit(None, None, Limit(_degree_to_rad(-265), _degree_to_rad(85))))
 # Joint 5
-j5 = Joint(5, s4, s5, AngleLimit(Limit(_degree_to_rad(-175), _degree_to_rad(175)), None, None))
+j5 = Joint(5, s4, s5, RotationalLimit(Limit(_degree_to_rad(-175), _degree_to_rad(175)), None, None))
 
 
 
@@ -674,7 +719,7 @@ class Robot:
         for joint in self.joints:
             joint._update()
             
-    def _set_angle(self, joint_id, angle:Direction):
+    def _set_angle(self, joint_id, angle:Rotation):
         for joint in self.joints:
             if joint.id == joint_id:
                 joint._set_angle(angle)
@@ -717,18 +762,18 @@ class Robot:
         r = _get_radius(cord)
         print(f'r: {r}, Theta: {angle.theta}, phi: {angle.phi}, Delta: {angle.delta}')
         for joint in reversed(self.joints):
-            t, p, d = joint.angle_lim.locked
+            t, p, d = joint.rotation_lim.locked
             r1 = self._get_affected_radius(joint.id)
             r2 = joint.parent.affected_radius
             if r1+r2 < r:
                 raise ValueError(f'Coordinate outside range')
             
             if not t:
-                print(f'{joint.id}: Theta Unlocked {joint.angle_lim.theta}')
+                print(f'{joint.id}: Theta Unlocked {joint.rotation_lim.theta}')
             if not p:
-                print(f'{joint.id}: Phi Unlocked {joint.angle_lim.phi  }')
+                print(f'{joint.id}: Phi Unlocked {joint.rotation_lim.phi  }')
             if not d:
-                print(f'{joint.id}: Delta Unlocked {joint.angle_lim.delta}')
+                print(f'{joint.id}: Delta Unlocked {joint.rotation_lim.delta}')
 
         #for joint in reversed(self.joints):
         #    theta = numpy.arange(0, 2*numpy.pi, step=0.01)
@@ -759,7 +804,7 @@ def plot_terminal(ax, terminal: Terminal, offset: Coordinate = Coordinate(1, 0.0
     plot_bbox(ax, parent, terminal_color='red')
     plot_bbox(ax, child, direction=norm)
 
-def plot_bbox(ax: plt.Axes, bbox: Segment, direction: Direction=Direction(0.0,numpy.pi/2,0.0), offset: Coordinate = Coordinate(0.0, 0.0, 0.0), 
+def plot_bbox(ax: plt.Axes, bbox: Segment, direction: Rotation=Rotation(0.0,numpy.pi/2,0.0), offset: Coordinate = Coordinate(0.0, 0.0, 0.0), 
               show_bbox=True, pointcolor='purple', linecolor= 'green', terminal_color='orange'):
     
     points, lines = bbox.shape
@@ -838,12 +883,12 @@ class LineGraphApp:
 
         
     def update_plot(self, *args):
-        set_angle = Direction(self.theta.get(), self.phi.get(), self.delta.get())
+        set_angle = Rotation(self.theta.get(), self.phi.get(), self.delta.get())
         self.robot._set_angle(int(self.joint_id.get()), set_angle)
 
         self.ax.clear()
         self.ax.text(*self.robot.joints[0].parent.end_terminal.glob, s=f'{self.robot.joints[0].parent.end_terminal.glob}')
-        self.robot.eff._set(cord=Coordinate(202,0, 1074), angle=Direction(numpy.pi, numpy.pi, 0))
+        #self.robot.eff._set(cord=Coordinate(202,0, 1074), angle=Rotation(numpy.pi, numpy.pi, 0))
         for joint in self.robot.joints:
             joint._plot(self.ax, main=True, annotate=True)
 
@@ -858,7 +903,7 @@ class LineGraphApp:
         cur_angle = joint.child.main_terminal.cur_angle
 
         # Update Limit on sliders
-        theta_lim, phi_lim, delta_lim = joint.angle_lim
+        theta_lim, phi_lim, delta_lim = joint.rotation_lim
         self.phi.config(from_=phi_lim.min, to=phi_lim.max)
         self.theta.config(from_=theta_lim.min, to=theta_lim.max)
         self.delta.config(from_=delta_lim.min, to=delta_lim.max)
@@ -873,6 +918,7 @@ class LineGraphApp:
 
 
 if __name__ == "__main__":
+
     joints = (j1, j2, j3, j4, j5)
     robot = Robot(joints)
     
