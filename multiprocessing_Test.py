@@ -10,7 +10,6 @@ import os
 stop = False
 
 class SharedData:
-
     def __init__(self, to_process, from_process, priority, is_request, data_name, *data, function=None):
         self.to_process   = to_process
         self.from_process = from_process
@@ -32,8 +31,6 @@ class SharedData:
 
     def __str__(self):
         return f'{self.to_process}, {self.from_process}, {self.priority}, {self.is_request}, {self.data_name}, {self.data}, {self.function}'
-
- 
 
 def task(name, counter):
     while not stop:
@@ -81,7 +78,6 @@ def request_data(q: multiprocessing.Queue, request: SharedData, wait=True):
 
         if request_found:
             x,y,z = get_pos()
-            print((x,y,z))
             print(f'{multiprocessing.current_process().name}: time to get data: {time.time()-start_time}')
             break
  
@@ -103,25 +99,23 @@ def check_requests(q: multiprocessing.Queue):
 def open_requested_data(request: SharedData):
     print(f'{multiprocessing.current_process().name} to {request.to_process} from {request.from_process} data_name {request.data_name} data: {request.data}')
 
- 
-
 def solve_request(q: multiprocessing.Queue, request: SharedData):
     if request.function is None:
         if request.data_name == 0:
-            q.put(request.return_data('zero'))
+            q.put(request.return_data('zero',multiprocessing.current_process().name))
         elif request.data_name == 1:
-            q.put(request.return_data('one'))
+            q.put(request.return_data('one',multiprocessing.current_process().name))
         elif request.data_name == 2:
-            q.put(request.return_data('two'))
+            q.put(request.return_data('two',multiprocessing.current_process().name))
         elif request.data_name == 3:
-            q.put(request.return_data('three'))
+            q.put(request.return_data('three',multiprocessing.current_process().name))
         else:
             q.put(request.return_data(None))
     elif request.function in inspect.getmembers(SharedData, predicate=inspect.isfunction):
-        q.put(request.return_data(request.function(request, request.data_name)))
+        q.put(request.return_data(request.function(request, request.data_name),multiprocessing.current_process().name))
 
     else:
-        q.put(request.return_data(request.function(request.data_name)))
+        q.put(request.return_data(request.function(request.data_name),multiprocessing.current_process().name))
  
 
 def get_pos():
