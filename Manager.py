@@ -141,7 +141,7 @@ def pathfinding(q: multiprocessing.Queue, position):
 def start_subsystems(q: multiprocessing.Queue, position):
     processes: list[multiprocessing.Process] = []
     for process_name in [('Sensors', sensor), ('Pathfinding', pathfinding)]:
-        p = multiprocessing.Process(target=ptask, args=(q,arr), name = process_name)
+        p = multiprocessing.Process(target=ptask, args=(q, arr), name = process_name)
         processes.append(p)
 
     for p in processes:
@@ -170,5 +170,5 @@ if __name__ == '__main__':
     t = threading.Thread(target=update_thread, args=(event, arr, robot))
     t.start()
     while time.time() - start_time <= 5:
-        print(f'Main Thread: {robot.GetActualJointAccDegree()}')
+        print(f'Main Thread: {robot.GetActualJointAccDegree()} : {arr[:]}')
     event.set()
