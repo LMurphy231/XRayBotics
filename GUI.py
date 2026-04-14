@@ -1,12 +1,11 @@
 import os, glob, inspect
 import typing
-from collections import UserDict
 import dataclasses
 import time
 
+
 from tkinter import *
 from tkinter import ttk, filedialog, colorchooser
-import matplotlib
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 from matplotlib.font_manager import FontProperties
@@ -14,8 +13,15 @@ import f3d
 from pyopengltk import OpenGLFrame
 import matplotlib.axes as axes
 
+import socket
+import multiprocessing
+import threading
+import requests
+
 import numpy
  
+# To Save as an executable: pyinstaller --onefile GUI.py  
+
 SCATTER_MARKERS = [('Point', '.'        ),('Pixel', ','        ),('Circle', 'o'       ),
                    ('Triangle Up', '^'  ),('Triangle Down', 'v'),('Triangle Left', '<'),('Triangle Right', '>'),
                    ('Tri Up', '1'       ),('Tri Down', '2'     ),('Tri Left', '3'     ),('Tri Right', '4'),
@@ -430,20 +436,185 @@ class Engine(OpenGLFrame):
     def redraw(self):
         self.engine.window.render()
 
+class communicator:
+    def __init__(self, root: Frame):
+        self.ip_var = StringVar()
+        self.chat_var = StringVar()
+        self.remove_socket = None
+        self.listensocket  = None
+        self.clientsocket = None
+        self._build(root)
+
+    def _build(self, root):
+        self.root = root
+    
+        Connection_frame = Frame(self.root)
+        Connection_frame.grid(row=0,column=0)
+
+        text_frame = Frame(self.root)
+        text_frame.grid(row=1,column=0)
+        self.textbox = Text(text_frame, height=10, width=40)
+        
+        
+        
+        ys = ttk.Scrollbar(text_frame, orient = 'vertical', command = self.textbox.yview)
+        xs = ttk.Scrollbar(text_frame, orient = 'horizontal', command = self.textbox.xview)
+        self.textbox['yscrollcommand'] = ys.set
+        self.textbox['xscrollcommand'] = xs.set
+
+        self.textbox.grid(column = 0, row = 0, sticky = NSEW)
+        xs.grid(column = 0, row = 1, sticky = EW)
+        ys.grid(column = 1, row = 0, sticky = NS)
+
+        self.host_button = Button(Connection_frame, text='Host Remote Connection', command=lambda e=None: self.start_server())
+        self.host_button.grid(row=0, column=0, sticky=NSEW)
+        self.ip_label = Label(Connection_frame, text='')
+        self.ip_label.grid(row=0, column=2, sticky=NSEW)
+        self.join_button = Button(Connection_frame, text='Join Remote Connection', command=lambda e=None: self._create_user_input_window())
+        self.join_button.grid(row=0, column=3, sticky=NSEW)
+
+        self.chat_entry = Entry(self.root, textvariable=self.chat_var)
+        self.chat_entry.grid(row = 2, column=0, columnspan=3, sticky=NSEW, pady=12)
+        self.chat_entry.bind('<Return>', lambda e=None: self.send_message())
+
+
+
+    def start_server(self, maxConnections=1):
+        self.listensocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
+        self.host = '0.0.0.0'
+        self.Port = 8000
+        self.maxConnections = maxConnections
+        self.ip = requests.get('https://api.ipify.org').text
+
+        self.ip_label.configure(text=f'Host IP: {self.ip} Local IP: {socket.gethostbyname(socket.gethostname())}')
+        self.host_button.config(text='Close Host', command=lambda e=None: self.close_server())
+        self.join_button.config(state=DISABLED)
+
+        self.listensocket.bind((self.host, self.Port))
+
+        self.listensocket.listen(self.maxConnections)
+
+        print(f'Server started at {self.ip} on port {self.Port}...')
+
+        self.running = False
+        
+        listen_process = threading.Thread(target=self.pair_device, daemon=True)
+        listen_process.start()
+
+    def close_server(self):
+        self.listensocket.close()
+        self.ip_label.configure(text=f'')
+        self.join_button.config(state=NORMAL)
+        self.listensocket = None
+        self.host_button.config(text='Host Remote Connection', command=lambda e=None: self.start_server())
+
+    def _create_user_input_window(self):
+        self.join_button.config(state=DISABLED)
+        self.host_button.config(state=DISABLED)
+        self.user_input_window = Toplevel(self.root, takefocus=True)
+        self.user_input_window.bind('<Destroy>', lambda e=None: self._user_input_destroyed())
+        
+        Label(self.user_input_window, text='Enter IP to join remote GUI').grid(row=0, column=0, columnspan=2, sticky=NSEW)
+        Label(self.user_input_window, text='Host IP:').grid(row=1, column=0, sticky=NSEW)
+        Entry(self.user_input_window, textvariable=self.ip_var).grid(row=1, column=1, sticky=NSEW)
+        self.user_input_error_label = Label(self.user_input_window, text='')
+        self.user_input_error_label.grid(row=2, column=0, columnspan=2, sticky=NSEW)
+
+        
+        self.remove_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+        self.remote_connect_button = Button(self.user_input_window, text='Connect', command=lambda e=None: threading.Thread(target=self._remote_connection_attempt).start())
+        self.remote_connect_button.grid(row=3, column=0, columnspan=2)
+
+
+    def _remote_connection_attempt(self):
+        self.remote_connect_button.config(state=DISABLED)
+        port = 8000
+        ip = self.ip_var.get()
+        try:
+            self.remove_socket.connect((ip, port))
+        except Exception as e:
+            self.remote_connect_button.config(state=NORMAL)
+            print(e)
+            self.user_input_error_label.config(text=f'Unable to connect to {ip}')
+            return
+        self.user_input_window.destroy()
+
+        listen_process = threading.Thread(target=self.listen, daemon=True, args= (self.remove_socket,))
+        listen_process.start()
+
+
+        self.remote_connect_button.config(state=NORMAL)
+
+    def _user_input_destroyed(self):
+        self.join_button.config(state=NORMAL)
+        self.host_button.config(state=NORMAL)
+
+    def _remote_connection(self):
+        pass
+
+    def set_running(self, state=False):
+        self.running = state
+
+
+    def send_message(self):
+        text = self.chat_var.get()
+        self.write_message(text)
+
+        try:
+            if self.remove_socket:
+                self.remove_socket.sendall(text.encode())
+        finally:
+            pass
+
+        try:
+            if self.clientsocket:
+                self.clientsocket.sendall(text.encode())
+        finally:
+            pass
+        self.chat_var.set('')
+            
+    def write_message(self, text):
+        if self.textbox:
+            self.textbox.insert(END, '\n')
+            self.textbox.insert(END, text)
+            self.textbox.see(END)
+
+    def pair_device(self):
+        while True:
+            try:
+                (self.clientsocket, self.address) = self.listensocket.accept()
+            except OSError as e:
+                print(f'Hosting ended...')
+                break
+            print(f'New connection made with {self.address}...')
+            self.running = True
+            listen_process = threading.Thread(target=self.listen, daemon=True, args= (self.clientsocket,))
+            listen_process.start()
+
+    def listen(self, clientsocket: socket):
+        while True:
+            message = clientsocket.recv(1024).decode()
+            if len(message) == 0:
+                break
+            self.write_message(message)
+
+
+
 class GUI:
     def __init__(self):
-        self.root = ttk.setup_master()
+        self.root: Tk = ttk.setup_master()
         self.root.title("Simulation Plotter")
         self.root.configure(background="white")
         self.root.geometry("1750x800")
         frame = Frame(self.root, borderwidth=5)
         frame.pack(expand=True, fill=BOTH)
-
+        
         self.tests: list[Test3D] = []
 
         self._build(frame)
         
-        
+        self.root.bind('<Destroy>', lambda e=None: self.communicator.set_running(False))
         self.root.mainloop()
 
     def _quit(self, *args):
@@ -469,6 +640,11 @@ class GUI:
 
         # TODO: Open Automation Test
         # TODO: Arm Communication
+
+
+
+
+
         # TODO: Results
         # TODO:  Plotter
 
@@ -492,12 +668,20 @@ class GUI:
 
         # TODO Connection Status
         cs_frame = create_frame(root,7,0,1,9,LabelFrame, text='Connection Frame', relief=GROOVE, sticky=NSEW)
+        text_frame = create_frame(cs_frame,0,0,5,1,LabelFrame, text='Connection Chat', relief=GROOVE, sticky=NSEW)
+        self.communicator = communicator(text_frame)
+
+        
+
+
+
         connection_bar = ConnectionStatus(cs_frame, 0,0,1,1,4,1, sticky=SE)
         
 
 
         Scale(cs_frame, resolution=0.0001, label='Strength', from_=0.0, to=1.0, command=lambda e=0.0: connection_bar._update(e)).grid(row=1,column=1,sticky=E)
         
+
     def create_model(self, root, step):
 
         F3D = Engine(root)
