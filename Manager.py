@@ -170,5 +170,5 @@ if __name__ == '__main__':
     t = threading.Thread(target=update_thread, args=(event, arr, robot))
     t.start()
     while time.time() - start_time <= 5:
-        print(f'Main Thread: {robot.GetActualJointAccDegree()} : {arr[:]}')
+        print(f'{multiprocessing.current_process().name}: {robot.GetActualJointAccDegree()} : {arr[:]}')
     event.set()

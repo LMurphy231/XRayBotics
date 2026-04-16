@@ -6,7 +6,9 @@ import time
 
 from tkinter import *
 from tkinter import ttk, filedialog, colorchooser
+
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 from matplotlib.font_manager import FontProperties
 import f3d
@@ -19,6 +21,9 @@ import threading
 import requests
 
 import numpy
+from labquest import LabQuest
+
+from api.farinoAPI.fairino.Robot import *
  
 # To Save as an executable: pyinstaller --onefile GUI.py  
 
@@ -86,61 +91,6 @@ def create_slider(widget, frame, axis='both', **options):
             return yslider
     return xslider, yslider
  
-def create_widget(root, name, widget_type='combobox', return_type=str, get_widgets=(), **options):
-    default_options={}
-    default_options.setdefault('label_frame'        , add_kwarg(borderwidth=0, side=TOP, fill=X, expand=True, relief=FLAT))
-    default_options.setdefault('frame'              , None)
-    default_options.setdefault('combobox'           , add_kwarg(values=[], height=15, state='readonly', side=LEFT, fill=X, expand=True, anchor=CENTER))
-    default_options.setdefault('checkbutton'        , add_kwarg(style='TCheckbutton', side=TOP, fill=X, anchor=CENTER))
-    default_options.setdefault('entry'              , add_kwarg(height=5, side=LEFT, fill=X, expand=False, anchor=CENTER, pady=5))
-    default_options.setdefault('color'              , add_kwarg(height=25, width=25, side=LEFT, bg='white'))
-    default_options.setdefault('bind'               , None )
-    default_options.setdefault('on_empty'           , [])
-    widgets = {}
-    options = _combine_options(options, default_options)
- 
-    if options['label_frame'] is not None and options['frame'] is None:
-        frame = LabelFrame(root, **_is_tk_kwarg(LabelFrame, **options['label_frame']))
-        frame.pack(**_is_tk_kwarg(Pack, **options['label_frame']))
-    elif options['frame'] is not None:
-        frame = Frame(root, **_is_tk_kwarg(Frame, **options['frame']))
-    else:
-        frame = root
-    widgets['label_frame'] = widgets['frame'] = frame
-    if widget_type   =='combobox':
-        slct_widget  = ttk.Combobox(frame,    **_is_tk_kwarg(ttk.Combobox,    **options[widget_type]))
-    elif widget_type == 'entry':
-        slct_widget  = ttk.Entry(frame,       **_is_tk_kwarg(ttk.Entry,       **options[widget_type]))
-    elif widget_type == 'scale':
-        slct_widget  = ttk.Scale(frame,       **_is_tk_kwarg(ttk.Scale,       **options[widget_type]))
-    elif widget_type == 'checkbox':
-        slct_widget  = ttk.Checkbutton(frame, **_is_tk_kwarg(ttk.Checkbutton, **options[widget_type]))
-    elif widget_type == 'color':
-        slct_widget  = ColorWidget(frame,     **_is_tk_kwarg(Canvas,          **options[widget_type]))
- 
-    widgets[widget_type] = slct_widget
-    slct_widget.pack(**_is_tk_kwarg(Pack, **options[widget_type]))
-    binding=None
-    if options['bind'] is not None:
-        bind = options['bind']
-        binding = slct_widget.bind(bind['bind'], lambda e, callback_func=bind['function']: callback_func())
-    var_type = 'var'          if 'var'          in options[widget_type] else None
-    var_type = 'textvariable' if 'textvariable' in options[widget_type] else var_type
-    var_type = 'variable'     if 'variable'     in options[widget_type] else var_type
-    var      = slct_widget    if var_type       is None                 else options[widget_type][var_type]
-    widgets['var'] = var
-    widgets['linked_var'] = LinkedVar(name, var, frame, slct_widget, return_type, bind=binding,
-                                        on_empty=options['on_empty'])
-    return_widgets = [widgets['linked_var']]
-    if isinstance(get_widgets, str):
-        if get_widgets in widgets:
-            return_widgets.append(widgets[get_widgets])
-    else:
-        for widget in get_widgets:
-            if widget in widgets:
-                return_widgets.append(widgets[widget])
-    return tuple(return_widgets) if len(return_widgets)>1 else return_widgets[0]
-
 def create_frame(root: typing.Union[Frame, LabelFrame], start_row, start_col, rowspan=1, colspan=1, frame_type=Frame, cnf={}, **options) -> typing.Union[Frame, LabelFrame]:
     options = _combine_options(options, cnf)
     for i in range(start_row, start_row+rowspan):
@@ -228,7 +178,18 @@ def _angle(x1,y1,z1,x2,y2,z2):
     theta = numpy.atan2(y1-y2, x1-x2)
     phi = numpy.arccos((z1-z2)/r)
     return phi, theta
- 
+
+def _toggle_frame(frame: typing.Union[Frame, LabelFrame], state=DISABLED):
+    for child in frame.winfo_children():
+        try:
+            child.config(state=state)
+        except:
+            _toggle_frame(child, state)
+
+def _reset_var(value, *vars: DoubleVar):
+        for var in vars:
+            var.set(value)
+
 class ColorWidget():
     def __init__(self, root, **options):
         self.widget = Canvas(root, _is_tk_kwarg(Canvas, **options))
@@ -250,144 +211,6 @@ class ColorWidget():
         if state is not None:
             self.widget['state'] = state
         return self.widget['state']
- 
-class LinkedVar():
-    def __init__(self, name, var, frame, widget, out_type, **options):
-        options.setdefault('float_precision', 6)
-        options.setdefault('bind', None)
-        options.setdefault('on_empty', [])
-        self.options     = options
-        self.name        = name
-        self.var         = var
-        self.widget      = widget
-        self.value       = self.var.get()
-        self.type        = type(var)
-        self.frame       = frame
-        self.out_type    = out_type
-        self.state       = widget.state()
-        self.all_widgets = {'frame': self.frame, 'widget': self.widget}
-        self.pack_data   = {}
-        for widget in self.all_widgets:
-            self.pack_data[widget] = {}
-            self._pack_info(widget)
-       
-    def get(self):
-        try:
-            # Use combobox widget to get data
-            if self.type == ttk.Combobox:
-                entry = self.widget.get()
-            # Use var to get data
-            else:
-                entry = self.var.get()
-            # Convert entry to out data type
-            entry = 0 if (self.out_type == int or self.out_type == float) and not entry else entry
-            self.value = self.out_type(entry)
-        except:
-            print(f'{self.name} FAILED: {self.value}')
-        return self.value
-       
-    def get_all(self):
-        return self.widget['values']
-   
-    def toggle_bind(self, state=True):
-        if self.widget is None or self.options['bind'] is None:
-            return
-        # Bind Widget
-        if state:
-            self.widget.bind(self.options['bind'])
-        # Unbind Widget
-        else:
-            try:
-                self.widget.unbind(self.options['bind'])
-            except:
-                pass
-   
-    def verify_state(self, state=True):
-        if self.state is None or not state:
-            return
-        self.widget.configure(state = self.state)
- 
-    def _pack_info(self, widget_type):
-        if widget_type not in self.all_widgets:
-            return {}
-        current_pack_info = self._get_pack(self.all_widgets[widget_type])
-        self.pack_data[widget_type] = current_pack_info if current_pack_info != {} else self.pack_data[widget_type]
-        return self.pack_data[widget_type]
-   
-    def _get_pack(self, widget):
-        try:
-            return widget.pack_info()
-        except:
-            return {}
-   
-    def _is_empty(self):
-        self._empty_disable()
-        self._empty_hide()
-        return True if self.get() else False
-   
-    def _empty_hide(self):
-        if 'hide' in self.options['on_empty']:
-            self.show(True if self.get() else False)
-   
-    def _empty_disable(self):
-         if 'disable' in self.options['on_empty']:
-            self.enable(True if self.get() else False)
- 
-    def show(self, state=True):
-        if state:
-            self.frame.pack(**self._pack_info('frame'))
-        else:
-            self.frame.pack_forget()
- 
-    def enable(self, state=True):
-        for widget in self.frame.winfo_children():
-            widget['state'] = (self.state if widget is self.widget else NORMAL) if state else DISABLED
- 
-    def set_value(self, value):
-        # Verify that widget is enabled
-        self.verify_state()
-        value = value if value is not None else ''
-        try:
-            self.var.set(self.out_type(precision(value, self.options['float_precision'])))
-        except:
-            self.widget_change(set_value=precision(value, self.options['float_precision']))
-        self._is_empty()
- 
-    def widget_change(self, add=None, remove=None, values=None, set_value=None):
-        self.verify_state()
-        # Return if there is no widget
-        if self.widget is None:
-            return
-       
-        # Get all values or use given values
-        if values is not None:
-            values = [values] if not isinstance(values, list) else values
-        else:
-            try:
-                values = list(self.widget['values'])
-            except:
-                return
-        #Add New Values
-        if add is not None:
-            add = [add] if not isinstance(add, list) else add
-            for new_value in add:
-                if new_value not in values:
-                    values.append(new_value)
-        #Remove Values
-        if remove is not None:
-            remove = [remove] if not isinstance(remove, list) else remove
-            for old_value in remove:
-                if old_value in values:
-                    values.pop(values.index(old_value))
-        #Update Widget Values
-        if values is not None:
-            self.widget.configure(values=values)
- 
-        #Set Widget Value
-        if set_value is not None:
-            self.set_value(set_value)
-        self._is_empty()
-        return values
 
 class ConnectionStatus:
     def __init__(self, root: typing.Union[Label, LabelFrame], row, col, rowspan=1, colspan=1, bars = 3, status=0.0, **options):
@@ -599,30 +422,229 @@ class communicator:
                 break
             self.write_message(message)
 
+class RobotCommunicator():
+    def __init__(self):
+        self.com = RPC()
+        
+        # Save Stop motion function in case of error. 
+        # Will update to the current movement type's stop
+        self.motion_stop = None
 
+    def _incriment_move(self, dx, dy, dz, ref=4, vel=20.0, acc=100.0, *vars):
+        '''
+        Move Arm with incrimental movements. 
+
+        ref: Movement reference
+         0 - joint point movement
+         2 - base coordinate system point movement
+         4 - tool coordinate system point movement
+         8 - workpiece coordinate system point movement
+
+        vel: Velocity - default: 20.0
+        
+        acc: Acceleration - default: 100.0
+        '''
+        self.motion_stop = self.com.ImmStopJOG
+        print(f'Moving by {(dx, dy, dz)}')
+        for nb, daxis in enumerate((dx, dy, dz)):
+            ierr = self.com.StartJOG(ref, nb+1, 0, daxis, vel, acc)
+            # Stop Moving immediately if there is an error
+            if ierr:
+                self.motion_stop()
+                print(ierr)
+                return True
+
+        self.motion_stop = None
+        return False
+    
+    def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0, *vars):
+        '''
+        Move Arm with incrimental movements. 
+
+        ref: Movement reference
+         0 - joint point movement
+         2 - base coordinate system point movement
+         4 - tool coordinate system point movement
+         8 - workpiece coordinate system point movement
+
+        vel: Velocity - default: 20.0
+        
+        acc: Acceleration - default: 100.0
+        '''
+        raise NotImplementedError
+        self.motion_stop = self.com.ImmStopJOG
+        ierr = self.com.MoveL([], vel, acc)
+        if ierr:
+            self.motion_stop()
+            print(ierr)
+            return True
+
+        self.motion_stop = None
+        return False
+    
+
+    def _get_tool_position(self):
+        ierr, tcp_pose = self.com.GetActualTCPPose()
+        return tcp_pose
+
+    def _get_joint_angles(self, degrees=True, flag=1):
+        if degrees:
+            joint_pos = self.com.GetActualJointPosDegree(flag)
+        else:
+            joint_pos = self.com.GetActualJointPosRadian(flag)
+        if isinstance(joint_pos, int):
+            return 0, 0, 0, 0, 0, 0
+        return joint_pos[1]
+
+    def _invk(self, x, y, z, rx, ry, rz, type=0):
+        '''
+        Perform inverse Kinematics for the tool to reach a certain position at a certain angle.
+
+        type:
+         0-absolute position (base coordinate system)
+         1-relative position (base coordinate system)
+         2-relative position (tool coordinate system)
+
+        returns:
+         [j1,j2,j3,j4,j5,j6]: inverse kinematics solution, Cartesian positional solution for joint positions
+        '''
+        ierr, join_pos = self.com.GetInverseKin(type, [x, y, z, rx, ry, rz], -1)
+        #ierr, join_pos = self.com.GetInverseKinRef(type, [x, y, z, rx, ry, rz], joint_ref) # Might need
+        
+        return join_pos
+
+class LightSensor():
+    def __init__(self, freq=5000):
+        self.freq = freq
+        self.lq = LabQuest()
+        self.status = -1
+        self.rec = False
+        
+
+    def connect(self):
+        self.status = self.lq.open()
+        self.lq.select_sensors(ch1="lq_sensor")
+        return self.status
+
+    def close(self):
+        self.lq.stop()
+        self.lq.close()
+
+    def start(self, freq=5000):
+        self.freq = freq
+        self.lq.start(period = int(1/self.freq*1000))
+    
+    def _avg(self, lux:list[float]):
+        return sum(lux)/len(lux)
+    
+    def get(self, avgn=1, N=None, read_time=None, linedata=None):
+        '''
+        Get sample of size N over avgn readings per sample returned
+        '''
+        lux=[]
+        t=[]
+        assert N or read_time
+
+        if self.status == -1:
+            self.connect()
+            self.lq.start(period=int(1/self.freq*1000))
+        if N:
+            for n in range(N):
+                reading = self.lq.read_multi_pt('ch1', avgn)
+                lux.append(self._avg(reading if reading else [0]))
+                t.append(1/self.freq*n*avgn)
+        elif read_time:
+            start_time = time.time()
+            while time.time() - start_time < read_time:
+                reading = self.lq.read_multi_pt('ch1', avgn)
+                lux.append(self._avg(reading if reading else [0]))
+                t.append(time.time()-start_time)
+
+        self._plot_points(t, lux, linedata)
+        self.rec = False
+        return (t, lux)
+
+    def test(self, avgn=1, chunk=1000, button:Button=None, linedata=None):
+        if button:
+            button.configure(state=DISABLED)
+
+        t, lux = self.get(avgn, read_time=chunk/1000, linedata=linedata)
+        le, c, re = self._find_edges(t, lux)
+
+        if button:
+            button.configure(state=NORMAL)
+        print(f'Left: {le}, center: {c}, Right: {re}')
+        return t, lux, le, c, re
+        
+    def _find_edges(self, times:list[float], lux: list[float]):
+        assert len(times) == len(lux)
+
+        peak = lux.index(max(lux))
+        threshold = (max(lux) + min(lux)) / 2
+        left_edge = right_edge = None
+        for i in range(peak, 0, -1):
+            if (lux[i - 1] - threshold) * (lux[i] - threshold) <= 0:
+                left_edge = self.crossing(times[i - 1], lux[i - 1], times[i], lux[i], threshold)
+                break
+
+            for i in range(peak, len(lux) - 1):
+                if (lux[i] - threshold) * (lux[i + 1] - threshold) <= 0:
+                    right_edge = self.crossing(times[i], lux[i], times[i + 1], lux[i + 1], threshold)
+                    break
+        
+        if left_edge is None or right_edge is None:
+            center = None
+            print("No two threshold crossings found.")
+        else:
+            center = (left_edge + right_edge) / 2
+        return left_edge, center, right_edge 
+
+    def crossing(self, x1, y1, x2, y2, level):
+        if y1 == y2:
+            return x1
+        return x1 + (level - y1) * (x2 - x1) / (y2 - y1)
+
+    def _plot_points(self, t:list[float], lux:list[float], linedata: tuple[FigureCanvasTkAgg, axes.Axes, Line2D]=None):
+        
+        if linedata is None:
+            return
+        canvas, ax, line = linedata
+        line.set_xdata(t)
+        line.set_ydata(lux)
+        ax.relim()
+        ax.autoscale_view()
+        canvas.draw_idle()
 
 class GUI:
     def __init__(self):
+        self.robot = RobotCommunicator()
+        self.ls = LightSensor()
+        self.float_var = {}
+
         self.root: Tk = ttk.setup_master()
         self.root.title("Simulation Plotter")
         self.root.configure(background="white")
-        self.root.geometry("1750x800")
+        self.root.geometry("800x800")
         frame = Frame(self.root, borderwidth=5)
         frame.pack(expand=True, fill=BOTH)
         
         self.tests: list[Test3D] = []
 
         self._build(frame)
+        self.root.protocol("WM_DELETE_WINDOW",  self._on_close)
+
         
-        self.root.bind('<Destroy>', lambda e=None: self.communicator.set_running(False))
+
+        task = threading.Thread(target=self._update_connection_status, args=(self.connection_bar,), daemon=True)
+        task.start()
+
         self.root.mainloop()
 
-    def _quit(self, *args):
-        try:
-            self.root.destroy()
-        except:
-            pass
-        print('destroyed')
+    def _on_close(self):
+        self.ls.close()
+        self.communicator.set_running(False)
+        self.root.destroy()
+        
 
     def _create_menu(self):
         pass
@@ -638,11 +660,20 @@ class GUI:
         # tab_frame: Tab Functions
         tab_frame = create_frame(root,0,3,1,6,LabelFrame, text='Tab Frame', relief=GROOVE, sticky=NSEW)
 
+        self.tabs = ttk.Notebook(tab_frame)
+        self.tabs.pack(expand=True, fill=BOTH)
+        
         # TODO: Open Automation Test
+        test_frame = create_frame(self.tabs, 1,1,1,1,LabelFrame, relief=GROOVE, sticky=NSEW)
+        self.tabs.add(test_frame, text='Tests')
+        self._build_test_page(test_frame)
+
         # TODO: Arm Communication
+        self.robot_frame = create_frame(self.tabs, 1,1,1,1,LabelFrame, relief=GROOVE, sticky=NSEW)
+        self.tabs.add(self.robot_frame, text='Robot')
+        self._build_robot_controller(self.robot_frame)
 
-
-
+        
 
 
         # TODO: Results
@@ -650,10 +681,12 @@ class GUI:
 
         #self.create_model(plot_frame, r'FRCobots-V6.0 STEP Models/FRCobots-V6.0 STEP Models/FR3-V6.0 Model.STEP')
 
-        plot_frame = create_frame(root,1,3,6,6,LabelFrame, text='Plot Frame', relief=GROOVE, sticky=NSEW)
+        plot_frame = create_frame(self.tabs,1,3,6,6,LabelFrame, relief=GROOVE, sticky=NSEW)
+        Button(plot_frame, text='start demo', command=lambda e=None: self._dummy_light_test()).pack()
+        self.tabs.add(plot_frame, text='Results')
         self.plotter_notebook = ttk.Notebook(plot_frame)
         self.plotter_notebook.pack(expand=True, fill=BOTH)
-        Button(plot_frame, text='start demo', command=lambda e=None: self._dummy_light_test()).pack()
+        
         plotter_3d_frame = create_frame(self.plotter_notebook,1,3,6,6,Label, relief=GROOVE, sticky=NSEW)
         
         self.plotter_notebook.add(plotter_3d_frame, text='3D Plotter')
@@ -675,20 +708,85 @@ class GUI:
 
 
 
-        connection_bar = ConnectionStatus(cs_frame, 0,0,1,1,4,1, sticky=SE)
+        self.connection_bar = ConnectionStatus(cs_frame, 0,0,1,1,4,1, sticky=SE)
+    
+    def _build_test_page(self, root:Frame):
+        self.float_var['test'] = {}
+
+        lr_frame = LabelFrame(root, text='Light Reading Settings')
+        lr_frame.grid(row=0,column=0, sticky=NSEW)
+
+        # Create Entry Boxes
+        settings = (('Frequency', 5000), ('Data Points', 1000), ('Average', 1))
+        for row, (setting, default) in enumerate(settings):
+            self.float_var['test'][setting] = IntVar(value=default)
+            Label(lr_frame, text=f'{setting.capitalize()}:').grid(row=row, column=0)
+            Entry(lr_frame, textvariable=self.float_var['test'][setting]).grid(row=row, column=1)
+
+        light_test_button = Button(lr_frame, text='Start New Test', command=lambda e=None: self._light_test(light_test_button))
+        light_test_button.grid(row=len(settings),column=1)
+
+        lrp_frame = LabelFrame(root, text='Light Reading Settings')
+        lrp_frame.grid(row=0, column=1, rowspan=5, sticky=NSEW)
+        self.test_plot = Plotter2D(lrp_frame)
+
+    def _light_test(self, button):
+        line = self.test_plot.ax.plot([],[])[0]
+        thread = threading.Thread(target= self.ls.test, args=(1, 1000, button, (self.test_plot.canvas, self.test_plot.ax, line)), daemon=True)
+        thread.start()
+
+    def _build_robot_controller(self, root:Frame):
         
+        # Create float var for position entry boxes
+        self.float_var['robot'] = {}
+        position_frame = LabelFrame(root, text='Current Position')
+        position_frame.grid(row=0,column=0, sticky=NSEW)
+
+        # Create Entry Boxes
+        for row, axis in enumerate(('x', 'y', 'z')):
+            self.float_var['robot'][axis] = DoubleVar()
+            Label(position_frame, text=f'{axis.capitalize()}:').grid(row=row, column=0)
+            Entry(position_frame, textvariable=self.float_var['robot'][axis]).grid(row=row, column=1)
 
 
-        Scale(cs_frame, resolution=0.0001, label='Strength', from_=0.0, to=1.0, command=lambda e=0.0: connection_bar._update(e)).grid(row=1,column=1,sticky=E)
+        incrimental_frame = LabelFrame(root, text='Current Position')
+        incrimental_frame.grid(row=1,column=0, sticky=NSEW)
+
+        # Create Entry Boxes
+        for row, axis in enumerate(('dx', 'dy', 'dz')):
+            self.float_var['robot'][axis] = DoubleVar()
+            Label(incrimental_frame, text=f'{axis}:').grid(row=row, column=0)
+            Entry(incrimental_frame, textvariable=self.float_var['robot'][axis]).grid(row=row, column=1)
+
+        Button(incrimental_frame, text='Reset', command=lambda e=None: _reset_var(0.0, *(self.float_var['robot'][axis] for axis in ('dx', 'dy', 'dz')))).grid(row=2, column=2)
+        Button(incrimental_frame, text='Run', command=lambda e=None: self.robot._incriment_move(*(self.float_var['robot'][axis].get() for axis in ('dx', 'dy', 'dz')))).grid(row=2, column=3)
+
+        self.joint_angle_label = Label(root, text = '')
+        self.joint_angle_label.grid(row = 2, column=0)
+        self._update_joint_angle_label()
+    
+    def _update_joint_angle_label(self):
+        j1, j2, j3, j4, j5, j6 = self.robot._get_joint_angles(True)
+        self.joint_angle_label.config(text=f'Joint Angles:\nj1 = {j1}\n j2 = {j2}\n j3 = {j3}\n j4 = {j4}\n j5 = {j5}\n j6 = {j6}\n')
+
+    
         
+    def _update_connection_status(self, status: ConnectionStatus):
+        frame_disabled = False
+        while True:
+            strength = 1.0 if self.robot.com.is_conect else 0.0
+            status._update(strength)
+            if strength == 0.0:
+                frame_disabled = True
+                _toggle_frame(self.robot_frame, DISABLED)
+            elif frame_disabled:
+                frame_disabled = False
+                _toggle_frame(self.robot_frame, NORMAL)
 
     def create_model(self, root, step):
 
         F3D = Engine(root)
         F3D.pack(fill=BOTH, expand=True)
-        
-        #    # For testing purposes only, exit after `timeout` seconds
-        #    root.after(args.timeout * 1000, root.destroy)
 
     def _dummy_light_test(self):
         self.new_test('Dummy Light Test')
@@ -753,17 +851,17 @@ class Test3D:
 class Plotter2D():
     def __init__(self, root, **options):
         self.root = root
-        self.fig = Figure(figsize=(6, 5), dpi = 100)
+        self.fig = Figure(figsize=(6, 4), dpi = 100)
         self.ax = self.fig.add_subplot(111)
         
         self.canvas = FigureCanvasTkAgg(self.fig, master = self.root)
         self.toolbar_frame = Frame(self.root)
-        self.toolbar_frame.pack(side=BOTTOM, expand=False, fill=X)
+        self.toolbar_frame.pack(side=BOTTOM, expand=True, fill=X)
         toolbar_frame = Frame(self.toolbar_frame)
-        toolbar_frame.pack(side=LEFT, expand=False, fill=X)
+        toolbar_frame.pack(side=LEFT, expand=True, fill=X)
         toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
         toolbar.update()
-        Button(self.toolbar_frame, text='Autoscale', command = no_function).pack(side=LEFT)
+
         self.ax.minorticks_on()
         self.ax.grid(True)
         

@@ -15,14 +15,12 @@ def crossing(x1, y1, x2, y2, level):
 
 
 def main():
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: python plot_light_lux.py <seconds>")
-
-    duration = float(sys.argv[1])
-    count = int(duration * RATE_HZ)
+    
+    count = int(5 * RATE_HZ)
     lq = LabQuest()
-
-    lq.open()
+    
+    
+    print(lq.open())
     lq.select_sensors(ch1="lq_sensor")
     lq.start(period=PERIOD_MS)
     lux = []
@@ -30,6 +28,7 @@ def main():
     while count > 0:
         n = min(CHUNK, count)
         part = lq.read_multi_pt("ch1", n)
+        print(part[0])
         if not started:
             print("measurement start")
             started = True
