@@ -426,8 +426,8 @@ class RobotCommunicator():
     def __init__(self):
         self.com = RPC()
         
-        self.HOME = [94.306, -157.839, 144.403, 11.385, 101.175, -93.178]
-        self.home()
+        self.HOME = [0, -125.517, 124.552, 3.64, 85.43, 95.241]
+        #self.home()
 
 
         # Save Stop motion function in case of error. 
@@ -453,45 +453,11 @@ class RobotCommunicator():
         current_pose = numpy.array(self.com.GetActualTCPPose(0)[1])
         new_pose = current_pose + numpy.array([dx, dy, dz, 0, 0, 0])
         print(new_pose)
-        #ierr = self.com.MoveL(new_pose, 0, 0)
-
-        offset_pos = [0.0] * 6
-        epos = [0.0] * 4
-        tool = 0
-        user = 0
-        vel = 100.0
-        acc = 100.0
-        ovl = 100.0
-        oacc = 100.0
-        blendT = 0.0
-        blendR = 0.0
-        flag = 1
-        search = 0
-        blendMode = 0
-        velAccMode = 0
+        joint_pos = self._invk(*new_pose, type=0)
+        print(joint_pos)
 
 
-
-        rtn = self.com.MoveL(desc_pos=new_pose, tool=tool, user=user, vel=vel, acc=acc, ovl=ovl, blendR=blendR, 
-                          blendMode=blendMode, exaxis_pos=epos, search=search, offset_flag=flag, offset_pos=offset_pos,oacc=oacc, 
-                          velAccParamMode=velAccMode)
-
-
-
-
-
-        # Stop Moving immediately if there is an error
-        #if ierr:
-        #    self.motion_stop()
-        #    print(ierr)
-        #    return True
-        #for nb, daxis in enumerate((dx, dy, dz)):
-        #    ierr = self.com.MoveL(ref, nb+1, 0, daxis, vel, acc)
-        #    # Stop Moving immediately if there is an error
-        #    if ierr:
-        #        self.motion_stop()
-        #        print(ierr)
-        #        return True
+        self._joint_move(joint_pos, tool=0)
 
         self.motion_stop = None
         return False
@@ -515,7 +481,6 @@ class RobotCommunicator():
     def _joint_move(self, joint_pos, tool=0, user=0, desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0], vel = 20.0, acc = 0.0, 
                     ovl = 100.0, exaxis_pos = [0.0,0.0,0.0,0.0], blendT = -1.0, offset_flag = 0, offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0]):
         '''
-       
         '''
         self.motion_stop = self.com.StopMotion
         ierr = self.com.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos)
@@ -527,6 +492,13 @@ class RobotCommunicator():
         self.motion_stop = None
         return False
     
+    def square(self, dist):
+
+        self._incriment_move(0, dist, 0)
+        self._incriment_move(0, 0, dist)
+        self._incriment_move(0, -dist, 0)
+        self._incriment_move(0, 0, -dist)
+
 
     def _get_tool_position(self):
         ierr, tcp_pose = self.com.GetActualTCPPose()
@@ -555,7 +527,8 @@ class RobotCommunicator():
         '''
         ierr, join_pos = self.com.GetInverseKin(type, [x, y, z, rx, ry, rz], -1)
         #ierr, join_pos = self.com.GetInverseKinRef(type, [x, y, z, rx, ry, rz], joint_ref) # Might need
-        
+        if ierr:
+            print(f'ERROR: {ierr}')
         return join_pos
 
 class LightSensor():
@@ -806,8 +779,12 @@ class GUI:
         Button(incrimental_frame, text='Reset', command=lambda e=None: _reset_var(0.0, *(self.float_var['robot'][axis] for axis in ('dx', 'dy', 'dz')))).grid(row=2, column=2)
         Button(incrimental_frame, text='Run', command=lambda e=None: self.robot._incriment_move(*(self.float_var['robot'][axis].get() for axis in ('dx', 'dy', 'dz')))).grid(row=2, column=3)
 
+        
+
         self.joint_angle_label = Label(root, text = '')
         self.joint_angle_label.grid(row = 2, column=0)
+        Button(root, text='Home', command=lambda e=None: self.robot.home()).grid(row=3, column=1)
+        Button(root, text='Square', command=lambda e=None: self.robot.square(100)).grid(row=3, column=2)
         self._update_joint_angle_label()
     
     def _update_joint_angle_label(self):

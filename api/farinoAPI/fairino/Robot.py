@@ -1196,7 +1196,37 @@ class RPC():
         flag = True
         while flag:
             try:
-                error1 = self.robot.MoveL([joint_pos[0],joint_pos[1],joint_pos[2],joint_pos[3],joint_pos[4],joint_pos[5], desc_pos[0],desc_pos[1],desc_pos[2],desc_pos[3],desc_pos[4],desc_pos[5], tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos[0],exaxis_pos[1],exaxis_pos[2],exaxis_pos[3], search,offset_flag, offset_pos[0],offset_pos[1],offset_pos[2],offset_pos[3],offset_pos[4],offset_pos[5],oacc,velAccParamMode])
+                error1 = self.robot.MoveL(
+                                        #    [],  #arr
+                                        #    [],  # arr
+                                        #    1,  # int
+                                        #    1, #int
+                                        #    0.0,  #double
+                                        #    0.0, #double
+                                        #    100.0, #double
+                                        #    100.0, #double
+                                        #    #-1, #int
+                                        #    [], #arr
+                                        #    0, #int
+                                        #    0, #int
+                                        #    [])#, #arr
+
+
+
+                                          joint_pos,  #arr   [],  #arr
+                                          desc_pos,  # arr   [],  # arr
+                                          tool,  # int       1,  # int
+                                          user, #int         1, #int
+                                          vel,  #double      0.0,  #double
+                                          acc, #double       0.0, #double
+                                          ovl, #double       100.0, #double
+                                          blendR, #double    100.0, #double
+                                          #blendMode, #int    #-1, #int
+                                          exaxis_pos, #arr   [], #arr
+                                          search, #int       0, #int
+                                          offset_flag, #int  0, #int
+                                          offset_pos)#, #arr [])#, #arr
+                                          #oacc,velAccParamMode)
                 flag = False
             except socket.error as e:
                 flag = True
@@ -6745,8 +6775,19 @@ class RPC():
                     # tmpWeldDesc = [data[6],data[7],data[8],data[9],data[10],data[11]]
                     # tmpTool = int(data[12])
                     # tmpUser = int(data[13])
-                    rtn = self.robot.MoveL(endJPos,endDesePos, tool, user, vel, acc, ovl, blendR,0, exaxis_pos,
-                                           search, 0, endOffPos)
+                    rtn = self.robot.MoveL(endJPos,
+                                           endDesePos, 
+                                           tool, 
+                                           user, 
+                                           vel, 
+                                           acc, 
+                                           ovl, 
+                                           blendR,
+                                           0, 
+                                           exaxis_pos,
+                                           search, 
+                                           0, 
+                                           endOffPos)
                     # print("rtn3", rtn,endJPos,endDesePos)
                     if rtn != 0:
                         self.robot.ARCEnd(weldIOType, arcNum, weldTimeout)
