@@ -426,6 +426,10 @@ class RobotCommunicator():
     def __init__(self):
         self.com = RPC()
         
+        self.HOME = [94.306, -157.839, 144.403, 11.385, 101.175, -93.178]
+        self.home()
+
+
         # Save Stop motion function in case of error. 
         # Will update to the current movement type's stop
         self.motion_stop = None
@@ -444,36 +448,77 @@ class RobotCommunicator():
         
         acc: Acceleration - default: 100.0
         '''
-        self.motion_stop = self.com.ImmStopJOG
+        self.motion_stop = self.com.StopMotion
         print(f'Moving by {(dx, dy, dz)}')
-        for nb, daxis in enumerate((dx, dy, dz)):
-            ierr = self.com.StartJOG(ref, nb+1, 0, daxis, vel, acc)
-            # Stop Moving immediately if there is an error
-            if ierr:
-                self.motion_stop()
-                print(ierr)
-                return True
+        current_pose = numpy.array(self.com.GetActualTCPPose(0)[1])
+        new_pose = current_pose + numpy.array([dx, dy, dz, 0, 0, 0])
+        print(new_pose)
+        #ierr = self.com.MoveL(new_pose, 0, 0)
+
+        offset_pos = [0.0] * 6
+        epos = [0.0] * 4
+        tool = 0
+        user = 0
+        vel = 100.0
+        acc = 100.0
+        ovl = 100.0
+        oacc = 100.0
+        blendT = 0.0
+        blendR = 0.0
+        flag = 1
+        search = 0
+        blendMode = 0
+        velAccMode = 0
+
+
+
+        rtn = self.com.MoveL(desc_pos=new_pose, tool=tool, user=user, vel=vel, acc=acc, ovl=ovl, blendR=blendR, 
+                          blendMode=blendMode, exaxis_pos=epos, search=search, offset_flag=flag, offset_pos=offset_pos,oacc=oacc, 
+                          velAccParamMode=velAccMode)
+
+
+
+
+
+        # Stop Moving immediately if there is an error
+        #if ierr:
+        #    self.motion_stop()
+        #    print(ierr)
+        #    return True
+        #for nb, daxis in enumerate((dx, dy, dz)):
+        #    ierr = self.com.MoveL(ref, nb+1, 0, daxis, vel, acc)
+        #    # Stop Moving immediately if there is an error
+        #    if ierr:
+        #        self.motion_stop()
+        #        print(ierr)
+        #        return True
 
         self.motion_stop = None
         return False
     
     def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0, *vars):
         '''
-        Move Arm with incrimental movements. 
-
-        ref: Movement reference
-         0 - joint point movement
-         2 - base coordinate system point movement
-         4 - tool coordinate system point movement
-         8 - workpiece coordinate system point movement
-
-        vel: Velocity - default: 20.0
-        
-        acc: Acceleration - default: 100.0
         '''
-        raise NotImplementedError
-        self.motion_stop = self.com.ImmStopJOG
+        self.motion_stop = self.com.StopMotion
         ierr = self.com.MoveL([], vel, acc)
+        if ierr:
+            self.motion_stop()
+            print(ierr)
+            return True
+
+        self.motion_stop = None
+        return False
+    
+    def home(self):
+        self._joint_move(self.HOME)
+
+    def _joint_move(self, joint_pos, tool=0, user=0, desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0], vel = 20.0, acc = 0.0, 
+                    ovl = 100.0, exaxis_pos = [0.0,0.0,0.0,0.0], blendT = -1.0, offset_flag = 0, offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0]):
+        '''
+       
+        '''
+        self.motion_stop = self.com.StopMotion
+        ierr = self.com.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos)
         if ierr:
             self.motion_stop()
             print(ierr)
