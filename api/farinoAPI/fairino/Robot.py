@@ -348,7 +348,10 @@ class RPC():
                 #     self.SDK_state = False
             else:
                 # print(f"重新连接失败，等待 {retry_interval} 秒后重试...")
-                time.sleep(retry_interval)
+                start_time = time.time()
+                while time.time()-start_time < retry_interval:
+                    pass
+                #time.sleep(retry_interval)
 
         print("已达到最大重连次数，连接失败")
         self.SDK_state = False

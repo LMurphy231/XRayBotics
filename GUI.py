@@ -426,7 +426,8 @@ class RobotCommunicator():
     def __init__(self):
         self.com = RPC()
         
-        self.HOME = [0, -125.517, 124.552, 3.64, 85.43, 95.241]
+        self.HOME = [0, -45, -133.25, -180, -90, 90]
+        self.move_thread = None
         #self.home()
 
 
@@ -448,56 +449,66 @@ class RobotCommunicator():
         
         acc: Acceleration - default: 100.0
         '''
-        self.motion_stop = self.com.StopMotion
+        #def Move(dx, dy, dz, ref=4, vel=20.0, acc=100.0):
+
         print(f'Moving by {(dx, dy, dz)}')
         current_pose = numpy.array(self.com.GetActualTCPPose(0)[1])
         new_pose = current_pose + numpy.array([dx, dy, dz, 0, 0, 0])
-        print(new_pose)
+
         joint_pos = self._invk(*new_pose, type=0)
-        print(joint_pos)
-
-
         self._joint_move(joint_pos, tool=0)
 
-        self.motion_stop = None
-        return False
-    
     def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0, *vars):
         '''
         '''
-        self.motion_stop = self.com.StopMotion
-        ierr = self.com.MoveL([], vel, acc)
-        if ierr:
-            self.motion_stop()
-            print(ierr)
-            return True
+        new_pose = self.com.GetActualTCPPose(0)[1]
+        new_pose[:2] = [x, y, z]
 
-        self.motion_stop = None
-        return False
+        joint_pos = self._invk(*new_pose, type=0)
+        self._joint_move(joint_pos, tool=0)
     
     def home(self):
+        self.stop()
         self._joint_move(self.HOME)
 
     def _joint_move(self, joint_pos, tool=0, user=0, desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0], vel = 20.0, acc = 0.0, 
                     ovl = 100.0, exaxis_pos = [0.0,0.0,0.0,0.0], blendT = -1.0, offset_flag = 0, offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0]):
         '''
         '''
-        self.motion_stop = self.com.StopMotion
-        ierr = self.com.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos)
-        if ierr:
-            self.motion_stop()
-            print(ierr)
-            return True
+        
+        def move(joint_pos, tool=0, user=0, desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0], vel = 20.0, acc = 0.0, 
+                    ovl = 100.0, exaxis_pos = [0.0,0.0,0.0,0.0], blendT = -1.0, offset_flag = 0, offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0]):
+            self.com.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos)
+            self.move_thread = None
 
-        self.motion_stop = None
+        self._move_wait()
+        self.move_thread = threading.Thread(target=move, args=(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos), daemon=True)
+        self.move_thread.start()
+        #ierr = self.com.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos)
+        #if ierr:
+        #    self.motion_stop()
+        #    print(ierr)
+        #    return True
+
         return False
-    
-    def square(self, dist):
+    def _move_wait(self):
+        while self.move_thread is not None:
+            pass
 
+    def square(self, dist, event=None):
+        if event:
+            _toggle_frame(event.widget, DISABLED)
+        
         self._incriment_move(0, dist, 0)
+        self._move_wait()
         self._incriment_move(0, 0, dist)
+        self._move_wait()
         self._incriment_move(0, -dist, 0)
+        self._move_wait()
         self._incriment_move(0, 0, -dist)
+        
+        if event:
+            _toggle_frame(event.widget, NORMAL)
 
 
     def _get_tool_position(self):
@@ -530,6 +541,26 @@ class RobotCommunicator():
         if ierr:
             print(f'ERROR: {ierr}')
         return join_pos
+
+    def _update_connection(self, widget: ConnectionStatus=None, frame: Frame=None):
+        frame_disabled = False
+        while True:
+            strength = 1.0 if self.com.is_conect else 0.0
+            if widget:
+                widget._update(strength)
+            if strength == 0.0:
+                frame_disabled = True
+                status = self.com.reconnect()
+                if frame and not status:
+                    _toggle_frame(frame, DISABLED)
+            elif frame_disabled:
+                frame_disabled = False
+                if frame:
+                    _toggle_frame(frame, NORMAL)
+
+    def stop(self):
+        print('stopping')
+        self.com.StopMove()
 
 class LightSensor():
     def __init__(self, freq=5000):
@@ -653,7 +684,7 @@ class GUI:
 
         
 
-        task = threading.Thread(target=self._update_connection_status, args=(self.connection_bar,), daemon=True)
+        task = threading.Thread(target=self.robot._update_connection, args=(self.connection_bar, self.robot_frame), daemon=True)
         task.start()
 
         self.root.mainloop()
@@ -784,7 +815,8 @@ class GUI:
         self.joint_angle_label = Label(root, text = '')
         self.joint_angle_label.grid(row = 2, column=0)
         Button(root, text='Home', command=lambda e=None: self.robot.home()).grid(row=3, column=1)
-        Button(root, text='Square', command=lambda e=None: self.robot.square(100)).grid(row=3, column=2)
+        Button(root, text='Square', command=lambda e=None: threading.Thread(target=self.robot.square, args=(100,e)).start()).grid(row=3, column=2)
+        Button(root, text='Stop', command=lambda e=None: self.robot.stop()).grid(row=3, column=3)
         self._update_joint_angle_label()
     
     def _update_joint_angle_label(self):
