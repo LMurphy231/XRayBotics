@@ -190,6 +190,32 @@ def _reset_var(value, *vars: DoubleVar):
         for var in vars:
             var.set(value)
 
+
+def _rotatex(x, y, z, angle):
+    if numpy.isnan(angle):
+        raise ValueError(f'Invalid angle: {angle}')
+    nx = x
+    ny = y * numpy.cos(angle) - z * numpy.sin(angle)
+    nz = y * numpy.sin(angle) + z * numpy.cos(angle)
+    return nx, ny, nz
+
+def _rotatey(x, y, z, angle):
+    if numpy.isnan(angle):
+        raise ValueError(f'Invalid angle: {angle}')
+    nx = x * numpy.cos(angle) + z * numpy.sin(angle)
+    ny = y
+    nz = -x * numpy.sin(angle) + z * numpy.cos(angle)
+    return nx, ny, nz
+
+def _rotatez(x, y, z, angle):
+    if numpy.isnan(angle):
+        raise ValueError(f'Invalid angle: {angle}')
+    nx = x * numpy.cos(angle) - y * numpy.sin(angle)
+    ny = x * numpy.sin(angle) + y * numpy.cos(angle)
+    nz = z
+    return nx, ny, nz
+
+
 class ColorWidget():
     def __init__(self, root, **options):
         self.widget = Canvas(root, _is_tk_kwarg(Canvas, **options))
@@ -543,15 +569,16 @@ class RobotCommunicator():
     def square(self, dist, event=None):
         if event:
             _toggle_frame(event.widget, DISABLED)
-        
-        self._incriment_move(0, dist, 0)
-        self._move_wait()
-        self._incriment_move(0, 0, dist)
-        self._move_wait()
-        self._incriment_move(0, -dist, 0)
-        self._move_wait()
-        self._incriment_move(0, 0, -dist)
-        
+        for i in range(10):
+            self._incriment_move(0, dist, 0)
+            self._move_wait()
+            self._incriment_move(0, 0, 10)
+            self._move_wait()
+            self._incriment_move(0, -dist, 0)
+            self._move_wait()
+            self._incriment_move(0, 0, 10)
+            self._move_wait()
+    
         if event:
             _toggle_frame(event.widget, NORMAL)
 
@@ -733,7 +760,7 @@ class GUI:
         self.event = True
         threading.Thread(target=self.robot._update_connection, daemon=True).start()
         threading.Thread(target=self._update_widgets, args=(self.connection_bar, self.robot_frame, self.joint_angle_label), daemon=True).start()
-        threading.Thread(target=self._constant_light_intensity, args=(100,), daemon=True).start()
+        threading.Thread(target=self._constant_light_intensity, args=(1000,), daemon=True).start()
         
         self.root.mainloop()
 
@@ -864,7 +891,7 @@ class GUI:
         self.joint_angle_label = Label(root, text = '')
         self.joint_angle_label.grid(row = 2, column=0)
         Button(root, text='Home', command=lambda e=None: self.robot.home()).grid(row=3, column=1)
-        Button(root, text='Square', command=lambda e=None: threading.Thread(target=self.robot.square, args=(100,e)).start()).grid(row=3, column=2)
+        Button(root, text='Square', command=lambda e=None: threading.Thread(target=self.square_test, args=(100,e)).start()).grid(row=3, column=2)
         Button(root, text='Stop', command=lambda e=None: self.robot.stop()).grid(row=3, column=3)
         self._update_joint_angle_label()
     
@@ -927,8 +954,24 @@ class GUI:
             if self.robot.com.is_conect:
                 pos = self.robot._get_tool_position()
                 intensity = self.ls.get_single()
-                print(f'{len(self.light_intensity)}: {pos} at {intensity} lumens')
                 self.light_intensity.append((pos, intensity))
+
+    def square_test(self, dist, event=None):
+        i1 = len(self.light_intensity)-1
+        self.robot.square(dist, event)
+        i2 = len(self.light_intensity)-1
+
+        ax = self.plotter3d.ax
+        ax.clear()
+        #coords = [(x,y,z) for (x, y, z, rx, ry, rz), intensity in self.light_intensity[i1:i2]]
+        coords, intensities = zip(*self.light_intensity[i1:i2])
+        max_intensity = max(intensities)
+        x, y, z, rx, ry, rz = zip(*coords)
+ 
+        ax.scatter(x, y, z, cmap='plasma', c=numpy.array(intensities)/max_intensity)
+
+        self.plotter3d.canvas.draw()
+
 
 class Test3D:
     def __init__(self, test_name:str, maxsize=None, color='blue'):
@@ -1012,8 +1055,6 @@ class Plotter3D():
         
         canvas_widget = self.canvas.get_tk_widget()
         canvas_widget.pack(side=LEFT, fill=BOTH, expand = True)
-
-    
 
     
     def _update_plot(self):
