@@ -449,23 +449,67 @@ class RobotCommunicator():
         
         acc: Acceleration - default: 100.0
         '''
-        #def Move(dx, dy, dz, ref=4, vel=20.0, acc=100.0):
+        def move(dx, dy, dz):
+            cur_pose = self.com.GetActualTCPPose(0)[1]
+            self.com.MoveL(
+            desc_pos=cur_pose,
+            tool=0,
+            user=0,
+            vel=10.0,
+            acc=20.0,
+            ovl=100.0,
+            blendR=-1.0,
+            blendMode=0,
+            exaxis_pos=[0.0, 0.0, 0.0, 0.0],
+            search=0,
+            offset_flag=2,
+            offset_pos=[dz, dy, dx, 0.0, 0.0, 0.0],
+            oacc=20.0,
+            velAccParamMode=0,
+            )
+            self.move_thread = None
+        
+        self._move_wait()
+        self.move_thread = threading.Thread(target=move, args=(dx, dy, dz), daemon=True)
+        self.move_thread.start()
 
-        print(f'Moving by {(dx, dy, dz)}')
-        current_pose = numpy.array(self.com.GetActualTCPPose(0)[1])
-        new_pose = current_pose + numpy.array([dx, dy, dz, 0, 0, 0])
-
-        joint_pos = self._invk(*new_pose, type=0)
-        self._joint_move(joint_pos, tool=0)
+        #print(f'Moving by {(dx, dy, dz)}')
+        #current_pose = numpy.array(self.com.GetActualTCPPose(0)[1])
+        #new_pose = current_pose + numpy.array([dx, dy, dz, 0, 0, 0])
+        #self._position_move(*new_pose[:3])
+        #joint_pos = self._invk(*new_pose, type=0)
+        #self._joint_move(joint_pos, tool=0)
 
     def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0, *vars):
         '''
         '''
+        def move(new_pose):
+            self.com.MoveL(
+            desc_pos=new_pose,
+            tool=0,
+            user=0,
+            vel=10.0,
+            acc=20.0,
+            ovl=100.0,
+            blendR=-1.0,
+            blendMode=0,
+            exaxis_pos=[0.0, 0.0, 0.0, 0.0],
+            search=0,
+            offset_flag=2,
+            offset_pos=[0.0, 0.0, 100.0, 0.0, 0.0, 0.0],
+            oacc=20.0,
+            velAccParamMode=0,
+            )
+            self.move_thread = None
+            
         new_pose = self.com.GetActualTCPPose(0)[1]
         new_pose[:2] = [x, y, z]
+        
+        self._move_wait()
+        self.move_thread = threading.Thread(target=move, args=(new_pose,), daemon=True)
+        self.move_thread.start()
 
-        joint_pos = self._invk(*new_pose, type=0)
-        self._joint_move(joint_pos, tool=0)
+        
     
     def home(self):
         self.stop()
@@ -686,14 +730,15 @@ class GUI:
         self.root.protocol("WM_DELETE_WINDOW",  self._on_close)
 
         
-
+        self.event = True
         threading.Thread(target=self.robot._update_connection, daemon=True).start()
         threading.Thread(target=self._update_widgets, args=(self.connection_bar, self.robot_frame, self.joint_angle_label), daemon=True).start()
         threading.Thread(target=self._constant_light_intensity, args=(100,), daemon=True).start()
-        self.event = True
+        
         self.root.mainloop()
 
     def _on_close(self):
+        self.event = False
         self.ls.close()
         self.communicator.set_running(False)
         self.root.destroy()
@@ -832,7 +877,6 @@ class GUI:
     def _update_widgets(self, status: ConnectionStatus, frame: Frame, joint_label: Label):
         frame_disabled = False
         while True:
-            print('update widget')
             time.sleep(0.5)
             
             strength = 1.0 if self.robot.com.is_conect else 0.0
@@ -879,16 +923,12 @@ class GUI:
         period = 1/freq
         
         while self.event:
-            print(period)
             time.sleep(period)
-            intensity = self.ls.get_single()
-            print(f'{len(self.light_intensity)}: at {intensity} lumens')
             if self.robot.com.is_conect:
                 pos = self.robot._get_tool_position()
                 intensity = self.ls.get_single()
                 print(f'{len(self.light_intensity)}: {pos} at {intensity} lumens')
                 self.light_intensity.append((pos, intensity))
-        #self.light_intensity
 
 class Test3D:
     def __init__(self, test_name:str, maxsize=None, color='blue'):
