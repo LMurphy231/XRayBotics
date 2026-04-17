@@ -491,9 +491,10 @@ class RobotCommunicator():
         #    return True
 
         return False
+    
     def _move_wait(self):
         while self.move_thread is not None:
-            pass
+            time.sleep(0.01)
 
     def square(self, dist, event=None):
         if event:
@@ -542,21 +543,12 @@ class RobotCommunicator():
             print(f'ERROR: {ierr}')
         return join_pos
 
-    def _update_connection(self, widget: ConnectionStatus=None, frame: Frame=None):
-        frame_disabled = False
+    def _update_connection(self):
         while True:
-            strength = 1.0 if self.com.is_conect else 0.0
-            if widget:
-                widget._update(strength)
-            if strength == 0.0:
-                frame_disabled = True
-                status = self.com.reconnect()
-                if frame and not status:
-                    _toggle_frame(frame, DISABLED)
-            elif frame_disabled:
-                frame_disabled = False
-                if frame:
-                    _toggle_frame(frame, NORMAL)
+            time.sleep(5)
+            if not self.com.is_conect:
+                self.com.reconnect()
+                
 
     def stop(self):
         print('stopping')
@@ -586,6 +578,14 @@ class LightSensor():
     def _avg(self, lux:list[float]):
         return sum(lux)/len(lux)
     
+    def get_single(self):
+        
+        if self.status == -1:
+            self.connect()
+            self.lq.start(period=int(1/self.freq*1000))
+
+        return self.lq.read('ch1')
+    
     def get(self, avgn=1, N=None, read_time=None, linedata=None):
         '''
         Get sample of size N over avgn readings per sample returned
@@ -604,10 +604,11 @@ class LightSensor():
                 t.append(1/self.freq*n*avgn)
         elif read_time:
             start_time = time.time()
-            while time.time() - start_time < read_time:
-                reading = self.lq.read_multi_pt('ch1', avgn)
-                lux.append(self._avg(reading if reading else [0]))
-                t.append(time.time()-start_time)
+            time.sleep(read_time)
+            #while time.time() - start_time < read_time:
+            reading = self.lq.read_multi_pt('ch1', avgn)
+            lux.append(self._avg(reading if reading else [0]))
+            t.append(time.time()-start_time)
 
         self._plot_points(t, lux, linedata)
         self.rec = False
@@ -669,6 +670,8 @@ class GUI:
         self.robot = RobotCommunicator()
         self.ls = LightSensor()
         self.float_var = {}
+        self.light_intensity: list[tuple[float, float]] = []
+
 
         self.root: Tk = ttk.setup_master()
         self.root.title("Simulation Plotter")
@@ -684,9 +687,10 @@ class GUI:
 
         
 
-        task = threading.Thread(target=self.robot._update_connection, args=(self.connection_bar, self.robot_frame), daemon=True)
-        task.start()
-
+        threading.Thread(target=self.robot._update_connection, daemon=True).start()
+        threading.Thread(target=self._update_widgets, args=(self.connection_bar, self.robot_frame, self.joint_angle_label), daemon=True).start()
+        threading.Thread(target=self._constant_light_intensity, args=(100,), daemon=True).start()
+        self.event = True
         self.root.mainloop()
 
     def _on_close(self):
@@ -825,17 +829,26 @@ class GUI:
 
     
         
-    def _update_connection_status(self, status: ConnectionStatus):
+    def _update_widgets(self, status: ConnectionStatus, frame: Frame, joint_label: Label):
         frame_disabled = False
         while True:
+            print('update widget')
+            time.sleep(0.5)
+            
             strength = 1.0 if self.robot.com.is_conect else 0.0
             status._update(strength)
+            
             if strength == 0.0:
                 frame_disabled = True
-                _toggle_frame(self.robot_frame, DISABLED)
+                _toggle_frame(frame, DISABLED)
             elif frame_disabled:
                 frame_disabled = False
-                _toggle_frame(self.robot_frame, NORMAL)
+                _toggle_frame(frame, NORMAL)
+
+            if self.robot.com.is_conect:
+                j1, j2, j3, j4, j5, j6 = self.robot._get_joint_angles(True)
+                joint_label.config(text=f'Joint Angles:\nj1 = {j1}\n j2 = {j2}\n j3 = {j3}\n j4 = {j4}\n j5 = {j5}\n j6 = {j6}\n')
+                
 
     def create_model(self, root, step):
 
@@ -862,6 +875,20 @@ class GUI:
         self.tests.append(self.test)
         return self.test
 
+    def _constant_light_intensity(self, freq):
+        period = 1/freq
+        
+        while self.event:
+            print(period)
+            time.sleep(period)
+            intensity = self.ls.get_single()
+            print(f'{len(self.light_intensity)}: at {intensity} lumens')
+            if self.robot.com.is_conect:
+                pos = self.robot._get_tool_position()
+                intensity = self.ls.get_single()
+                print(f'{len(self.light_intensity)}: {pos} at {intensity} lumens')
+                self.light_intensity.append((pos, intensity))
+        #self.light_intensity
 
 class Test3D:
     def __init__(self, test_name:str, maxsize=None, color='blue'):
