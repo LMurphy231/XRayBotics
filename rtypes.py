@@ -416,7 +416,7 @@ class Joint:
     
     def _set(self, set_angle:Rotation = None, offset:Coordinate = Coordinate(0,0,0), parent_angle:Rotation = None):
         self.child._update(set_angle * self.rotation_lim.lock, offset, parent_angle)
-
+        
     def _update(self):
         self.child._update(offset=self.parent.end_terminal.glob, parent_angle=self.parent.end_terminal.parent_angle+self.parent.end_terminal.cur_angle)
 
@@ -927,3 +927,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = LineGraphApp(root, robot)
     root.mainloop()
+

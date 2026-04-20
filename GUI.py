@@ -455,11 +455,18 @@ class RobotCommunicator():
         self.HOME = [0, -45, -133.25, -180, -90, 90]
         self.move_thread = None
         #self.home()
+        #self.com.SetGripperConfig(1, 1, 0, 2)
 
 
         # Save Stop motion function in case of error. 
         # Will update to the current movement type's stop
         self.motion_stop = None
+
+    def _set_gripper(self, state):
+        pass
+        #print(self.com.SetToolDO(0, 1 if state else 0))
+        #error = self.com.MoveGripper(0, 90 if state else 0, 50, 50, 0, 0, 0, 0 ,0 ,0)
+        #print(f"MoveGripper retval is:{error}")
 
     def _incriment_move(self, dx, dy, dz, ref=4, vel=20.0, acc=100.0, *vars):
         '''
@@ -569,16 +576,19 @@ class RobotCommunicator():
     def square(self, dist, event=None):
         if event:
             _toggle_frame(event.widget, DISABLED)
-        for i in range(10):
+        L = 20
+        H = dist/L
+        for i in range(L):
+            print(f'Run {i+1} of {L}')
             self._incriment_move(0, dist, 0)
             self._move_wait()
-            self._incriment_move(0, 0, 10)
+            self._incriment_move(0, 0, H)
             self._move_wait()
             self._incriment_move(0, -dist, 0)
             self._move_wait()
-            self._incriment_move(0, 0, 10)
+            self._incriment_move(0, 0, H)
             self._move_wait()
-    
+        self._incriment_move(0, 0, -H*L*2)
         if event:
             _toggle_frame(event.widget, NORMAL)
 
@@ -750,6 +760,8 @@ class GUI:
         self.root.geometry("800x800")
         frame = Frame(self.root, borderwidth=5)
         frame.pack(expand=True, fill=BOTH)
+
+        self.light_record = False
         
         self.tests: list[Test3D] = []
 
@@ -760,10 +772,10 @@ class GUI:
         self.event = True
         threading.Thread(target=self.robot._update_connection, daemon=True).start()
         threading.Thread(target=self._update_widgets, args=(self.connection_bar, self.robot_frame, self.joint_angle_label), daemon=True).start()
-        threading.Thread(target=self._constant_light_intensity, args=(1000,), daemon=True).start()
+        threading.Thread(target=self._constant_light_intensity, args=(10,), daemon=True).start()
         
         self.root.mainloop()
-
+    
     def _on_close(self):
         self.event = False
         self.ls.close()
@@ -893,6 +905,8 @@ class GUI:
         Button(root, text='Home', command=lambda e=None: self.robot.home()).grid(row=3, column=1)
         Button(root, text='Square', command=lambda e=None: threading.Thread(target=self.square_test, args=(100,e)).start()).grid(row=3, column=2)
         Button(root, text='Stop', command=lambda e=None: self.robot.stop()).grid(row=3, column=3)
+        checkvar_val = BooleanVar(value=False)
+        Checkbutton(root, text='Set Gripper', command=lambda e=None: self.robot._set_gripper(checkvar_val.get()), variable=checkvar_val).grid(row=3, column=4)
         self._update_joint_angle_label()
     
     def _update_joint_angle_label(self):
@@ -946,6 +960,14 @@ class GUI:
         self.tests.append(self.test)
         return self.test
 
+    def start_test(self):
+        self.light_intensity = []
+        self.light_record = True
+
+    def end_test(self):
+        self.light_record = False
+        return self.light_intensity
+
     def _constant_light_intensity(self, freq):
         period = 1/freq
         
@@ -956,21 +978,55 @@ class GUI:
                 intensity = self.ls.get_single()
                 self.light_intensity.append((pos, intensity))
 
+                x, y, z, rx, ry, rz = pos
+                self.plot_point(x, y, z)
+
     def square_test(self, dist, event=None):
+        #self.start_test()
         i1 = len(self.light_intensity)-1
         self.robot.square(dist, event)
         i2 = len(self.light_intensity)-1
 
         ax = self.plotter3d.ax
         ax.clear()
-        #coords = [(x,y,z) for (x, y, z, rx, ry, rz), intensity in self.light_intensity[i1:i2]]
+        #results = self.end_test()
         coords, intensities = zip(*self.light_intensity[i1:i2])
         max_intensity = max(intensities)
         x, y, z, rx, ry, rz = zip(*coords)
- 
+        intensities = numpy.array(intensities)/max_intensity
+        #x = average_sample(x, 5)
+        #y = average_sample(y, 5)
+        #z = average_sample(z, 5)
+        #intensities = average_sample(intensities, 5)
+
+
         ax.scatter(x, y, z, cmap='plasma', c=numpy.array(intensities)/max_intensity)
 
         self.plotter3d.canvas.draw()
+        #write_light_data('light_test_data.csv', self.light_intensity[i1:i2])
+
+    def plot_point(self, x, y, z):
+        self.plotter3d.ax.scatter(x, y, z)
+        self.plotter3d.canvas.draw_idle()
+
+def write_light_data(filename, data_sample):
+    with open(filename, 'w') as f:
+        for (x, y, z, rx, ry, rz), intensities  in data_sample:
+            f.write(f'{x}, {y}, {z}, {rx}, {ry}, {rz}, {intensities}\n')
+
+def average_sample(data_sample, pps=1):
+    new_data = []
+    average = 0
+    
+    for i in range(len(data_sample)):
+        if i%pps == 0:
+            new_data.append(numpy.average(data_sample[pps*(i-1):pps*(i)]))
+        #average += data
+        #if i%pps == 0:
+        #    average /= pps
+        #    new_data.append(average)
+        #    average = 0
+    return new_data
 
 
 class Test3D:
