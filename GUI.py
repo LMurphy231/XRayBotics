@@ -285,11 +285,11 @@ class Engine(OpenGLFrame):
     def redraw(self):
         self.engine.window.render()
 
-class communicator:
+class Communicator:
     def __init__(self, root: Frame):
         self.ip_var = StringVar()
         self.chat_var = StringVar()
-        self.remove_socket = None
+        self.remote_socket = None
         self.listensocket  = None
         self.clientsocket = None
         self._build(root)
@@ -370,7 +370,7 @@ class communicator:
         self.user_input_error_label.grid(row=2, column=0, columnspan=2, sticky=NSEW)
 
         
-        self.remove_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         
         self.remote_connect_button = Button(self.user_input_window, text='Connect', command=lambda e=None: threading.Thread(target=self._remote_connection_attempt).start())
         self.remote_connect_button.grid(row=3, column=0, columnspan=2)
@@ -381,7 +381,7 @@ class communicator:
         port = 8000
         ip = self.ip_var.get()
         try:
-            self.remove_socket.connect((ip, port))
+            self.remote_socket.connect((ip, port))
         except Exception as e:
             self.remote_connect_button.config(state=NORMAL)
             print(e)
@@ -389,7 +389,7 @@ class communicator:
             return
         self.user_input_window.destroy()
 
-        listen_process = threading.Thread(target=self.listen, daemon=True, args= (self.remove_socket,))
+        listen_process = threading.Thread(target=self.listen, daemon=True, args= (self.remote_socket,))
         listen_process.start()
 
 
@@ -411,8 +411,8 @@ class communicator:
         self.write_message(text)
 
         try:
-            if self.remove_socket:
-                self.remove_socket.sendall(text.encode())
+            if self.remote_socket:
+                self.remote_socket.sendall(text.encode())
         finally:
             pass
 
@@ -468,7 +468,11 @@ class RobotCommunicator():
         #error = self.com.MoveGripper(0, 90 if state else 0, 50, 50, 0, 0, 0, 0 ,0 ,0)
         #print(f"MoveGripper retval is:{error}")
 
-    def _incriment_move(self, dx, dy, dz, ref=4, vel=20.0, acc=100.0, *vars):
+    def _move(self, function):
+        function()
+        self.move_thread = None
+        
+    def _incriment_move(self, dx, dy, dz, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=100.0):
         '''
         Move Arm with incrimental movements. 
 
@@ -482,64 +486,53 @@ class RobotCommunicator():
         
         acc: Acceleration - default: 100.0
         '''
-        def move(dx, dy, dz):
-            cur_pose = self.com.GetActualTCPPose(0)[1]
-            self.com.MoveL(
-            desc_pos=cur_pose,
-            tool=0,
-            user=0,
-            vel=10.0,
-            acc=20.0,
-            ovl=100.0,
-            blendR=-1.0,
-            blendMode=0,
-            exaxis_pos=[0.0, 0.0, 0.0, 0.0],
-            search=0,
-            offset_flag=2,
-            offset_pos=[dz, dy, dx, 0.0, 0.0, 0.0],
-            oacc=20.0,
-            velAccParamMode=0,
-            )
-            self.move_thread = None
-        
+        # wait until current movement command is finished
         self._move_wait()
-        self.move_thread = threading.Thread(target=move, args=(dx, dy, dz), daemon=True)
+
+        desc_pos=self.com.GetActualTCPPose(0)[1]
+        tool=0
+        user=0
+        vel=10.0
+        acc=20.0
+        ovl=100.0
+        blendR=-1.0
+        blendMode=0
+        exaxis_pos=[0.0, 0.0, 0.0, 0.0]
+        search=0
+        offset_flag=2
+        offset_pos=[dz, dy, dx, drx, dry, drz]
+        oacc=20.0
+        velAccParamMode=0
+
+        funct = lambda: self.com.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode)
+        self.move_thread = threading.Thread(target=self._move, args=(funct, ), daemon=True)
         self.move_thread.start()
 
-        #print(f'Moving by {(dx, dy, dz)}')
-        #current_pose = numpy.array(self.com.GetActualTCPPose(0)[1])
-        #new_pose = current_pose + numpy.array([dx, dy, dz, 0, 0, 0])
-        #self._position_move(*new_pose[:3])
-        #joint_pos = self._invk(*new_pose, type=0)
-        #self._joint_move(joint_pos, tool=0)
 
-    def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0, *vars):
-        '''
-        '''
-        def move(new_pose):
-            self.com.MoveL(
-            desc_pos=new_pose,
-            tool=0,
-            user=0,
-            vel=10.0,
-            acc=20.0,
-            ovl=100.0,
-            blendR=-1.0,
-            blendMode=0,
-            exaxis_pos=[0.0, 0.0, 0.0, 0.0],
-            search=0,
-            offset_flag=2,
-            offset_pos=[0.0, 0.0, 100.0, 0.0, 0.0, 0.0],
-            oacc=20.0,
-            velAccParamMode=0,
-            )
-            self.move_thread = None
-            
-        new_pose = self.com.GetActualTCPPose(0)[1]
-        new_pose[:2] = [x, y, z]
+    def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0):
+
         
         self._move_wait()
-        self.move_thread = threading.Thread(target=move, args=(new_pose,), daemon=True)
+
+        desc_pos = self.com.GetActualTCPPose(0)[1]
+        dpos = [desc_pos[0]-x,desc_pos[3]-r, desc_pos[2]-z,0,0,0] 
+        desc_pos=self.com.GetActualTCPPose(0)[1],
+        tool=0
+        user=0
+        vel=10.0
+        acc=20.0
+        ovl=100.0
+        blendR=-1.0
+        blendMode=0
+        exaxis_pos=[0.0, 0.0, 0.0, 0.0]
+        search=0
+        offset_flag=2
+        offset_pos=dpos
+        oacc=20.0
+        velAccParamMode=0
+
+        funct = lambda: self.com.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode)
+        self.move_thread = threading.Thread(target=self._move, args=(funct, ), daemon=True)
         self.move_thread.start()
 
         
@@ -548,24 +541,23 @@ class RobotCommunicator():
         self.stop()
         self._joint_move(self.HOME)
 
-    def _joint_move(self, joint_pos, tool=0, user=0, desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0], vel = 20.0, acc = 0.0, 
-                    ovl = 100.0, exaxis_pos = [0.0,0.0,0.0,0.0], blendT = -1.0, offset_flag = 0, offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0]):
-        '''
-        '''
-        
-        def move(joint_pos, tool=0, user=0, desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0], vel = 20.0, acc = 0.0, 
-                    ovl = 100.0, exaxis_pos = [0.0,0.0,0.0,0.0], blendT = -1.0, offset_flag = 0, offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0]):
-            self.com.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos)
-            self.move_thread = None
+    def _joint_move(self, joint_pos):
 
         self._move_wait()
-        self.move_thread = threading.Thread(target=move, args=(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos), daemon=True)
+        tool=0
+        user=0
+        desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+        vel = 20.0
+        acc = 0.0
+        ovl = 100.0
+        exaxis_pos = [0.0,0.0,0.0,0.0]
+        blendT = -1.0
+        offset_flag = 0
+        offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0]
+
+        funct = lambda: self.com.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos)
+        self.move_thread = threading.Thread(target=self._move, args=(funct, ), daemon=True)
         self.move_thread.start()
-        #ierr = self.com.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos)
-        #if ierr:
-        #    self.motion_stop()
-        #    print(ierr)
-        #    return True
 
         return False
     
@@ -839,7 +831,7 @@ class GUI:
         # TODO Connection Status
         cs_frame = create_frame(root,7,0,1,9,LabelFrame, text='Connection Frame', relief=GROOVE, sticky=NSEW)
         text_frame = create_frame(cs_frame,0,0,5,1,LabelFrame, text='Connection Chat', relief=GROOVE, sticky=NSEW)
-        self.communicator = communicator(text_frame)
+        self.communicator = Communicator(text_frame)
 
         
 
