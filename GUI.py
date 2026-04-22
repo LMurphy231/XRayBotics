@@ -285,6 +285,57 @@ class Engine(OpenGLFrame):
     def redraw(self):
         self.engine.window.render()
 
+class Plotter2D():
+    def __init__(self, root, **options):
+        self.root = root
+        self.fig = Figure(figsize=(6, 4), dpi = 100)
+        self.ax = self.fig.add_subplot(111)
+        
+        self.canvas = FigureCanvasTkAgg(self.fig, master = self.root)
+        self.toolbar_frame = Frame(self.root)
+        self.toolbar_frame.pack(side=BOTTOM, expand=True, fill=X)
+        toolbar_frame = Frame(self.toolbar_frame)
+        toolbar_frame.pack(side=LEFT, expand=True, fill=X)
+        toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
+        toolbar.update()
+
+        self.ax.minorticks_on()
+        self.ax.grid(True)
+        
+        canvas_widget = self.canvas.get_tk_widget()
+        canvas_widget.pack(side=LEFT, fill=BOTH, expand = True)
+    
+    def _update_plot(self):
+        self.ax.clear()
+
+        self.canvas.draw()
+ 
+class Plotter3D():
+    def __init__(self, root, **options):
+        self.root = root
+        self.fig = Figure(figsize=(6, 5), dpi = 100)
+        self.ax = self.fig.add_subplot(111, projection='3d')
+        
+        self.canvas = FigureCanvasTkAgg(self.fig, master = self.root)
+        self.toolbar_frame = Frame(self.root)
+        self.toolbar_frame.pack(side=BOTTOM, expand=False, fill=X)
+        toolbar_frame = Frame(self.toolbar_frame)
+        toolbar_frame.pack(side=LEFT, expand=False, fill=X)
+        toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
+        toolbar.update()
+        Button(self.toolbar_frame, text='Autoscale', command = no_function).pack(side=LEFT)
+        
+        canvas_widget = self.canvas.get_tk_widget()
+        canvas_widget.pack(side=LEFT, fill=BOTH, expand = True)
+
+    
+    def _update_plot(self):
+        self.ax.clear()
+
+        self.canvas.draw()
+       
+
+
 class Communicator:
     def __init__(self, root: Frame):
         self.ip_var = StringVar()
@@ -659,33 +710,16 @@ class LightSensor():
 
         return self.lq.read('ch1')
     
-    def get(self, avgn=1, N=None, read_time=None, linedata=None):
+    def get(self, Navg=1):
         '''
         Get sample of size N over avgn readings per sample returned
         '''
-        lux=[]
-        t=[]
-        assert N or read_time
 
         if self.status == -1:
             self.connect()
             self.lq.start(period=int(1/self.freq*1000))
-        if N:
-            for n in range(N):
-                reading = self.lq.read_multi_pt('ch1', avgn)
-                lux.append(self._avg(reading if reading else [0]))
-                t.append(1/self.freq*n*avgn)
-        elif read_time:
-            start_time = time.time()
-            time.sleep(read_time)
-            #while time.time() - start_time < read_time:
-            reading = self.lq.read_multi_pt('ch1', avgn)
-            lux.append(self._avg(reading if reading else [0]))
-            t.append(time.time()-start_time)
 
-        self._plot_points(t, lux, linedata)
-        self.rec = False
-        return (t, lux)
+        return numpy.average(self.lq.read_multi_pt('ch1', Navg))
 
     def test(self, avgn=1, chunk=1000, button:Button=None, linedata=None):
         if button:
@@ -738,6 +772,7 @@ class LightSensor():
         ax.autoscale_view()
         canvas.draw_idle()
 
+
 class GUI:
     def __init__(self):
         self.robot = RobotCommunicator()
@@ -745,6 +780,7 @@ class GUI:
         self.float_var = {}
         self.light_intensity: list[tuple[float, float]] = []
 
+        
 
         self.root: Tk = ttk.setup_master()
         self.root.title("Simulation Plotter")
@@ -755,16 +791,17 @@ class GUI:
 
         self.light_record = False
         
-        self.tests: list[Test3D] = []
-
         self._build(frame)
+
+        self.test_data =TestData(self.robot, self.ls, self.TestSelection, self.plotter2d, self.plotter3d)
+
         self.root.protocol("WM_DELETE_WINDOW",  self._on_close)
 
         
         self.event = True
         threading.Thread(target=self.robot._update_connection, daemon=True).start()
         threading.Thread(target=self._update_widgets, args=(self.connection_bar, self.robot_frame, self.joint_angle_label), daemon=True).start()
-        threading.Thread(target=self._constant_light_intensity, args=(10,), daemon=True).start()
+        #threading.Thread(target=self._constant_light_intensity, args=(10,), daemon=True).start()
         
         self.root.mainloop()
     
@@ -772,8 +809,7 @@ class GUI:
         self.event = False
         self.ls.close()
         self.communicator.set_running(False)
-        self.root.destroy()
-        
+        self.root.destroy()      
 
     def _create_menu(self):
         pass
@@ -782,9 +818,11 @@ class GUI:
         
         self._create_menu()
 
-        # TODO: Check Device Connections
-        
-        dc_frame = create_frame(root,0,0,7,3,LabelFrame, text='DC Frame', relief=GROOVE, sticky=NSEW)
+        # Test Select frame
+        ts_frame = create_frame(root,0,0,7,3,LabelFrame, text='Test Selection', relief=GROOVE, sticky=NSEW)
+        self.TestSelection = Listbox(root, selectmode=MULTIPLE, )
+        self.TestSelection.grid(row=0, column=1, sticky=NSEW)
+        self.TestSelection.bind('<<ListboxSelect>>', lambda e=None: self.test_data._plot_selected())
 
         # tab_frame: Tab Functions
         tab_frame = create_frame(root,0,3,1,6,LabelFrame, text='Tab Frame', relief=GROOVE, sticky=NSEW)
@@ -854,10 +892,14 @@ class GUI:
 
         light_test_button = Button(lr_frame, text='Start New Test', command=lambda e=None: self._light_test(light_test_button))
         light_test_button.grid(row=len(settings),column=1)
+        Button(lr_frame, text='Dummy Test', command=lambda e=None: self.test_data._dummy_test(100, 5)).grid(row=len(settings), column=2)
+        
 
         lrp_frame = LabelFrame(root, text='Light Reading Settings')
         lrp_frame.grid(row=0, column=1, rowspan=5, sticky=NSEW)
         self.test_plot = Plotter2D(lrp_frame)
+
+        
 
     def _light_test(self, button):
         line = self.test_plot.ax.plot([],[])[0]
@@ -905,8 +947,6 @@ class GUI:
         j1, j2, j3, j4, j5, j6 = self.robot._get_joint_angles(True)
         self.joint_angle_label.config(text=f'Joint Angles:\nj1 = {j1}\n j2 = {j2}\n j3 = {j3}\n j4 = {j4}\n j5 = {j5}\n j6 = {j6}\n')
 
-    
-        
     def _update_widgets(self, status: ConnectionStatus, frame: Frame, joint_label: Label):
         frame_disabled = False
         while True:
@@ -925,7 +965,6 @@ class GUI:
             if self.robot.com.is_conect:
                 j1, j2, j3, j4, j5, j6 = self.robot._get_joint_angles(True)
                 joint_label.config(text=f'Joint Angles:\nj1 = {j1}\n j2 = {j2}\n j3 = {j3}\n j4 = {j4}\n j5 = {j5}\n j6 = {j6}\n')
-                
 
     def create_model(self, root, step):
 
@@ -947,19 +986,6 @@ class GUI:
             self.plotter3d.canvas.draw_idle()
             self.plotter2d.canvas.draw_idle()
 
-    def new_test(self, test_name, maxsize=None):
-        self.test = Test3D(test_name, maxsize, f"#{numpy.random.randint(0, 0xFFFFFF):06x}")
-        self.tests.append(self.test)
-        return self.test
-
-    def start_test(self):
-        self.light_intensity = []
-        self.light_record = True
-
-    def end_test(self):
-        self.light_record = False
-        return self.light_intensity
-
     def _constant_light_intensity(self, freq):
         period = 1/freq
         
@@ -974,142 +1000,286 @@ class GUI:
                 self.plot_point(x, y, z)
 
     def square_test(self, dist, event=None):
-        #self.start_test()
-        i1 = len(self.light_intensity)-1
-        self.robot.square(dist, event)
-        i2 = len(self.light_intensity)-1
+        def _test(freq, Navg, widget=None):
+            if widget:
+                _toggle_frame(widget, DISABLED)
+            L = 10
+            H = dist/L
+            start_index = self.test_data.cur_test_id
 
-        ax = self.plotter3d.ax
-        ax.clear()
-        #results = self.end_test()
-        coords, intensities = zip(*self.light_intensity[i1:i2])
-        max_intensity = max(intensities)
-        x, y, z, rx, ry, rz = zip(*coords)
-        intensities = numpy.array(intensities)/max_intensity
-        #x = average_sample(x, 5)
-        #y = average_sample(y, 5)
-        #z = average_sample(z, 5)
-        #intensities = average_sample(intensities, 5)
+            for i in range(L):
+                print(f'Run {i+1} of {L}')
+                self.test_data.start_recording(freq, Navg, 0, dist, 0)
+                self.robot._incriment_move(0, dist, 0)
+                self.robot._move_wait()
+                self.test_data.end_recording()
 
+                self.test_data.start_recording(freq, 0, 0, H)
+                self.robot._incriment_move(0, 0, H)
+                self.robot._move_wait()
+                self.test_data.end_recording()
 
-        ax.scatter(x, y, z, cmap='plasma', c=numpy.array(intensities)/max_intensity)
+                self.test_data.start_recording(freq, Navg, 0, -dist, 0)
+                self.robot._incriment_move(0, -dist, 0)
+                self.robot._move_wait()
+                self.test_data.end_recording()
 
-        self.plotter3d.canvas.draw()
-        #write_light_data('light_test_data.csv', self.light_intensity[i1:i2])
+                self.test_data.start_recording(freq, Navg, 0, 0, H)
+                self.robot._incriment_move(0, 0, H)
+                self.robot._move_wait()
+                self.test_data.end_recording()
 
+            self.robot._incriment_move(0, 0, -H*L*2)
+            end_index = self.test_data.cur_test_id
+
+            #self.test_data.plot_3d_data([start_index, end_index])
+            #self.test_data.plot_2d_data([start_index, end_index])
+
+            if event:
+                _toggle_frame(widget, NORMAL)
+                pass
+        thread = threading.Thread(target=_test, args=(self.plotter3d, ))
+        
     def plot_point(self, x, y, z):
         self.plotter3d.ax.scatter(x, y, z)
         self.plotter3d.canvas.draw_idle()
 
-def write_light_data(filename, data_sample):
-    with open(filename, 'w') as f:
-        for (x, y, z, rx, ry, rz), intensities  in data_sample:
-            f.write(f'{x}, {y}, {z}, {rx}, {ry}, {rz}, {intensities}\n')
-
-def average_sample(data_sample, pps=1):
-    new_data = []
-    average = 0
+class TestData:
+    def __init__(self, robot:RobotCommunicator, ls:LightSensor, cb:Listbox, plotter2d: Plotter2D, plotter3d: Plotter3D):
+        self.robot = robot
+        self.ls = ls
+        self.cb = cb
+        self.plotter2d = plotter2d
+        self.plotter3d = plotter3d
+        self.data_history: list[tuple[float, float, numpy.ndarray]] = []
+        self.data = []
+        self._test_lines: dict[int, dict[str, Line2D]] = {}
+        self.recording = False
+        self.thread = None
+        self.pos = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) # [x, y, z, rx, ry, rz]
+        self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self._setup_plots()
     
-    for i in range(len(data_sample)):
-        if i%pps == 0:
-            new_data.append(numpy.average(data_sample[pps*(i-1):pps*(i)]))
-        #average += data
-        #if i%pps == 0:
-        #    average /= pps
-        #    new_data.append(average)
-        #    average = 0
-    return new_data
+    def _setup_plots(self):
+        self.plotter2d.ax.set_xlabel('Time (s)')
+        self.plotter2d.ax.set_ylabel('Light Intensity (lumen)')
+        self.plotter2d.ax.legend().set_visible(True)
+
+        self.plotter3d.ax.set_xlabel('x (mm)')
+        self.plotter3d.ax.set_ylabel('y (mm)')
+        self.plotter3d.ax.set_zlabel('z (mm)')
+        self.plotter3d.ax.legend().set_visible(True)
 
 
-class Test3D:
-    def __init__(self, test_name:str, maxsize=None, color='blue'):
-        self.color = color
-        self.test_name = test_name
-        self.maxsize=maxsize
-
-        self.light_intensity: list[tuple[float, float, float, float, float, float]] = []
-        '''[(x, y, z, rx, ry, rz), ...]'''
-        self.path: list[tuple[float, float, float]] = []
-        '''[(x,y,z), ...]'''
-
-    def add_li(self, x, y, z, theta, phi, intensity):
-        # Remove oldest index if maxsize is set and reached
-        if self.maxsize is not None and self.light_intensity >= self.maxsize:
-            self.light_intensity.pop(0)
-
-        rx = intensity * numpy.cos(theta) * numpy.sin(phi)
-        ry = intensity * numpy.sin(theta) * numpy.sin(phi)
-        rz = intensity * numpy.cos(phi)
-
-        self.light_intensity.append((x, y, z, rx, ry, rz))
-    
-    def plot_light_intensity3D(self, ax: axes.Axes, **options):
-        
-        for x, y, z, rx, ry, rz in self.light_intensity:
-            ax.quiver(x, y, z, rx, ry, rz, color = self.color, **_is_attribute(ax.quiver, 'get', **options)) 
-    
-    def plot_light_intensity2D(self, ax: axes.Axes, **options):
-        for x, y, z, rx, ry, rz in self.light_intensity:
-            ax.scatter(x, y, c=self.color, **_is_attribute(ax.scatter, 'get', **options)) 
-        
-
-    def add_path(self, x, y, z):
-        # Remove oldest index if maxsize is set and reached
-        if self.maxsize is not None and self.path >= self.maxsize:
-            self.path.pop(0)
-
-        self.path.append((x, y, z))
-    
-class Plotter2D():
-    def __init__(self, root, **options):
-        self.root = root
-        self.fig = Figure(figsize=(6, 4), dpi = 100)
-        self.ax = self.fig.add_subplot(111)
-        
-        self.canvas = FigureCanvasTkAgg(self.fig, master = self.root)
-        self.toolbar_frame = Frame(self.root)
-        self.toolbar_frame.pack(side=BOTTOM, expand=True, fill=X)
-        toolbar_frame = Frame(self.toolbar_frame)
-        toolbar_frame.pack(side=LEFT, expand=True, fill=X)
-        toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
-        toolbar.update()
-
-        self.ax.minorticks_on()
-        self.ax.grid(True)
-        
-        canvas_widget = self.canvas.get_tk_widget()
-        canvas_widget.pack(side=LEFT, fill=BOTH, expand = True)
+    @property
+    def cur_test_id(self):
+        return len(self.data_history)-1
 
     
-    def _update_plot(self):
-        self.ax.clear()
+            
+    def test_result(self, test_id, flat=False):
+        test_data = self.data_history[test_id]
+        if flat:
+            return test_data
+        t, intensities, x, y, z, rx, ry, rz = zip(*test_data)
+        return (t, intensities, x, y, z, rx, ry, rz)
 
-        self.canvas.draw()
- 
-class Plotter3D():
-    def __init__(self, root, **options):
-        self.root = root
-        self.fig = Figure(figsize=(6, 5), dpi = 100)
-        self.ax = self.fig.add_subplot(111, projection='3d')
-        
-        self.canvas = FigureCanvasTkAgg(self.fig, master = self.root)
-        self.toolbar_frame = Frame(self.root)
-        self.toolbar_frame.pack(side=BOTTOM, expand=False, fill=X)
-        toolbar_frame = Frame(self.toolbar_frame)
-        toolbar_frame.pack(side=LEFT, expand=False, fill=X)
-        toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
-        toolbar.update()
-        Button(self.toolbar_frame, text='Autoscale', command = no_function).pack(side=LEFT)
-        
-        canvas_widget = self.canvas.get_tk_widget()
-        canvas_widget.pack(side=LEFT, fill=BOTH, expand = True)
-
+    def set_pos(self, x, y, z, rx, ry, rz):
+        self.pos = numpy.array([x, y, z, rx, ry, rz])
+        self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     
-    def _update_plot(self):
-        self.ax.clear()
+    def incriment_pos(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0):
+        self.pos += self.offset
+        
+    def _interpolate(self, test_data, start_pos, offset):
+        interpolated_data = []
+        incriment = offset/len(test_data)
+        for i, (t, intensity) in enumerate(test_data):
+            pos = start_pos + incriment*i
+            interpolated_data.append((t, intensity, *pos))
+        self.pos += offset
 
-        self.canvas.draw()
-       
+        return interpolated_data
+        
+    def start_recording(self, freq, Navg, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0):
+        if self.recording:
+            raise AssertionError("A test is already recording...")
+        
+        self.recording = True
+        self.data = []
+        self.offset = numpy.array([dx, dy, dz, drx, dry, drz])
+        self.thread = threading.Thread(target=self._record(freq, Navg))
+        self.thread.start()
+    
+    def end_recording(self):
+        self.recording = False
+        # wait some time so _record thread ends
+        time.sleep(0.01)
+        self.thread.join()
+        self.data_history.append(self._interpolate(self.data, self.pos, self.offset))
+        test_id = len(self.data_history)-1
+        self._test_lines.setdefault(test_id, {'3D': None, '2D': None})
+        self.plot_2d_data(test_id)
+        self.plot_3d_data(test_id)
+        self.cb.insert(END, f'Test {len(self.data_history)-1}')
+        self.cb.selection_set(test_id)
+
+        i = len(self.data_history)-1
+        return i, self.data_history[-1]
+
+    def _record(self, freq, Navg):
+        period = 1/freq
+        while self.recording:
+            time.sleep(period)
+            self.data.append((time.time(), self.ls.get(Navg)))
+
+    def plot_3d_data(self, test_id: typing.Union[int, tuple, list]):
+        def _plot(test_id):
+            t, intensities, x, y, z, rx, ry, rz = self.test_result(test_id)
+            intensities = numpy.array(intensities)/max(intensities)
+            self._test_lines[test_id]['3D'] = self.plotter3d.ax.scatter(x, y, z, cmap='plasma', c=intensities, label=f'Test {test_id}')
+
+        if isinstance(test_id, int):
+            _plot(test_id)
+
+        if isinstance(test_id, tuple):
+            for id_ in test_id:
+                _plot(id_)
+        
+        if isinstance(test_id, list):
+            # from [id1:id2]
+            if len(test_id) == 2:
+                for id_ in range(test_id[0], test_id[1]+1):
+                    _plot(id_)
+            else:
+                for id_ in test_id:
+                    _plot(id_)
+
+        self.plotter3d.canvas.draw_idle()
+
+    def plot_2d_data(self, test_id: typing.Union[int, tuple, list]):
+        def _plot(test_id):
+            t, intensities, x, y, z, rx, ry, rz = self.test_result(test_id)
+            intensities = numpy.array(intensities)/max(intensities)
+            self._test_lines[test_id]['2D'] = self.plotter2d.ax.scatter(t, intensities, label=f'Test {test_id}')
+            
+
+        if isinstance(test_id, int):
+            _plot(test_id)
+
+        if isinstance(test_id, tuple):
+            for id_ in test_id:
+                _plot(id_)
+        
+        if isinstance(test_id, list):
+            # from [id1:id2]
+            if len(test_id) == 2:
+                for id_ in range(test_id[0], test_id[1]+1):
+                    _plot(id_)
+            else:
+                for id_ in test_id:
+                    _plot(id_)
+        
+        self.plotter2d.canvas.draw_idle()
+
+    def show_results(self, test_id: typing.Union[int, tuple, list]):
+        
+        if isinstance(test_id, int):
+            self._toggle_test_line(test_id, True)
+
+        if isinstance(test_id, tuple):
+            for id_ in test_id:
+                self._toggle_test_line(id_, True)
+        
+        if isinstance(test_id, list):
+            # from [id1:id2]
+            if len(test_id) == 2:
+                for id_ in range(test_id[0], test_id[1]+1):
+                    self._toggle_test_line(id_, True)
+            else:
+                for id_ in test_id:
+                    self._toggle_test_line(id_, True)
+
+    def _toggle_test_line(self, test_id, state=True):
+        if self._test_lines[test_id]['3D'] is not None:
+            self._test_lines[test_id]['3D'].set_visible(state)
+        if self._test_lines[test_id]['2D'] is not None:
+            self._test_lines[test_id]['2D'].set_visible(state)
+
+    def _plot_selected(self):
+        selected_indices = self.cb.curselection()
+        # Use get(index) to retrieve the text for each index
+        selected_tests = [int(self.cb.get(i).split('Test ')[-1]) for i in selected_indices]
+
+        for test_id in range(len(self.data_history)):
+            self._toggle_test_line(test_id, test_id in selected_tests)
+
+        self.plotter2d.canvas.draw_idle()
+        self.plotter3d.canvas.draw_idle()
+
+    def write_test_to_file(self, filename, test_id: typing.Union[int, tuple, list]):
+        def writer(f, test_id):
+            f.write(f'// Test {test_id} \n')
+            for data in self.test_result(test_id, flat=True):
+                f.write(f'{",".join(map(str, data))}\n')
+
+        with open(filename, 'w') as f:
+            #write header
+            f.write(f'// Time, Intensity, x, y, z, rx, ry, rz\n')
+
+            if isinstance(test_id, int):
+                writer(f, test_id)
+
+            if isinstance(test_id, tuple):
+                for id_ in test_id:
+                    writer(f, id_)
+
+            if isinstance(test_id, list):
+                # from [id1:id2]
+                if len(test_id) == 2:
+                    for id_ in range(test_id[0], test_id[1]+1):
+                        writer(f, id_)
+                else:
+                    for id_ in test_id:
+                        writer(f, id_)
+
+    def extract_test_file(self, filename):
+        extracted_data = {}
+        test_id = 0
+        with open(filename, 'r') as f:
+            for index, line in enumerate(f.readlines()):
+                if index == 0:
+                    continue
+                if '//' in line:
+                    test_id = int(line.split('// Test ')[-1])
+                    print(f'Extracting Test {test_id}...')
+                    extracted_data.setdefault(test_id, [])
+                    continue
+                extracted_data[test_id].append(tuple(map(float, line.split(','))))
+        for test in extracted_data.values():
+            self.data_history.append(test)
+            test_id = len(self.data_history)-1
+            self._test_lines.setdefault(test_id, {'3D': None, '2D': None})
+            self.plot_2d_data(test_id)
+            self.plot_3d_data(test_id)
+            self.cb.insert(END, f'Test {len(self.data_history)-1}')
+            self.cb.selection_set(test_id)
+
+        return extracted_data.values()
+
+    def _dummy_test(self, L, N):
+        self.data = []
+        start_index = self.cur_test_id + 1
+        for i in range(N):
+            for j in range(L):
+                self.data.append((*numpy.random.randn(8), ))
+            self.data_history.append(self.data)
+            self.data = []
+        self.write_test_to_file('Dummy_test_data.tst', [start_index, self.cur_test_id])
+        self.data_history = []
+        self.extract_test_file('Dummy_test_data.tst')
+        return self.data                
+
 
 if __name__ == '__main__':
     gui = GUI()
