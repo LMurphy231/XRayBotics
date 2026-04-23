@@ -540,25 +540,27 @@ class RobotCommunicator():
         # wait until current movement command is finished
         self._move_wait()
 
-        desc_pos=self.com.GetActualTCPPose(0)[1]
-        tool=0
-        user=0
-        vel=10.0
-        acc=20.0
-        ovl=100.0
-        blendR=-1.0
-        blendMode=0
-        exaxis_pos=[0.0, 0.0, 0.0, 0.0]
-        search=0
-        offset_flag=2
-        offset_pos=[dz, dy, dx, drx, dry, drz]
-        oacc=20.0
-        velAccParamMode=0
+        
 
-        funct = lambda: self.com.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode)
+        funct = lambda: self.com.MoveL(
+            desc_pos=self.com.GetActualTCPPose(0)[1],
+            tool=0,
+            user=0,
+            joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            vel=10.0,
+            acc=20.0,
+            ovl=100.0,
+            blendR=-1.0,
+            blendMode=0,
+            exaxis_pos=[0.0, 0.0, 0.0, 0.0],
+            search=0,
+            offset_flag=2,
+            offset_pos=[dz, dy, dx, drx, dry, drz],
+            oacc=20.0,
+            velAccParamMode=0,
+            )
         self.move_thread = threading.Thread(target=self._move, args=(funct, ), daemon=True)
         self.move_thread.start()
-
 
     def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0):
 
@@ -585,9 +587,7 @@ class RobotCommunicator():
         funct = lambda: self.com.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode)
         self.move_thread = threading.Thread(target=self._move, args=(funct, ), daemon=True)
         self.move_thread.start()
-
-        
-    
+ 
     def home(self):
         self.stop()
         self._joint_move(self.HOME)
@@ -669,10 +669,11 @@ class RobotCommunicator():
 
     def _update_connection(self):
         while True:
-            time.sleep(5)
             if not self.com.is_conect:
-                self.com.reconnect()
-                
+                self.com.reconnect()     
+            else:
+                return 
+            time.sleep(5)
 
     def stop(self):
         print('stopping')
@@ -684,7 +685,6 @@ class LightSensor():
         self.lq = LabQuest()
         self.status = -1
         self.rec = False
-        
 
     def connect(self):
         self.status = self.lq.open()
@@ -718,8 +718,9 @@ class LightSensor():
         if self.status == -1:
             self.connect()
             self.lq.start(period=int(1/self.freq*1000))
-
-        return numpy.average(self.lq.read_multi_pt('ch1', Navg))
+        data = self.lq.read_multi_pt('ch1', Navg)
+        data = data if data else numpy.full(Navg, 0)
+        return numpy.average(data)
 
     def test(self, avgn=1, chunk=1000, button:Button=None, linedata=None):
         if button:
@@ -772,7 +773,6 @@ class LightSensor():
         ax.autoscale_view()
         canvas.draw_idle()
 
-
 class GUI:
     def __init__(self):
         self.robot = RobotCommunicator()
@@ -780,7 +780,7 @@ class GUI:
         self.float_var = {}
         self.light_intensity: list[tuple[float, float]] = []
 
-        
+        self.stop_movement = False
 
         self.root: Tk = ttk.setup_master()
         self.root.title("Simulation Plotter")
@@ -799,7 +799,7 @@ class GUI:
 
         
         self.event = True
-        threading.Thread(target=self.robot._update_connection, daemon=True).start()
+        
         threading.Thread(target=self._update_widgets, args=(self.connection_bar, self.robot_frame, self.joint_angle_label), daemon=True).start()
         #threading.Thread(target=self._constant_light_intensity, args=(10,), daemon=True).start()
         
@@ -820,8 +820,8 @@ class GUI:
 
         # Test Select frame
         ts_frame = create_frame(root,0,0,7,3,LabelFrame, text='Test Selection', relief=GROOVE, sticky=NSEW)
-        self.TestSelection = Listbox(root, selectmode=MULTIPLE, )
-        self.TestSelection.grid(row=0, column=1, sticky=NSEW)
+        self.TestSelection = Listbox(ts_frame, selectmode=MULTIPLE, )
+        self.TestSelection.pack(expand=True, fill=BOTH)#.grid(row=0, column=0, columnspan=2, sticky=NSEW)
         self.TestSelection.bind('<<ListboxSelect>>', lambda e=None: self.test_data._plot_selected())
 
         # tab_frame: Tab Functions
@@ -849,7 +849,6 @@ class GUI:
         #self.create_model(plot_frame, r'FRCobots-V6.0 STEP Models/FRCobots-V6.0 STEP Models/FR3-V6.0 Model.STEP')
 
         plot_frame = create_frame(self.tabs,1,3,6,6,LabelFrame, relief=GROOVE, sticky=NSEW)
-        Button(plot_frame, text='start demo', command=lambda e=None: self._dummy_light_test()).pack()
         self.tabs.add(plot_frame, text='Results')
         self.plotter_notebook = ttk.Notebook(plot_frame)
         self.plotter_notebook.pack(expand=True, fill=BOTH)
@@ -893,13 +892,13 @@ class GUI:
         light_test_button = Button(lr_frame, text='Start New Test', command=lambda e=None: self._light_test(light_test_button))
         light_test_button.grid(row=len(settings),column=1)
         Button(lr_frame, text='Dummy Test', command=lambda e=None: self.test_data._dummy_test(100, 5)).grid(row=len(settings), column=2)
+        Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data.write_test_to_file('Dummy_test_data.tst', [0, self.test_data.cur_test_id])).grid(row=len(settings), column=3)
+        Button(lr_frame, text='Open Tests', command=lambda e=None: self.test_data.extract_test_file('Dummy_test_data2.tst')).grid(row=len(settings), column=4)
         
 
         lrp_frame = LabelFrame(root, text='Light Reading Settings')
         lrp_frame.grid(row=0, column=1, rowspan=5, sticky=NSEW)
         self.test_plot = Plotter2D(lrp_frame)
-
-        
 
     def _light_test(self, button):
         line = self.test_plot.ax.plot([],[])[0]
@@ -949,6 +948,7 @@ class GUI:
 
     def _update_widgets(self, status: ConnectionStatus, frame: Frame, joint_label: Label):
         frame_disabled = False
+        reconnect_thread = threading.Thread(target=self.robot._update_connection, daemon=True)
         while True:
             time.sleep(0.5)
             
@@ -958,6 +958,10 @@ class GUI:
             if strength == 0.0:
                 frame_disabled = True
                 _toggle_frame(frame, DISABLED)
+                if not reconnect_thread.is_alive():
+                    print('here')
+                    reconnect_thread = threading.Thread(target=self.robot._update_connection, daemon=True)
+                    reconnect_thread.start()
             elif frame_disabled:
                 frame_disabled = False
                 _toggle_frame(frame, NORMAL)
@@ -1001,48 +1005,52 @@ class GUI:
 
     def square_test(self, dist, event=None):
         def _test(freq, Navg, widget=None):
-            if widget:
-                _toggle_frame(widget, DISABLED)
-            L = 10
-            H = dist/L
-            start_index = self.test_data.cur_test_id
+            try:
+                if widget:
+                    _toggle_frame(widget, DISABLED)
+                L = 3
+                H = dist/L
+                self.test_data.start_recording(freq, Navg, 'Square_test')
+                for i in range(L):
+                    print(f'Run {i+1} of {L}')
+                    self.test_data.new_movement(0, dist, 0)
+                    self.robot._incriment_move(0, dist, 0)
+                    self.robot._move_wait()
+                    if not self.stop_movement: raise AssertionError
 
-            for i in range(L):
-                print(f'Run {i+1} of {L}')
-                self.test_data.start_recording(freq, Navg, 0, dist, 0)
-                self.robot._incriment_move(0, dist, 0)
-                self.robot._move_wait()
+                    self.test_data.new_movement(0, 0, H)
+                    self.robot._incriment_move(0, 0, H)
+                    self.robot._move_wait()
+                    if not self.stop_movement: raise AssertionError
+
+                    self.test_data.new_movement(0, -dist, 0)
+                    self.robot._incriment_move(0, -dist, 0)
+                    self.robot._move_wait()
+                    if not self.stop_movement: raise AssertionError
+
+                    self.test_data.new_movement(0, 0, H)
+                    self.robot._incriment_move(0, 0, H)
+                    self.robot._move_wait()
+                    if not self.stop_movement: raise AssertionError
+
                 self.test_data.end_recording()
 
-                self.test_data.start_recording(freq, 0, 0, H)
-                self.robot._incriment_move(0, 0, H)
-                self.robot._move_wait()
+                self.robot._incriment_move(0, 0, -H*L*2)
+
+                if event:
+                    _toggle_frame(widget, NORMAL)
+                    pass
+            except AssertionError:
                 self.test_data.end_recording()
+                return
 
-                self.test_data.start_recording(freq, Navg, 0, -dist, 0)
-                self.robot._incriment_move(0, -dist, 0)
-                self.robot._move_wait()
-                self.test_data.end_recording()
-
-                self.test_data.start_recording(freq, Navg, 0, 0, H)
-                self.robot._incriment_move(0, 0, H)
-                self.robot._move_wait()
-                self.test_data.end_recording()
-
-            self.robot._incriment_move(0, 0, -H*L*2)
-            end_index = self.test_data.cur_test_id
-
-            #self.test_data.plot_3d_data([start_index, end_index])
-            #self.test_data.plot_2d_data([start_index, end_index])
-
-            if event:
-                _toggle_frame(widget, NORMAL)
-                pass
-        thread = threading.Thread(target=_test, args=(self.plotter3d, ))
+        thread = threading.Thread(target=_test, args=(5000, 1), daemon=True)
+        thread.start()
         
     def plot_point(self, x, y, z):
         self.plotter3d.ax.scatter(x, y, z)
         self.plotter3d.canvas.draw_idle()
+
 
 class TestData:
     def __init__(self, robot:RobotCommunicator, ls:LightSensor, cb:Listbox, plotter2d: Plotter2D, plotter3d: Plotter3D):
@@ -1052,10 +1060,16 @@ class TestData:
         self.plotter2d = plotter2d
         self.plotter3d = plotter3d
         self.data_history: list[tuple[float, float, numpy.ndarray]] = []
+
+        self.test_results: dict[str, list[tuple[numpy.ndarray, list[numpy.ndarray]]]] = {None: []} 
+
+        self.current_test_name = None
+
         self.data = []
         self._test_lines: dict[int, dict[str, Line2D]] = {}
-        self.recording = False
+        self.moving = False
         self.thread = None
+
         self.pos = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) # [x, y, z, rx, ry, rz]
         self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self._setup_plots()
@@ -1063,19 +1077,16 @@ class TestData:
     def _setup_plots(self):
         self.plotter2d.ax.set_xlabel('Time (s)')
         self.plotter2d.ax.set_ylabel('Light Intensity (lumen)')
-        self.plotter2d.ax.legend().set_visible(True)
+        #self.plotter2d.ax.legend().set_visible(True)
 
         self.plotter3d.ax.set_xlabel('x (mm)')
         self.plotter3d.ax.set_ylabel('y (mm)')
         self.plotter3d.ax.set_zlabel('z (mm)')
-        self.plotter3d.ax.legend().set_visible(True)
-
+        #self.plotter3d.ax.legend().set_visible(True)
 
     @property
     def cur_test_id(self):
-        return len(self.data_history)-1
-
-    
+        return max(len(self.data_history)-1, 0)
             
     def test_result(self, test_id, flat=False):
         test_data = self.data_history[test_id]
@@ -1088,97 +1099,115 @@ class TestData:
         self.pos = numpy.array([x, y, z, rx, ry, rz])
         self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     
-    def incriment_pos(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0):
-        self.pos += self.offset
+    def new_movement(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0):
+        self.offset = numpy.array([dx, dy, dz, drx, dry, drz])
         
     def _interpolate(self, test_data, start_pos, offset):
         interpolated_data = []
-        incriment = offset/len(test_data)
+        incriment = offset/max(len(test_data),1)
         for i, (t, intensity) in enumerate(test_data):
             pos = start_pos + incriment*i
             interpolated_data.append((t, intensity, *pos))
-        self.pos += offset
 
         return interpolated_data
         
-    def start_recording(self, freq, Navg, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0):
-        if self.recording:
+    def start_recording(self, freq, Navg, test_name:str=None):
+        if self.current_test_name is not None:
             raise AssertionError("A test is already recording...")
         
-        self.recording = True
+        if test_name is None:
+            test_name = f'Test {max(len(self.test_results)-1, 0)}'
+        self.current_test_name = test_name
+
+        self.test_results.setdefault(self.current_test_name, [])
+
+        self.moving = True
         self.data = []
-        self.offset = numpy.array([dx, dy, dz, drx, dry, drz])
-        self.thread = threading.Thread(target=self._record(freq, Navg))
+        self.thread = threading.Thread(target=self._record, args=(freq, Navg), daemon=True)
         self.thread.start()
+
+    def pause_recording(self):
+        self.moving = False
+        self.pause_time = time.time()
+    
+    def resume_recording(self):
+        self.moving = True
+        self.start_time += time.time()
+    
+    def next_movement(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0):
+        self.moving = False
+        time.sleep(0.01)
+        data = self._interpolate(self.data, self.pos, self.offset)
+        self.test_results[self.current_test_name].append((self.offset, data))
+
+        label = f'Movement:{",".join(map(str, self.offset))}'
+        self.plot_2d_data(data, self.current_test_name, self.offset, label)
+        self.plot_3d_data(data, self.current_test_name, self.offset, label)
+
+        self.pos += self.offset
+        self.offset = numpy.array([dx, dy, dz, drx, dry, drz])
+        self.moving = True
     
     def end_recording(self):
-        self.recording = False
+        self.moving = False
+
+        # No test ongoing
+        if self.current_test_name is None:
+            return
+        
+        test_name = self.current_test_name
+        self.current_test_name = None
+        
+        
+
         # wait some time so _record thread ends
         time.sleep(0.01)
         self.thread.join()
-        self.data_history.append(self._interpolate(self.data, self.pos, self.offset))
-        test_id = len(self.data_history)-1
-        self._test_lines.setdefault(test_id, {'3D': None, '2D': None})
-        self.plot_2d_data(test_id)
-        self.plot_3d_data(test_id)
-        self.cb.insert(END, f'Test {len(self.data_history)-1}')
-        self.cb.selection_set(test_id)
 
-        i = len(self.data_history)-1
-        return i, self.data_history[-1]
+        data = self._interpolate(self.data, self.pos, self.offset)
+        self.test_results[self.current_test_name].append((self.offset, data))
+
+        label = f'Movement:{",".join(map(str, self.offset))}'
+        self.plot_2d_data(data, self.current_test_name, self.offset, label)
+        self.plot_3d_data(data, self.current_test_name, self.offset, label)
+
+        self.pos += self.offset
+        self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+
+        self.cb.insert(END, f'Test {test_name} - {",".join(map(str, self.offset))}')
+        self.cb.selection_set(END)
+
 
     def _record(self, freq, Navg):
         period = 1/freq
-        while self.recording:
+        self.start_time = time.time()
+        while self.current_test_name is not None:
             time.sleep(period)
-            self.data.append((time.time(), self.ls.get(Navg)))
+            if self.moving:
+                self.data.append((time.time()- self.start_time, self.ls.get(Navg)))
 
-    def plot_3d_data(self, test_id: typing.Union[int, tuple, list]):
-        def _plot(test_id):
-            t, intensities, x, y, z, rx, ry, rz = self.test_result(test_id)
-            intensities = numpy.array(intensities)/max(intensities)
-            self._test_lines[test_id]['3D'] = self.plotter3d.ax.scatter(x, y, z, cmap='plasma', c=intensities, label=f'Test {test_id}')
-
-        if isinstance(test_id, int):
-            _plot(test_id)
-
-        if isinstance(test_id, tuple):
-            for id_ in test_id:
-                _plot(id_)
+    def plot_3d_data(self, data, test_name, movement, label):
         
-        if isinstance(test_id, list):
-            # from [id1:id2]
-            if len(test_id) == 2:
-                for id_ in range(test_id[0], test_id[1]+1):
-                    _plot(id_)
-            else:
-                for id_ in test_id:
-                    _plot(id_)
 
-        self.plotter3d.canvas.draw_idle()
-
-    def plot_2d_data(self, test_id: typing.Union[int, tuple, list]):
-        def _plot(test_id):
-            t, intensities, x, y, z, rx, ry, rz = self.test_result(test_id)
-            intensities = numpy.array(intensities)/max(intensities)
-            self._test_lines[test_id]['2D'] = self.plotter2d.ax.scatter(t, intensities, label=f'Test {test_id}')
-            
-
-        if isinstance(test_id, int):
-            _plot(test_id)
-
-        if isinstance(test_id, tuple):
-            for id_ in test_id:
-                _plot(id_)
+        if data == []:
+            return
+        self._test_lines.setdefault(test_name, {})
+        self._test_lines[test_name].setdefault(movement, {'3D': None, '2D': None})
+        t, intensities, x, y, z, rx, ry, rz = zip(*data)
+        intensities = numpy.array(intensities)/max(intensities)
+        intensities[intensities < 0.5] = 0
+        self._test_lines[test_name][movement]['3D'] = self.plotter3d.ax.scatter(x, y, z, cmap='plasma', c=intensities, label=label)
         
-        if isinstance(test_id, list):
-            # from [id1:id2]
-            if len(test_id) == 2:
-                for id_ in range(test_id[0], test_id[1]+1):
-                    _plot(id_)
-            else:
-                for id_ in test_id:
-                    _plot(id_)
+        self.plotter2d.canvas.draw_idle()
+
+    def plot_2d_data(self, data, test_name, movement, label):
+        if data == []:
+            return
+        self._test_lines.setdefault(test_name, {})
+        self._test_lines[test_name].setdefault(movement, {'3D': None, '2D': None})
+        t, intensities, x, y, z, rx, ry, rz = zip(*data)
+        intensities = numpy.array(intensities)/max(intensities)
+        self._test_lines[test_name][movement]['2D'] = self.plotter2d.ax.plot(t, intensities, label=label)[0]
         
         self.plotter2d.canvas.draw_idle()
 
@@ -1200,84 +1229,97 @@ class TestData:
                 for id_ in test_id:
                     self._toggle_test_line(id_, True)
 
-    def _toggle_test_line(self, test_id, state=True):
-        if self._test_lines[test_id]['3D'] is not None:
-            self._test_lines[test_id]['3D'].set_visible(state)
-        if self._test_lines[test_id]['2D'] is not None:
-            self._test_lines[test_id]['2D'].set_visible(state)
+    def _toggle_test_line(self, test_name, movement, state=True):
+        print( test_name, movement)
+        if self._test_lines[test_name][movement]['3D'] is not None:
+            self._test_lines[test_name][movement]['3D'].set_visible(state)
+        if self._test_lines[test_name][movement]['2D'] is not None:
+            self._test_lines[test_name][movement]['2D'].set_visible(state)
 
     def _plot_selected(self):
         selected_indices = self.cb.curselection()
         # Use get(index) to retrieve the text for each index
-        selected_tests = [int(self.cb.get(i).split('Test ')[-1]) for i in selected_indices]
-
-        for test_id in range(len(self.data_history)):
-            self._toggle_test_line(test_id, test_id in selected_tests)
+        selected_tests = [int(self.cb.get(i).split('Test ')[-1].split(' - ')[0]) for i in selected_indices]
+        selected_movements = [tuple(map(float, self.cb.get(i).split(' - ')[-1].split(','))) for i in selected_indices]
+        
+        for test_name in self._test_lines:
+            for movement in self._test_lines[test_name]:
+                label = f'Movement:{",".join(map(str, movement))}'
+                self._toggle_test_line(test_name, movement, test_name in selected_tests and movement in selected_movements)
 
         self.plotter2d.canvas.draw_idle()
         self.plotter3d.canvas.draw_idle()
 
-    def write_test_to_file(self, filename, test_id: typing.Union[int, tuple, list]):
-        def writer(f, test_id):
-            f.write(f'// Test {test_id} \n')
-            for data in self.test_result(test_id, flat=True):
-                f.write(f'{",".join(map(str, data))}\n')
+    def write_test_to_file(self, filename, test_name:str):
+
 
         with open(filename, 'w') as f:
             #write header
             f.write(f'// Time, Intensity, x, y, z, rx, ry, rz\n')
-
-            if isinstance(test_id, int):
-                writer(f, test_id)
-
-            if isinstance(test_id, tuple):
-                for id_ in test_id:
-                    writer(f, id_)
-
-            if isinstance(test_id, list):
-                # from [id1:id2]
-                if len(test_id) == 2:
-                    for id_ in range(test_id[0], test_id[1]+1):
-                        writer(f, id_)
-                else:
-                    for id_ in test_id:
-                        writer(f, id_)
+            
+            test = self.test_results.get(test_name, None)
+            if test:
+                movement, data = test
+                label = f'Movement:{",".join(map(str, movement))}'
+                f.write(f'// Movement: {label} \n')
+                for dat in data:
+                    f.write(f'{",".join(map(str, dat))}\n')
+            
 
     def extract_test_file(self, filename):
-        extracted_data = {}
+        extracted_data: dict[str, list] = {}
         test_id = 0
+        movement = None
+        move_data = []
         with open(filename, 'r') as f:
             for index, line in enumerate(f.readlines()):
                 if index == 0:
                     continue
-                if '//' in line:
-                    test_id = int(line.split('// Test ')[-1])
-                    print(f'Extracting Test {test_id}...')
-                    extracted_data.setdefault(test_id, [])
+                if '// Test' in line:
+                    test_name = int(line.split('// Test ')[-1])
+                    print(f'Extracting Test {test_name}...')
+                    extracted_data.setdefault(test_name, [])
                     continue
-                extracted_data[test_id].append(tuple(map(float, line.split(','))))
-        for test in extracted_data.values():
-            self.data_history.append(test)
-            test_id = len(self.data_history)-1
-            self._test_lines.setdefault(test_id, {'3D': None, '2D': None})
-            self.plot_2d_data(test_id)
-            self.plot_3d_data(test_id)
-            self.cb.insert(END, f'Test {len(self.data_history)-1}')
-            self.cb.selection_set(test_id)
+                if '// Movement:' in line:
+
+                    if movement:
+                        extracted_data[test_name].append((movement, move_data))
+
+                    move_data = []
+                    movement = tuple(map(float, line.split('// Movement:')[-1].split(',')))
+                    print(f'Extracting {test_name} Movement {movement}...')
+                    continue
+                move_data.append(tuple(map(float, line.split(','))))
+                
+        
+        for test_name in extracted_data:
+            test = extracted_data[test_name]
+            self.test_results[test_name] = test
+            #self.data_history.append(test)
+            #test_id = len(self.data_history)-1
+            for i, (movement, data) in enumerate(test):
+                label = f'Movement:{",".join(map(str, movement))}'
+                self.plot_2d_data(data, test_name, movement, label)
+                self.plot_3d_data(data, test_name, movement, label)
+                self.cb.insert(END, f'Test {test_name} - {",".join(map(str, movement))}')
+                self.cb.selection_set(END)
 
         return extracted_data.values()
 
     def _dummy_test(self, L, N):
         self.data = []
         start_index = self.cur_test_id + 1
+        filename = 'Dummy_test_data3.tst'
+        self.test_name = 'Test 1'
+        self.test_results[self.test_name] = []
         for i in range(N):
             for j in range(L):
                 self.data.append((*numpy.random.randn(8), ))
-            self.data_history.append(self.data)
+            self.test_results[self.test_name].append((*numpy.random.randn(6), self.data))
             self.data = []
-        self.write_test_to_file('Dummy_test_data.tst', [start_index, self.cur_test_id])
+        self.write_test_to_file(filename, self.test_name)
         self.data_history = []
-        self.extract_test_file('Dummy_test_data.tst')
+        self.extract_test_file(filename)
         return self.data                
 
 
