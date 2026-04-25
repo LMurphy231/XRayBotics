@@ -23,7 +23,10 @@ import requests
 import numpy
 from labquest import LabQuest
 
-from api.farinoAPI.fairino.Robot import *
+try:
+    from api.farinoAPI.fairino.Robot import RPC
+except:
+    from Robot import RPC
  
 # To Save as an executable: pyinstaller --onefile GUI.py  
 
@@ -38,6 +41,12 @@ SCATTER_MARKERS = [('Point', '.'        ),('Pixel', ','        ),('Circle', 'o' 
                    ('Care Left', 4      ),('Care Right', 5     ),('Care Up', 6        ),('Care Down', 7),
                    ('Care Left Base', 8 ),('Care Right Base', 9),('Care Up Base', 10  ),('Care Down Base', 11),]
  
+
+
+
+
+
+
 def _is_tk_kwarg(tk_class, **kwargs):
     if tk_class == Pack:
         pack_keys = ['after', 'anchor', 'before', 'expand', 'fill', 'in', 'ipadx', 'ipady', 'padx', 'pady', 'side']
@@ -377,9 +386,10 @@ class Communicator:
         self.chat_entry.grid(row = 2, column=0, columnspan=3, sticky=NSEW, pady=12)
         self.chat_entry.bind('<Return>', lambda e=None: self.send_message())
 
-
-
     def start_server(self, maxConnections=1):
+        '''
+        MUST Enable Port Forwarding in internet providers settings for this device!!! set internal and external ports to 8000
+        '''
         self.listensocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
         self.host = '0.0.0.0'
         self.Port = 8000
@@ -426,7 +436,6 @@ class Communicator:
         self.remote_connect_button = Button(self.user_input_window, text='Connect', command=lambda e=None: threading.Thread(target=self._remote_connection_attempt).start())
         self.remote_connect_button.grid(row=3, column=0, columnspan=2)
 
-
     def _remote_connection_attempt(self):
         self.remote_connect_button.config(state=DISABLED)
         port = 8000
@@ -438,38 +447,32 @@ class Communicator:
             print(e)
             self.user_input_error_label.config(text=f'Unable to connect to {ip}')
             return
+        
         self.user_input_window.destroy()
 
         listen_process = threading.Thread(target=self.listen, daemon=True, args= (self.remote_socket,))
-        listen_process.start()
-
-
-        self.remote_connect_button.config(state=NORMAL)
+        listen_process.start() 
 
     def _user_input_destroyed(self):
         self.join_button.config(state=NORMAL)
         self.host_button.config(state=NORMAL)
 
-    def _remote_connection(self):
-        pass
-
     def set_running(self, state=False):
         self.running = state
 
-
     def send_message(self):
         text = self.chat_var.get()
-        self.write_message(text)
+        self.write_message(f'{os.getlogin()} >>> {text}')
 
         try:
             if self.remote_socket:
-                self.remote_socket.sendall(text.encode())
+                self.remote_socket.sendall(f'{os.getlogin()} <<< {text}'.encode())
         finally:
             pass
 
         try:
             if self.clientsocket:
-                self.clientsocket.sendall(text.encode())
+                self.clientsocket.sendall(f'{os.getlogin()} <<< {text}'.encode())
         finally:
             pass
         self.chat_var.set('')
@@ -494,10 +497,13 @@ class Communicator:
 
     def listen(self, clientsocket: socket):
         while True:
-            message = clientsocket.recv(1024).decode()
-            if len(message) == 0:
-                break
-            self.write_message(message)
+            try:
+                message = clientsocket.recv(1024).decode()
+                if len(message) == 0:
+                    break
+                self.write_message(message)
+            except ConnectionResetError:
+                return
 
 class RobotCommunicator():
     def __init__(self):
@@ -635,7 +641,6 @@ class RobotCommunicator():
         if event:
             _toggle_frame(event.widget, NORMAL)
 
-
     def _get_tool_position(self):
         ierr, tcp_pose = self.com.GetActualTCPPose()
         return tcp_pose
@@ -682,7 +687,7 @@ class RobotCommunicator():
 class LightSensor():
     def __init__(self, freq=5000):
         self.freq = freq
-        self.lq = LabQuest()
+        self.lq = None #LabQuest()
         self.status = -1
         self.rec = False
 
@@ -692,8 +697,11 @@ class LightSensor():
         return self.status
 
     def close(self):
-        self.lq.stop()
-        self.lq.close()
+        try:
+            self.lq.stop()
+            self.lq.close()
+        except:
+            pass
 
     def start(self, freq=5000):
         self.freq = freq
@@ -959,7 +967,6 @@ class GUI:
                 frame_disabled = True
                 _toggle_frame(frame, DISABLED)
                 if not reconnect_thread.is_alive():
-                    print('here')
                     reconnect_thread = threading.Thread(target=self.robot._update_connection, daemon=True)
                     reconnect_thread.start()
             elif frame_disabled:
@@ -1098,9 +1105,6 @@ class TestData:
     def set_pos(self, x, y, z, rx, ry, rz):
         self.pos = numpy.array([x, y, z, rx, ry, rz])
         self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-    
-    def new_movement(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0):
-        self.offset = numpy.array([dx, dy, dz, drx, dry, drz])
         
     def _interpolate(self, test_data, start_pos, offset):
         interpolated_data = []
@@ -1177,7 +1181,6 @@ class TestData:
         self.cb.insert(END, f'Test {test_name} - {",".join(map(str, self.offset))}')
         self.cb.selection_set(END)
 
-
     def _record(self, freq, Navg):
         period = 1/freq
         self.start_time = time.time()
@@ -1187,8 +1190,6 @@ class TestData:
                 self.data.append((time.time()- self.start_time, self.ls.get(Navg)))
 
     def plot_3d_data(self, data, test_name, movement, label):
-        
-
         if data == []:
             return
         self._test_lines.setdefault(test_name, {})
@@ -1230,7 +1231,6 @@ class TestData:
                     self._toggle_test_line(id_, True)
 
     def _toggle_test_line(self, test_name, movement, state=True):
-        print( test_name, movement)
         if self._test_lines[test_name][movement]['3D'] is not None:
             self._test_lines[test_name][movement]['3D'].set_visible(state)
         if self._test_lines[test_name][movement]['2D'] is not None:
@@ -1265,7 +1265,6 @@ class TestData:
                 for dat in data:
                     f.write(f'{",".join(map(str, dat))}\n')
             
-
     def extract_test_file(self, filename):
         extracted_data: dict[str, list] = {}
         test_id = 0
@@ -1305,6 +1304,8 @@ class TestData:
                 self.cb.selection_set(END)
 
         return extracted_data.values()
+
+
 
     def _dummy_test(self, L, N):
         self.data = []
