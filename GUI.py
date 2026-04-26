@@ -903,7 +903,7 @@ class GUI:
         light_test_button = Button(lr_frame, text='Start New Test', command=lambda e=None: self._light_test(light_test_button))
         light_test_button.grid(row=len(settings),column=1)
         Button(lr_frame, text='Dummy Test', command=lambda e=None: self.test_data._dummy_test(100, 5)).grid(row=len(settings), column=2)
-        Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data.write_test_to_file('Dummy_test_data.tst', [0, self.test_data.cur_test_id])).grid(row=len(settings), column=3)
+        Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data.write_test_to_file('Dummy_test_data.tst', [0, self.test_data.cur_move_id])).grid(row=len(settings), column=3)
         Button(lr_frame, text='Open Tests', command=lambda e=None: self.test_data.extract_test_file('Dummy_test_data2.tst')).grid(row=len(settings), column=4)
         
 
@@ -1023,22 +1023,22 @@ class GUI:
                 self.test_data.start_recording(freq, Navg, 'Square_test')
                 for i in range(L):
                     print(f'Run {i+1} of {L}')
-                    self.test_data.new_movement(0, dist, 0)
+                    self.test_data.next_movement(0, dist, 0)
                     self.robot._incriment_move(0, dist, 0)
                     self.robot._move_wait()
                     if not self.stop_movement: raise AssertionError
 
-                    self.test_data.new_movement(0, 0, H)
+                    self.test_data.next_movement(0, 0, H)
                     self.robot._incriment_move(0, 0, H)
                     self.robot._move_wait()
                     if not self.stop_movement: raise AssertionError
 
-                    self.test_data.new_movement(0, -dist, 0)
+                    self.test_data.next_movement(0, -dist, 0)
                     self.robot._incriment_move(0, -dist, 0)
                     self.robot._move_wait()
                     if not self.stop_movement: raise AssertionError
 
-                    self.test_data.new_movement(0, 0, H)
+                    self.test_data.next_movement(0, 0, H)
                     self.robot._incriment_move(0, 0, H)
                     self.robot._move_wait()
                     if not self.stop_movement: raise AssertionError
@@ -1063,13 +1063,12 @@ class GUI:
 
 
 class TestData:
-    def __init__(self, robot:RobotCommunicator, ls:LightSensor, cb:Listbox, plotter2d: Plotter2D, plotter3d: Plotter3D):
+    def __init__(self, robot:RobotCommunicator, ls:LightSensor, cb:Listbox=None, plotter2d: Plotter2D=None, plotter3d: Plotter3D=None):
         self.robot = robot
         self.ls = ls
         self.cb = cb
         self.plotter2d = plotter2d
         self.plotter3d = plotter3d
-        self.data_history: list[tuple[float, float, numpy.ndarray]] = []
 
         self.test_results: dict[str, list[tuple[numpy.ndarray, list[numpy.ndarray]]]] = {None: []} 
 
@@ -1095,16 +1094,20 @@ class TestData:
         #self.plotter3d.ax.legend().set_visible(True)
 
     @property
-    def cur_test_id(self):
-        return max(len(self.data_history)-1, 0)
-            
-    def test_result(self, test_id, flat=False):
-        test_data = self.data_history[test_id]
+    def cur_move_id(self):
+        return len(self.test_results[self.current_test_name])-1
+        
+    def result(self, move_id, test_name=None, flat=False):
+        test_name = test_name if test_name else self.current_test_name
+        movement, test_data = self.test_results[test_name][move_id]
         if flat:
             return test_data
-        t, intensities, x, y, z, rx, ry, rz = zip(*test_data)
+        return self.individualize(test_data)
+    
+    def individualize(self, data):
+        t, intensities, x, y, z, rx, ry, rz = zip(*data)
         return (t, intensities, x, y, z, rx, ry, rz)
-
+    
     def set_pos(self, x, y, z, rx, ry, rz):
         self.pos = numpy.array([x, y, z, rx, ry, rz])
         self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
@@ -1114,7 +1117,7 @@ class TestData:
         incriment = offset/max(len(test_data),1)
         for i, (t, intensity) in enumerate(test_data):
             pos = start_pos + incriment*i
-            interpolated_data.append((t, intensity, *pos))
+            interpolated_data.append((t, intensity, *pos)) # TODO (time, intensity, x, y, z, rx, ry, rz)
 
         return interpolated_data
         
@@ -1146,14 +1149,15 @@ class TestData:
         time.sleep(0.01)
         data = self._interpolate(self.data, self.pos, self.offset)
         self.test_results[self.current_test_name].append((self.offset, data))
-
+        
         label = f'Movement:{",".join(map(str, self.offset))}'
-        self.plot_2d_data(data, self.current_test_name, self.offset, label)
-        self.plot_3d_data(data, self.current_test_name, self.offset, label)
+        self.plot_2d_data(data, self.current_test_name, self.cur_move_id, label)
+        self.plot_3d_data(data, self.current_test_name, self.cur_move_id, label)
 
         self.pos += self.offset
         self.offset = numpy.array([dx, dy, dz, drx, dry, drz])
         self.moving = True
+        return data
     
     def end_recording(self):
         self.moving = False
@@ -1173,16 +1177,17 @@ class TestData:
 
         data = self._interpolate(self.data, self.pos, self.offset)
         self.test_results[self.current_test_name].append((self.offset, data))
-
-        label = f'Movement:{",".join(map(str, self.offset))}'
-        self.plot_2d_data(data, self.current_test_name, self.offset, label)
-        self.plot_3d_data(data, self.current_test_name, self.offset, label)
+        
+        label = f'Movement {self.cur_move_id}:{",".join(map(str, self.offset))}'
+        self.plot_2d_data(data, self.current_test_name, self.cur_move_id, label)
+        self.plot_3d_data(data, self.current_test_name, self.cur_move_id, label)
 
         self.pos += self.offset
         self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
-        self.cb.insert(END, f'Test {test_name} - {",".join(map(str, self.offset))}')
+        self.cb.insert(END, f'Test {test_name} - {self.cur_move_id}')
         self.cb.selection_set(END)
+        return  self.test_results[self.current_test_name]
 
     def _record(self, freq, Navg):
         period = 1/freq
@@ -1193,6 +1198,8 @@ class TestData:
                 self.data.append((time.time()- self.start_time, self.ls.get(Navg)))
 
     def plot_3d_data(self, data, test_name, movement, label):
+        if not self.plotter3d:
+            return
         if data == []:
             return
         self._test_lines.setdefault(test_name, {})
@@ -1206,6 +1213,8 @@ class TestData:
         self.plotter2d.canvas.draw_idle()
 
     def plot_2d_data(self, data, test_name, movement, label):
+        if not self.plotter2d:
+            return
         if data == []:
             return
         self._test_lines.setdefault(test_name, {})
@@ -1217,7 +1226,8 @@ class TestData:
         self.plotter2d.canvas.draw_idle()
 
     def show_results(self, test_id: typing.Union[int, tuple, list]):
-        
+        if not self.cb:
+            return
         if isinstance(test_id, int):
             self._toggle_test_line(test_id, True)
 
@@ -1235,20 +1245,23 @@ class TestData:
                     self._toggle_test_line(id_, True)
 
     def _toggle_test_line(self, test_name, movement, state=True):
+        if not self.cb:
+            return
         if self._test_lines[test_name][movement]['3D'] is not None:
             self._test_lines[test_name][movement]['3D'].set_visible(state)
         if self._test_lines[test_name][movement]['2D'] is not None:
             self._test_lines[test_name][movement]['2D'].set_visible(state)
 
     def _plot_selected(self):
+        if not self.cb:
+            return
         selected_indices = self.cb.curselection()
         # Use get(index) to retrieve the text for each index
-        selected_tests = [int(self.cb.get(i).split('Test ')[-1].split(' - ')[0]) for i in selected_indices]
-        selected_movements = [tuple(map(float, self.cb.get(i).split(' - ')[-1].split(','))) for i in selected_indices]
-        
+        selected_tests = [str(self.cb.get(i).split('Test ')[-1].split(' - ')[0]) for i in selected_indices]
+        selected_movements = [int(self.cb.get(i)[-1].split(' - ')[-1]) for i in selected_indices]
+        print(selected_tests, selected_movements, [self.cb.get(i) for i in selected_indices])
         for test_name in self._test_lines:
             for movement in self._test_lines[test_name]:
-                label = f'Movement:{",".join(map(str, movement))}'
                 self._toggle_test_line(test_name, movement, test_name in selected_tests and movement in selected_movements)
 
         self.plotter2d.canvas.draw_idle()
@@ -1279,12 +1292,11 @@ class TestData:
                 if index == 0:
                     continue
                 if '// Test' in line:
-                    test_name = int(line.split('// Test ')[-1])
+                    test_name = str(line.split('// Test ')[-1].replace('\n','').rstrip())
                     print(f'Extracting Test {test_name}...')
                     extracted_data.setdefault(test_name, [])
                     continue
                 if '// Movement:' in line:
-
                     if movement:
                         extracted_data[test_name].append((movement, move_data))
 
@@ -1298,13 +1310,11 @@ class TestData:
         for test_name in extracted_data:
             test = extracted_data[test_name]
             self.test_results[test_name] = test
-            #self.data_history.append(test)
-            #test_id = len(self.data_history)-1
             for i, (movement, data) in enumerate(test):
                 label = f'Movement:{",".join(map(str, movement))}'
-                self.plot_2d_data(data, test_name, movement, label)
-                self.plot_3d_data(data, test_name, movement, label)
-                self.cb.insert(END, f'Test {test_name} - {",".join(map(str, movement))}')
+                self.plot_2d_data(data, test_name, i, label)
+                self.plot_3d_data(data, test_name, i, label)
+                self.cb.insert(END, f'Test {test_name} - {i}')
                 self.cb.selection_set(END)
 
         return extracted_data.values()
@@ -1313,7 +1323,7 @@ class TestData:
 
     def _dummy_test(self, L, N):
         self.data = []
-        start_index = self.cur_test_id + 1
+        start_index = self.cur_move_id + 1
         filename = 'Dummy_test_data3.tst'
         self.test_name = 'Test 1'
         self.test_results[self.test_name] = []
@@ -1323,7 +1333,6 @@ class TestData:
             self.test_results[self.test_name].append((*numpy.random.randn(6), self.data))
             self.data = []
         self.write_test_to_file(filename, self.test_name)
-        self.data_history = []
         self.extract_test_file(filename)
         return self.data                
 
