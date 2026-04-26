@@ -2,6 +2,9 @@ import time
 import numpy as np
 import numpy
 from api.farinoAPI.fairino.Robot import *
+from labquest import LabQuest 
+
+
 
 class RobotCommunicator():
     def __init__(self):
