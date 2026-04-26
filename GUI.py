@@ -903,7 +903,7 @@ class GUI:
         light_test_button = Button(lr_frame, text='Start New Test', command=lambda e=None: self._light_test(light_test_button))
         light_test_button.grid(row=len(settings),column=1)
         Button(lr_frame, text='Dummy Test', command=lambda e=None: self.test_data._dummy_test(100, 5)).grid(row=len(settings), column=2)
-        Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data.write_test_to_file('Dummy_test_data.tst', [0, self.test_data.cur_test_id])).grid(row=len(settings), column=3)
+        Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data.write_test_to_file('Dummy_test_data.tst', [0, self.test_data.cur_move_id])).grid(row=len(settings), column=3)
         Button(lr_frame, text='Open Tests', command=lambda e=None: self.test_data.extract_test_file('Dummy_test_data2.tst')).grid(row=len(settings), column=4)
         
 
@@ -1094,7 +1094,7 @@ class TestData:
         #self.plotter3d.ax.legend().set_visible(True)
 
     @property
-    def cur_test_id(self):
+    def cur_move_id(self):
         return len(self.test_results[self.current_test_name])-1
         
     def result(self, move_id, test_name=None, flat=False):
@@ -1102,9 +1102,12 @@ class TestData:
         movement, test_data = self.test_results[test_name][move_id]
         if flat:
             return test_data
-        t, intensities, x, y, z, rx, ry, rz = zip(*test_data)
+        return self.individualize(test_data)
+    
+    def individualize(self, data):
+        t, intensities, x, y, z, rx, ry, rz = zip(*data)
         return (t, intensities, x, y, z, rx, ry, rz)
-
+    
     def set_pos(self, x, y, z, rx, ry, rz):
         self.pos = numpy.array([x, y, z, rx, ry, rz])
         self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
@@ -1146,10 +1149,10 @@ class TestData:
         time.sleep(0.01)
         data = self._interpolate(self.data, self.pos, self.offset)
         self.test_results[self.current_test_name].append((self.offset, data))
-
+        
         label = f'Movement:{",".join(map(str, self.offset))}'
-        self.plot_2d_data(data, self.current_test_name, self.offset, label)
-        self.plot_3d_data(data, self.current_test_name, self.offset, label)
+        self.plot_2d_data(data, self.current_test_name, self.cur_move_id, label)
+        self.plot_3d_data(data, self.current_test_name, self.cur_move_id, label)
 
         self.pos += self.offset
         self.offset = numpy.array([dx, dy, dz, drx, dry, drz])
@@ -1174,15 +1177,15 @@ class TestData:
 
         data = self._interpolate(self.data, self.pos, self.offset)
         self.test_results[self.current_test_name].append((self.offset, data))
-        movement_id = len(self.test_results[self.current_test_name])-1
-        label = f'Movement {movement_id}:{",".join(map(str, self.offset))}'
-        self.plot_2d_data(data, self.current_test_name, movement_id, label)
-        self.plot_3d_data(data, self.current_test_name, movement_id, label)
+        
+        label = f'Movement {self.cur_move_id}:{",".join(map(str, self.offset))}'
+        self.plot_2d_data(data, self.current_test_name, self.cur_move_id, label)
+        self.plot_3d_data(data, self.current_test_name, self.cur_move_id, label)
 
         self.pos += self.offset
         self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
-        self.cb.insert(END, f'Test {test_name} - {movement_id}')
+        self.cb.insert(END, f'Test {test_name} - {self.cur_move_id}')
         self.cb.selection_set(END)
         return  self.test_results[self.current_test_name]
 
@@ -1256,11 +1259,9 @@ class TestData:
         # Use get(index) to retrieve the text for each index
         selected_tests = [str(self.cb.get(i).split('Test ')[-1].split(' - ')[0]) for i in selected_indices]
         selected_movements = [int(self.cb.get(i)[-1].split(' - ')[-1]) for i in selected_indices]
-        print(selected_tests, selected_movements)
-        print(self._test_lines)
+        print(selected_tests, selected_movements, [self.cb.get(i) for i in selected_indices])
         for test_name in self._test_lines:
             for movement in self._test_lines[test_name]:
-                label = f'Movement:{",".join(map(str, movement))}'
                 self._toggle_test_line(test_name, movement, test_name in selected_tests and movement in selected_movements)
 
         self.plotter2d.canvas.draw_idle()
@@ -1311,8 +1312,8 @@ class TestData:
             self.test_results[test_name] = test
             for i, (movement, data) in enumerate(test):
                 label = f'Movement:{",".join(map(str, movement))}'
-                self.plot_2d_data(data, test_name, movement, label)
-                self.plot_3d_data(data, test_name, movement, label)
+                self.plot_2d_data(data, test_name, i, label)
+                self.plot_3d_data(data, test_name, i, label)
                 self.cb.insert(END, f'Test {test_name} - {i}')
                 self.cb.selection_set(END)
 
@@ -1322,7 +1323,7 @@ class TestData:
 
     def _dummy_test(self, L, N):
         self.data = []
-        start_index = self.cur_test_id + 1
+        start_index = self.cur_move_id + 1
         filename = 'Dummy_test_data3.tst'
         self.test_name = 'Test 1'
         self.test_results[self.test_name] = []
