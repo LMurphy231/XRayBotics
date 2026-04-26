@@ -1,3 +1,4 @@
+import numpy as np
 import numpy
 
 from api.farinoAPI.fairino.Robot import RPC
@@ -113,7 +114,6 @@ def move(x, y, z):
     request_data(request, False)
 
 
-
 def __init__(Q: multiprocessing.Queue, shared_arr:bytearray[float]):
     global inputarr
     global q
@@ -125,7 +125,8 @@ def get_light_scan():
     return inputarr[TIME], inputarr[LIGHT_SCAN]
 
 def get_pos():
-    return numpy.array([inputarr[RPCX], inputarr[RPCY], inputarr[RPCZ]])
+    #return numpy.array([inputarr[RPCX], inputarr[RPCY], inputarr[RPCZ]])
+    return np.array([inputarr[RPCX], inputarr[RPCY], inputarr[RPCZ]])
 
 def run(state):
     if state == STATE.init:
@@ -203,6 +204,72 @@ def run(state):
         print(f"Final Position (At Isocenter): {final_pos}")
         #print(f"Best Light: {final_light}")
         return True
+
+
+def grav_test_step(arm, movement, sensor, step, length):
+
+    print("Starting Gravity-Laser Test...")
+
+    data = []  # (position, intensity)
+
+    start_pos = arm.position.copy()
+    print(f"\n[Initialization] Start Position: {start_pos}")
+
+    n_steps = int(length / step) #Number of steps to move per side
+    print(f"\n[CONFIGURATION] Step = {step}, Length = {length} mm, Steps per Side = {n_steps}")
+
+    #Movement Directions
+    pos_x = np.array([step, 0, 0])
+    neg_x = np.array([-step, 0, 0])
+
+    pos_y = np.array([0, step, 0])
+    neg_y = np.array([0, -step, 0])
+
+    pos_z = np.array([0, 0, step])
+    neg_z = np.array([0, 0, -step])
+
+    #STC
+    directions = [pos_x, pos_z, neg_x, neg_z]
+    print(f"\n[DIRECTIONS] Possible Directions: {directions}")
+
+    for side_index, direction in enumerate(directions):
+
+        print(f"\nSIDE: {side_index + 1} --> ")
+        print(f"Direction: {direction}")
+
+        total_dist = 0.0 #Track how much distance moved in one side
+
+        for step_index in range(n_steps):
+            arm.move_vec(direction)
+
+            total_dist += step
+
+            curr_pos = np.copy(arm.position)
+            intensity = sensor.read(curr_pos)
+
+            data.append((curr_pos, intensity))
+
+            print(f"Step: {step_index+1}")
+            #print(f"Distance Moved: {total_dist}")
+            #print(f"Current Position: {curr_pos}")
+            #print(f"Current Intensity: {intensity}")
+        
+        print(f"\nDistance Traveled for Side {side_index+1}: {total_dist}")
+        print(f"\nPosition After Side {side_index+1} Complete: {curr_pos}")
+
+    #Return to intial pose
+    home_vec = start_pos - arm.position
+    print(f"\n[RETURN] Moving back by {home_vec}")
+    arm.move_vec(start_pos - arm.position)
+
+    print(f"[FINAL] Final Position: {arm.position}")
+    print("\n=== TEST COMPLETE =====\n")
+
+    return data
+
+
+
+
 
 
 def MotionPlanningMain(Q: multiprocessing.Queue, shared_arr:bytearray):

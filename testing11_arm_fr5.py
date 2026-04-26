@@ -2,9 +2,15 @@ import time
 import numpy as np
 import numpy
 from api.farinoAPI.fairino.Robot import *
+<<<<<<< HEAD
 from labquest import LabQuest 
 
 
+=======
+from tkinter import *
+
+#Check here: 4/26/26
+>>>>>>> f4114f72737c70cf721495cf6bf6c98df0050dc3
 
 class RobotCommunicator():
     def __init__(self):
@@ -91,9 +97,7 @@ class RobotCommunicator():
         
         self._move_wait()
         self.move_thread = threading.Thread(target=move, args=(new_pose,), daemon=True)
-        self.move_thread.start()
-
-        
+        self.move_thread.start()   
     
     def home(self):
         self.stop()
@@ -282,18 +286,6 @@ class LightSensor():
             return x1
         return x1 + (level - y1) * (x2 - x1) / (y2 - y1)
 
-    def _plot_points(self, t:list[float], lux:list[float], linedata: tuple[FigureCanvasTkAgg, axes.Axes, Line2D]=None):
-        
-        if linedata is None:
-            return
-        canvas, ax, line = linedata
-        line.set_xdata(t)
-        line.set_ydata(lux)
-        ax.relim()
-        ax.autoscale_view()
-        canvas.draw_idle()
-
-
 class dummy_sensor:
     def dummy_light(self):
         return round(np.random.random(),3)
@@ -345,8 +337,8 @@ def initial_square(x,y,z,sensor,data, square_path, fr5, home_pos):
         z += float(dz)
 
         #STC: Read Real Sensor
-        #intensity = sensor.dummy_light()
-        intensity = sensor.get()
+        intensity = sensor.dummy_light()
+        #intensity = sensor.get()
         threshold = 0.95 #STC
 
         #Consildated Intensity Value into Single Center-Based Value
@@ -391,8 +383,8 @@ def zero_point(step,sensor,fr5, x,y,z):
         z += float(inc) #Update z position
 
         #fr5._increment_move(0,0,step) #Move
-        #intensity = sensor.dummy_light() #STC
-        intensity = sensor.get()
+        intensity = sensor.dummy_light() #STC
+        #intensity = sensor.get()
         light_data.append(intensity)
 
         if intensity >= threshold:
@@ -418,8 +410,8 @@ def grav_test():
     print("Starting Gravity-Laser Test...")
 
     fr5 = RobotCommunicator()
-    #sensor = dummy_sensor() #STC
-    sensor = LightSensor() #STC
+    sensor = dummy_sensor() #STC
+    #sensor = LightSensor() #STC
     
     #Home Position
     home_pos = fr5.HOME
@@ -445,7 +437,9 @@ def grav_test():
     print(f"\n[Complete] Return to Home Posiiton: {home_pos}")
     fr5.home()
 
-    return 0
+
+
+
 
 
 if __name__ == "__main__": 
