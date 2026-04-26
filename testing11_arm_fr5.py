@@ -30,7 +30,7 @@ def square_path(step, length):
 
     return moves
 
-def initial_square(x,y,z, data, path, fr5, threshold):
+def initial_path(x,y,z, data, path, fr5, threshold):
 
     found = False
 
@@ -106,7 +106,7 @@ def grav_test():
     
     #Start Initial Scan
     zp_data.test_data.start_recording(freq, Navg, 'zero_point')
-    is_found = initial_square(x,y,z, data, path, fr5, threshold)
+    is_found = initial_path(x,y,z, data, path, fr5, threshold)
      
     #Return to Home Position
     print(f"\n[Square Complete] Returning to Home Posiiton: {home_pos}")
