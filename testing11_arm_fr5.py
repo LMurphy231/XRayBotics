@@ -2,143 +2,96 @@ import time
 import numpy as np
 import numpy
 from api.farinoAPI.fairino.Robot import *
-from tkinter import *
+from labquest import LabQuest 
+
 from GUI import RobotCommunicator, LightSensor, TestData
 
-#Check here: 4/26/26
+#Update: 4/26/26
 
-class dummy_sensor:
-    def dummy_light(self):
-        return round(np.random.random(),3)
+def square_path(step, length):
 
-def square_move(step, length):
-
-    half = length/2 #Half Side Movement
     moves = [] #Store Moveset
-
     steps_full = int(length/step) #Number of Times to Increment for Full Side
-    steps_half = int(half/step)
 
     #Define Movement Vectors (x and z)
     pos_x = np.array([step, 0, 0])
-    neg_x = np.array([-step, 0, 0])
     pos_z = np.array([0, 0, step])
-    neg_z = np.array([0, 0, -step])
 
-    directions = [("+x", pos_x), ("+z", pos_z), ("-x", neg_x), ("-z", neg_z)]
+    directions = [("+x", pos_x), ("+z", pos_z), ("-x", -pos_x), ("-z", -pos_z)] #Tuple for Directions
 
     print(f"\n[DIRECTIONS] Square-Path Sequence ({length} x {length} mm)")
     for name, vec in directions:
         print(f"  Direction {name}: step {vec}, repeated {steps_full} times")
 
+    #Create Moves List
     for name, direction in directions:
         for _ in range(steps_full):
             moves.append((name, direction))
 
     return moves
 
-def move_square(step, length, plane=numpy.array([1, 0, 1]), center=False):
-    if center:
-        raise NotImplementedError
-    plane_count = plane[plane != 0]
-    if sum() != 2:
-        raise ValueError(f'Plane set incorrectly {plane} ')
-    
-def initial_square(x,y,z,sensor,data, square_path, fr5, home_pos):
+def initial_square(x,y,z, data, path, fr5, threshold):
 
-    points = 0 #Track Number of Light Points for Initial Scan
-    move_data = []
-    light_data = []
+    found = False
 
-    #Initial Move and Scan In Square Path
-    for direction_name, move_vec in square_path:
+    #Initial Move and Scan In Square Path: From Corner
+    for direction_name, move_vec in path: #Tuple Unpacking
+
         dx, dy, dz = move_vec
 
         print(f"\n[STEP] Moving {direction_name} by {move_vec}")
 
-        #STC: Move Real Robot 
-        #fr5._incriment_move(dx, dy, dz)
-
-        ##Update (xz Plane)
-        x += float(dx)
-        z += float(dz)
-
-        #STC: Read Real Sensor
-        intensity = sensor.dummy_light()
-        #intensity = sensor.get()
-        threshold = 0.95 #STC
+        #Move Real Robot 
+        data.test_data.new_movement(dx, dy, dz)
+        fr5.robot._incriment_move(dx, dy, dz)
+        fr5.robot._move_wait()
 
         #Consildated Intensity Value into Single Center-Based Value
+        #Code here to check intensity values with threshold
+        if intensity > threshold:
+            found = True
 
-        if intensity > threshold: #STC
-            points+= 1
+    data.test_data.end_recording()
 
-        print(f"-> Position (x,z): ({x}, {z}), Intensity: {intensity:.3f}")
+    #Check if there exists intensities that experience sharp jump -> found = True
+        
+    return found
 
-        data.append((x, z, intensity)) #Track (step,x,z,intensity)
+def zero_point(step, fr5, x,y,z, zp_data, threshold):
 
-        move_data.append((x, z))
-        light_data.append(intensity)
-
-    #Return to Home Position
-    print(f"\n[Complete] Return to Home Posiiton: {home_pos}")
-    fr5.home()
-
-    print(f"\nMove Data Collected: {move_data}")
-    print(f"\nLight Data Collected: {light_data}")
-    print(f"\nData Collected: {data}")
-
-    print(f"\nNumber of Light Points Found Past Threshold (Initial Scan): {points}")
-
-    return points
-
-
-def zero_point(step,sensor,fr5, x,y,z):
-    points = 0
-    max_z = 50 #cm
-    threshold = 0.95
-    light_data = []
-    hits = []
-    inc= step
-    it = 0
+    max_z = 200 #Define Max Height (mm)
+    found = False
 
     print("\nNo Light Points Found in Initial Scan!!!")
     print(f"\nMoving Up Until Light Found or {max_z} mm Above Reached.")
 
     #Move Up in +z until found light or reach z threshold
-    for i in range(max_z):
-        z += float(inc) #Update z position
+    for step in range(max_z):
 
-        #fr5._increment_move(0,0,step) #Move
-        intensity = sensor.dummy_light() #STC
-        #intensity = sensor.get()
-        light_data.append(intensity)
+        zp_data.test_data.new_movement(0, 0, step)
+        fr5.robot._incriment_move(0, 0, step)
+        fr5.robot._move_wait()
 
         if intensity >= threshold:
-            points += 1
-            hits.append((z, intensity))
-            print(f"-> Position (x,z): ({x}, {z}), Intensity: {intensity:.3f}")
-            print("\nBreaking")
             break
 
-        it += 1
+    zp_data.test_data.end_recording()
 
-    if points == 0: #Move Down now
-        pass
-
-    print(f"\nTotal Num of Iterations: {it}")
-    print(f"\nNumber of Light Points Found (Zero-Test): {points}")
-    print(f"\nHits Collected: {hits}")
-    
-    return points
+    return found
 
 def grav_test():
     #Assume all move/scan functions are already implemented
     print("Starting Gravity-Laser Test...")
 
+    #Objects for Classes
     fr5 = RobotCommunicator()
-    sensor = dummy_sensor() #STC
-    #sensor = LightSensor() #STC
+    sensor = LightSensor() 
+    data = TestData(fr5, sensor) 
+
+    #Parameters
+    freq = 4500                 # < 5000
+    Navg = 4                    # < 5
+    threshold = 0.95            #STC
     
     #Home Position
     home_pos = fr5.HOME
@@ -146,25 +99,31 @@ def grav_test():
     fr5.home() 
 
     #Path Paramters
-    step = 5 #STC
-    length = 10 #mm
-    square_path = square_move(step, length)
     x, y, z = float(0), float(0), float(0)     #Track (x,z)
-    data = []                                  #(x,z,intensity)
-
+    step = 5 #STC
+    length = 100 #mm
+    path = square_path(step, length) #Choose Square Path 
+    
     #Start Initial Scan
-    points = initial_square(x,y,z,sensor,data, square_path, fr5, home_pos)
+    zp_data.test_data.start_recording(freq, Navg, 'zero_point')
+    is_found = initial_square(x,y,z, data, path, fr5, threshold)
+     
+    #Return to Home Position
+    print(f"\n[Square Complete] Returning to Home Posiiton: {home_pos}")
+    fr5.home()
     
     #Scenarios
-    if points == 0:
-        points = zero_point(step, sensor, fr5, x,y,z)
+    if is_found is False:
+        zp_data = TestData(fr5, sensor)
+        zp_data.test_data.start_recording(freq, Navg, 'zero_point')
+        zp_found = zero_point(step, fr5, x,y,z, zp_data, threshold)
+
+        if zp_found is True:
+            print("Found Laser During ZP Test")
     
-
     #Return to Home Position
-    print(f"\n[Complete] Return to Home Posiiton: {home_pos}")
-    fr5.home()
-
-
+        print(f"\n[ZP Complete] Return to Home Posiiton: {home_pos}")
+        fr5.home()
 
 
 
