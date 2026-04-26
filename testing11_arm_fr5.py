@@ -3,30 +3,32 @@ import numpy as np
 import numpy
 from api.farinoAPI.fairino.Robot import *
 from labquest import LabQuest 
-
-from GUI import RobotCommunicator, LightSensor, TestData
-
+try:
+    import GUI
+    #from GUI import RobotCommunicator, LightSensor, TestData
+except:
+    pass
 #Update: 4/26/26, 2:10pm
 
 def square_path(step, length):
 
     #Creating Moveset for Corner-Referenced Square Path
     moves = []                      #Store Moveset
-    steps_full = int(length/step)   #Number of Times to Increment for Full Side
+    steps_full = length/int(step)   #Number of Times to Increment for Full Side
 
     #Define Movement Vectors (x and z)
-    pos_x = np.array([step, 0, 0])
-    pos_z = np.array([0, 0, step])
+    pos_x = np.array([0,steps_full, 0])
+    pos_z = np.array([0, 0, steps_full])
 
     directions = [("+x", pos_x), ("+z", pos_z), ("-x", -pos_x), ("-z", -pos_z)] #Tuple for Directions
 
     print(f"\n[DIRECTIONS] Square-Path Sequence ({length} x {length} mm)")
     for name, vec in directions:
-        print(f"  Direction {name}: step {vec}, repeated {steps_full} times")
+        print(f"  Direction {name}: step {vec}, repeated {step} times")
 
     #Create Moves List
     for name, direction in directions:
-        for _ in range(steps_full):
+        for _ in range(step):
             moves.append((name, direction))
 
     return moves
@@ -49,16 +51,14 @@ def initial_path(test_data, path, fr5, threshold):
         test_data.next_movement(dx, dy, dz)
         fr5._incriment_move(dx, dy, dz)
         fr5._move_wait()
+        data = test_data.end_movement()
 
-        _, intensities, *_ = test_data.result(test_data.cur_move_id)        #Get Light Data After Each Move
-        intensities[intensities < clamp] = 0                            #Clamp to 0
+        _, intensities, *_ = test_data.individualize(data) #test_data.result(test_data.cur_move_id)        #Get Light Data After Each Move
+                                 #Clamp to 0
 
         #Check in Case Clamps All to 0; Normalize per Move
-        curr_max = np.max(intensities)
-        if curr_max == 0:
-            norm_intensities = np.array(intensities)
-        else:
-            norm_intensities = np.array(intensities) / curr_max
+        norm_intensities = np.array(intensities) / max(np.max(intensities),1)
+        norm_intensities[norm_intensities < clamp] = 0   
             
         light_data.append(norm_intensities)                             #Append Light Data; List of NumPy arrays        
 
@@ -70,10 +70,10 @@ def initial_path(test_data, path, fr5, threshold):
     acc_perc = 0.1
 
     for i, arr in enumerate(light_data): #Want to Track Index and Value 
-        percent = np.sum(arr > threshold) / len(arr)
+        percent = len(arr[arr > threshold]) / len(arr)
         portions.append(percent) #Store Portions for Each Move
 
-        if percent >= acc_perc:
+        if percent < acc_perc:
             hits.append((i, percent)) #Save Which Moves Had Light (Enough Values)
 
     print(f"Portions: {portions} --- Hits: {hits}")
@@ -101,27 +101,25 @@ def zero_point(step, fr5, test_data, threshold):
     #Move Up in +z until found light or reach z threshold
     while z_moved < max_z:
 
-        test_data.new_movement(0, 0, step)
+        test_data.next_movement(0, 0, step)
         fr5._incriment_move(0, 0, step)
         fr5._move_wait()
+        data = test_data.end_movement()
 
         z_moved += step
 
-        _, intensities, *_ = test_data.result(test_data.cur_move_id)        #Get Light Data After Each Move
-        intensities[intensities < clamp] = 0                            #Clamp to 0                               
+        _, intensities, *_ = test_data.individualize(data)        #Get Light Data After Each Move
+                                 #Clamp to 0                               
 
         #Check in Case Clamps All to 0; Normalize per Move
-        curr_max = np.max(intensities)
-        if curr_max == 0:
-            norm_intensities = np.array(intensities)
-        else:
-            norm_intensities = np.array(intensities) / curr_max
+        norm_intensities = np.array(intensities) / max(np.max(intensities),1)
+        norm_intensities[norm_intensities < clamp] = 0   
         
         light_data.append(norm_intensities) #Append Light Data; List of NumPy arrays
 
         #Check if Laser Found Early
-        percent = np.sum(norm_intensities > threshold) / len(norm_intensities)
-        if percent >= acc_perc:
+        percent = len(norm_intensities[norm_intensities > threshold]) / len(norm_intensities)
+        if percent <= acc_perc:
             hits.append((z_moved, percent))  
 
             print(f"Hits: {hits}")
@@ -136,13 +134,16 @@ def zero_point(step, fr5, test_data, threshold):
 
     return False
 
-def grav_test():
+def grav_test(fr5=None, test_data=None):
     #Assume all move/scan functions are already implemented
     print("Starting Gravity-Laser Test...")
 
     #Objects for Classes
-    fr5 = RobotCommunicator()
-    sensor = LightSensor() 
+    if fr5 is None:
+        fr5 = GUI.RobotCommunicator()
+    if test_data is None:
+        sensor = GUI.LightSensor() 
+        test_data = GUI.TestData(fr5, sensor) 
 
     #Parameters
     freq = 4500                 # < 5000
@@ -159,12 +160,12 @@ def grav_test():
     #coord += np.array([dx, dy, dz]) #For Manual Updates
     
     #Path Paramters
-    step = 5 #STC
+    step = 1 #STC
     length = 100 #mm
     path = square_path(step, length) #Input Path
     
     #Start Initial Scan
-    test_data = TestData(fr5, sensor) 
+    
     test_data.start_recording(freq, Navg, 'initial_path')
     ip_found = initial_path(test_data, path, fr5, threshold)
      
@@ -173,9 +174,10 @@ def grav_test():
     fr5.home()
     
     #Scenarios
-    if ip_found is False: 
+    if ip_found is False:
+        step=4 
         test_data.start_recording(freq, Navg, 'zero_point')
-        zp_found = zero_point(step, fr5, test_data, threshold)
+        zp_found = zero_point(length/int(step), fr5, test_data, threshold)
 
         if zp_found is True:
             print("Found Laser During ZP Test") 

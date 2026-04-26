@@ -30,6 +30,8 @@ try:
     from api.farinoAPI.fairino.Robot import RPC
 except:
     from Robot import RPC
+
+from testing11_arm_fr5 import grav_test
  
 # To Save as an executable: pyinstaller --onefile GUI.py  
 
@@ -542,7 +544,7 @@ class RobotCommunicator():
 
                 if root and (mainerr or suberr) and self.user_input_window is None:
                     self.user_input_window = Toplevel(root, takefocus=True)
-                    self.user_input_window("200x100")
+                    self.user_input_window.geometry("200x100")
                     self.error_label = Label(self.user_input_window, text=f'Main Error: {mainerr} Sub Error: {suberr}')
                     self.error_label.grid(row=0, column=0, sticky=NSEW)
                     Button(self.user_input_window, text='Clear', command=lambda e=None: self._clear_error()).grid(row=1, column=0, sticky=NSEW)
@@ -554,8 +556,8 @@ class RobotCommunicator():
         ierr = self.com.ResetAllError()
         if self.user_input_window:
             self.user_input_window.destroy()
-            self.user_input_window = None
-            self.error_label = None
+        self.user_input_window = None
+        self.error_label = None
             
     def _set_gripper(self, state):
         pass
@@ -684,11 +686,14 @@ class RobotCommunicator():
         return tcp_pose
 
     def _get_joint_angles(self, degrees=True, flag=1):
-        if degrees:
-            joint_pos = self.com.GetActualJointPosDegree(flag)
-        else:
-            joint_pos = self.com.GetActualJointPosRadian(flag)
-        if isinstance(joint_pos, int):
+        try:
+            if degrees:
+                joint_pos = self.com.GetActualJointPosDegree(flag)
+            else:
+                joint_pos = self.com.GetActualJointPosRadian(flag)
+            if isinstance(joint_pos, int):
+                return 0, 0, 0, 0, 0, 0
+        except:
             return 0, 0, 0, 0, 0, 0
         return joint_pos[1]
 
@@ -725,7 +730,7 @@ class RobotCommunicator():
 class LightSensor():
     def __init__(self, freq=5000):
         self.freq = freq
-        self.lq = None #LabQuest()
+        self.lq = LabQuest()
         self.status = -1
         self.rec = False
 
@@ -760,10 +765,13 @@ class LightSensor():
         '''
         Get sample of size N over avgn readings per sample returned
         '''
-
-        if self.status == -1:
-            self.connect()
-            self.lq.start(period=int(1/self.freq*1000))
+        try:
+            if self.status == -1:
+                self.connect()
+                self.lq.start(period=int(1/self.freq*1000))
+        except:
+            return 0
+        
         data = self.lq.read_multi_pt('ch1', Navg)
         data = data if data else numpy.full(Navg, 0)
         return numpy.average(data)
@@ -942,6 +950,7 @@ class GUI:
         self.select_test_button.grid(row=len(settings), column=0)
         Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data._save_test()).grid(row=len(settings), column=1)
         Button(lr_frame, text='Open Tests', command=lambda e=None: self.test_data._open_file()).grid(row=len(settings), column=2)
+        Button(lr_frame, text='Clear Tests', command=lambda e=None: self.test_data.clear_tests()).grid(row=len(settings), column=3)
 
     def _build_robot_controller(self, root:Frame):
         
@@ -978,7 +987,7 @@ class GUI:
         Button(root, text='Stop', command=lambda e=None: self.robot.stop()).grid(row=3, column=3)
         checkvar_val = BooleanVar(value=False)
         Checkbutton(root, text='Set Gripper', command=lambda e=None: self.robot._set_gripper(checkvar_val.get()), variable=checkvar_val).grid(row=3, column=4)
-        self._update_joint_angle_label()
+        #self._update_joint_angle_label()
     
     def _build_chat(self, root):
     
@@ -1021,6 +1030,7 @@ class GUI:
 
             self.available_tests = (
                 (lambda: self.square_test(100), 'Ladder'),
+                (lambda: grav_test(self.robot, self.test_data), 'Gravity Test'),
             )
             self.testSelection = Listbox(self.test_selection_menu, selectmode=SINGLE, )
             self.testSelection.grid(row=1, column=0, sticky=NSEW)
@@ -1042,7 +1052,7 @@ class GUI:
         curselect = self.testSelection.curselection()
         if curselect:
             test, _ = self.available_tests[curselect[0]]
-            test()
+            threading.Thread(target=test, daemon=True).start()
             self._close_test_selection()
 
         
@@ -1170,6 +1180,7 @@ class TestData:
         self.data = []
         self._test_lines: dict[int, dict[str, Line2D]] = {}
         self.moving = False
+        self.ended = False
         self.thread = None
 
         self.pos = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) # [x, y, z, rx, ry, rz]
@@ -1186,9 +1197,9 @@ class TestData:
         self.plotter3d.ax.set_zlabel('z (mm)')
         #self.plotter3d.ax.legend().set_visible(True)
 
-    @property
-    def cur_move_id(self):
-        return len(self.test_results[self.current_test_name])-1
+    def cur_move_id(self, test_name=None):
+        test_name = test_name if test_name else self.current_test_name
+        return len(self.test_results[test_name])-1
         
     def result(self, move_id, test_name=None, flat=False):
         test_name = test_name if test_name else self.current_test_name
@@ -1228,6 +1239,19 @@ class TestData:
         self.data = []
         self.thread = threading.Thread(target=self._record, args=(freq, Navg), daemon=True)
         self.thread.start()
+    
+    def end_movement(self):
+        self.moving = False
+        self.ended = True
+        time.sleep(0.01)
+        data = self._interpolate(self.data, self.pos, self.offset)
+        self.test_results[self.current_test_name].append((self.offset, data))
+        label = f'Movement:{",".join(map(str, self.offset))}'
+        self.plot_2d_data(data, self.current_test_name, self.cur_move_id(), label)
+        self.plot_3d_data(data, self.current_test_name, self.cur_move_id(), label)
+        self.cb.insert(END, f'Test {self.current_test_name} - {self.cur_move_id()}')
+        self.cb.selection_set(END)
+        return data
 
     def pause_recording(self):
         self.moving = False
@@ -1240,13 +1264,18 @@ class TestData:
     def next_movement(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0):
         self.moving = False
         time.sleep(0.01)
-        data = self._interpolate(self.data, self.pos, self.offset)
-        self.test_results[self.current_test_name].append((self.offset, data))
-        
-        label = f'Movement:{",".join(map(str, self.offset))}'
-        self.plot_2d_data(data, self.current_test_name, self.cur_move_id, label)
-        self.plot_3d_data(data, self.current_test_name, self.cur_move_id, label)
+        if not self.ended:
+            data = self._interpolate(self.data, self.pos, self.offset)
+            self.test_results[self.current_test_name].append((self.offset, data))
 
+            label = f'Movement:{",".join(map(str, self.offset))}'
+            self.plot_2d_data(data, self.current_test_name, self.cur_move_id(), label)
+            self.plot_3d_data(data, self.current_test_name, self.cur_move_id(), label)
+            self.cb.insert(END, f'Test {self.current_test_name} - {self.cur_move_id()}')
+            self.cb.selection_set(END)
+        else:
+            data = self.result(self.cur_move_id())[-1]
+        self.ended = False
         self.pos += self.offset
         self.offset = numpy.array([dx, dy, dz, drx, dry, drz])
         self.moving = True
@@ -1267,20 +1296,20 @@ class TestData:
         # wait some time so _record thread ends
         time.sleep(0.01)
         self.thread.join()
+        if not self.ended:
+            data = self._interpolate(self.data, self.pos, self.offset)
+            self.test_results[test_name].append((self.offset, data))
 
-        data = self._interpolate(self.data, self.pos, self.offset)
-        self.test_results[self.current_test_name].append((self.offset, data))
-        
-        label = f'Movement {self.cur_move_id}:{",".join(map(str, self.offset))}'
-        self.plot_2d_data(data, self.current_test_name, self.cur_move_id, label)
-        self.plot_3d_data(data, self.current_test_name, self.cur_move_id, label)
-
+            label = f'Movement {self.cur_move_id(test_name)}:{",".join(map(str, self.offset))}'
+            self.plot_2d_data(data, test_name, self.cur_move_id(test_name), label)
+            self.plot_3d_data(data, test_name, self.cur_move_id(test_name), label)
+        self.ended = False
         self.pos += self.offset
         self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
-        self.cb.insert(END, f'Test {test_name} - {self.cur_move_id}')
+        self.cb.insert(END, f'Test {test_name} - {self.cur_move_id(test_name)}')
         self.cb.selection_set(END)
-        return  self.test_results[self.current_test_name]
+        return  self.test_results[test_name]
 
     def _record(self, freq, Navg):
         period = 1/freq
@@ -1306,13 +1335,16 @@ class TestData:
         self.plotter2d.canvas.draw_idle()
 
     def plot_2d_data(self, data, test_name, movement, label):
+        print('here')
         if not self.plotter2d:
             return
         if data == []:
             return
+        print('plotting')
         self._test_lines.setdefault(test_name, {})
         self._test_lines[test_name].setdefault(movement, {'3D': None, '2D': None})
         t, intensities, x, y, z, rx, ry, rz = zip(*data)
+        print(len(t), len(intensities))
         intensities = numpy.array(intensities)/max(intensities)
         self._test_lines[test_name][movement]['2D'] = self.plotter2d.ax.plot(t, intensities, label=label)[0]
         
@@ -1360,6 +1392,16 @@ class TestData:
         self.plotter2d.canvas.draw_idle()
         self.plotter3d.canvas.draw_idle()
 
+    def clear_tests(self):
+        self.test_results = {}
+        self._test_lines = {}
+        self.cb.delete(0, END)
+
+        
+        self.plotter2d.ax.clear()
+        self.plotter2d.canvas.draw()
+        self.plotter3d.ax.clear()
+        self.plotter3d.canvas.draw()
 
     def _save_test(self):
         filename = _save_file([("Test Data", "*.tst"), ("xrb Test Data", "*.xrb")])
@@ -1428,7 +1470,7 @@ class TestData:
 
     def _dummy_test(self, L, N):
         self.data = []
-        start_index = self.cur_move_id + 1
+        start_index = self.cur_move_id() + 1
         filename = 'Dummy_test_data3.tst'
         self.test_name = 'Test 1'
         self.test_results[self.test_name] = []
