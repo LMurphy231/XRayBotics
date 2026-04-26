@@ -6,7 +6,7 @@ from labquest import LabQuest
 
 from GUI import RobotCommunicator, LightSensor, TestData
 
-#Update: 4/26/26, 2pm
+#Update: 4/26/26, 2:05pm
 
 def square_path(step, length):
 
