@@ -7,13 +7,16 @@ import time
 from tkinter import *
 from tkinter import ttk, filedialog, colorchooser
 
+from matplotlib import cbook, cm
+from matplotlib.colors import LightSource
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+import matplotlib.axes as axes
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 from matplotlib.font_manager import FontProperties
 import f3d
 from pyopengltk import OpenGLFrame
-import matplotlib.axes as axes
+
 
 import socket
 import multiprocessing
@@ -392,7 +395,7 @@ class Communicator:
         '''
         self.listensocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
         self.host = '0.0.0.0'
-        self.Port = 8000
+        self.Port = 9000
         self.maxConnections = maxConnections
         self.ip = requests.get('https://api.ipify.org').text
 
@@ -422,7 +425,7 @@ class Communicator:
         self.join_button.config(state=DISABLED)
         self.host_button.config(state=DISABLED)
         self.user_input_window = Toplevel(self.root, takefocus=True)
-        self.user_input_window.bind('<Destroy>', lambda e=None: self._user_input_destroyed())
+        #self.user_input_window.bind('<Destroy>', lambda e=None: self._user_input_destroyed())
         
         Label(self.user_input_window, text='Enter IP to join remote GUI').grid(row=0, column=0, columnspan=2, sticky=NSEW)
         Label(self.user_input_window, text='Host IP:').grid(row=1, column=0, sticky=NSEW)
@@ -438,8 +441,8 @@ class Communicator:
 
     def _remote_connection_attempt(self):
         self.remote_connect_button.config(state=DISABLED)
-        port = 8000
-        ip = self.ip_var.get()
+        port = 9000
+        ip =  self.ip_var.get() #'192.168.1.141'
         try:
             self.remote_socket.connect((ip, port))
         except Exception as e:
@@ -1197,7 +1200,8 @@ class TestData:
         t, intensities, x, y, z, rx, ry, rz = zip(*data)
         intensities = numpy.array(intensities)/max(intensities)
         intensities[intensities < 0.5] = 0
-        self._test_lines[test_name][movement]['3D'] = self.plotter3d.ax.scatter(x, y, z, cmap='plasma', c=intensities, label=label)
+
+        self._test_lines[test_name][movement]['3D']= self.plotter3d.ax.scatter(x, y, z, cmap='plasma', c=intensities, label=label)
         
         self.plotter2d.canvas.draw_idle()
 
