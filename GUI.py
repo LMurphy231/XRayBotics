@@ -377,7 +377,7 @@ class Communicator:
 
         text_frame = Frame(self.root)
         text_frame.grid(row=1,column=0)
-        self.textbox = Text(text_frame, height=10, width=40)
+        self.textbox = Text(text_frame, height=10, width=40, state=DISABLED)
         
         
         
@@ -398,7 +398,7 @@ class Communicator:
         self.join_button.grid(row=0, column=3, sticky=NSEW)
 
         self.chat_entry = Entry(self.root, textvariable=self.chat_var)
-        self.chat_entry.grid(row = 2, column=0, columnspan=3, sticky=NSEW, pady=12)
+        self.chat_entry.grid(row = 1, column=0, columnspan=3, sticky=NSEW, pady=12)
         self.chat_entry.bind('<Return>', lambda e=None: self.send_message())
 
     def start_server(self, maxConnections=1):
@@ -866,7 +866,7 @@ class GUI:
         self._create_menu()
 
         # Test Select frame
-        ts_frame = create_frame(root,0,0,7,3, Frame, text='Test Selection', relief=GROOVE, sticky=NSEW)
+        ts_frame = create_frame(root,0,0,6,3, Frame, text='Test Selection', relief=GROOVE, sticky=NSEW)
         self.TestSelection = Listbox(ts_frame, selectmode=MULTIPLE, )
         self.TestSelection.pack(expand=True, fill=BOTH)#.grid(row=0, column=0, columnspan=2, sticky=NSEW)
         self.TestSelection.bind('<<ListboxSelect>>', lambda e=None: self.test_data._plot_selected())
@@ -913,8 +913,9 @@ class GUI:
         self.plotter2d = Plotter2D(plotter_2d_frame)
 
         # TODO Connection Status
-        cs_frame = Frame()
-        cs_frame = create_frame(root,7,0,1,9,Frame, text='Connection Frame', relief=GROOVE, sticky=NSEW)
+        #cs_frame = Frame(root)
+        #cs_frame.grid(row=3, column=10)
+        cs_frame = create_frame(root,7,0,3,9,Frame, text='Connection Frame', relief=GROOVE, sticky=NSEW)
         text_frame = create_frame(cs_frame,0,0,5,1,Frame, text='Connection Chat', relief=GROOVE, sticky=NSEW)
         self.communicator = Communicator(text_frame)
 
@@ -979,6 +980,37 @@ class GUI:
         Checkbutton(root, text='Set Gripper', command=lambda e=None: self.robot._set_gripper(checkvar_val.get()), variable=checkvar_val).grid(row=3, column=4)
         self._update_joint_angle_label()
     
+    def _build_chat(self, root):
+    
+        Connection_frame = Frame(self.root)
+        Connection_frame.grid(row=0,column=0)
+
+        text_frame = Frame(self.root)
+        text_frame.grid(row=1,column=0)
+        self.textbox = Text(text_frame, height=10, width=40, state=DISABLED)
+        
+        
+        
+        ys = ttk.Scrollbar(text_frame, orient = 'vertical', command = self.textbox.yview)
+        #xs = ttk.Scrollbar(text_frame, orient = 'horizontal', command = self.textbox.xview)
+        self.textbox['yscrollcommand'] = ys.set
+        #self.textbox['xscrollcommand'] = xs.set
+
+        self.textbox.grid(column = 0, row = 0, sticky = NSEW)
+        #xs.grid(column = 0, row = 1, sticky = EW)
+        ys.grid(column = 1, row = 0, sticky = NS)
+
+        self.host_button = Button(Connection_frame, text='Host Remote Connection', command=lambda e=None: self.start_server())
+        self.host_button.grid(row=0, column=0, sticky=NSEW)
+        self.ip_label = Label(Connection_frame, text='')
+        self.ip_label.grid(row=0, column=2, sticky=NSEW)
+        self.join_button = Button(Connection_frame, text='Join Remote Connection', command=lambda e=None: self._create_user_input_window())
+        self.join_button.grid(row=0, column=3, sticky=NSEW)
+
+        self.chat_entry = Entry(self.root, textvariable=self.chat_var)
+        self.chat_entry.grid(row = 1, column=0, columnspan=3, sticky=NSEW, pady=12)
+        self.chat_entry.bind('<Return>', lambda e=None: self.send_message())
+
     def _build_test_selection(self):
         if self.test_selection_menu is None:
             self.select_test_button.configure(state=DISABLED)
