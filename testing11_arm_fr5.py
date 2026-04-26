@@ -6,7 +6,7 @@ from labquest import LabQuest
 
 from GUI import RobotCommunicator, LightSensor, TestData
 
-#Update: 4/26/26, 2:05pm
+#Update: 4/26/26, 2:10pm
 
 def square_path(step, length):
 
@@ -31,7 +31,7 @@ def square_path(step, length):
 
     return moves
 
-def initial_path(x,y,z, test_data, path, fr5, threshold):
+def initial_path(test_data, path, fr5, threshold):
 
     #Conduct Movement in Input Path
     light_data = []
@@ -154,8 +154,11 @@ def grav_test():
     print(f"\n[Initialization] Start Position: {home_pos}")
     fr5.home() 
 
+    #Track Position (Manual)
+    coord = np.array([0.0, 0.0, 0.0])
+    #coord += np.array([dx, dy, dz]) #For Manual Updates
+    
     #Path Paramters
-    x, y, z = float(0), float(0), float(0)     #Track (x,y,z)
     step = 5 #STC
     length = 100 #mm
     path = square_path(step, length) #Input Path
@@ -163,7 +166,7 @@ def grav_test():
     #Start Initial Scan
     test_data = TestData(fr5, sensor) 
     test_data.start_recording(freq, Navg, 'initial_path')
-    ip_found = initial_path(x,y,z, test_data, path, fr5, threshold)
+    ip_found = initial_path(test_data, path, fr5, threshold)
      
     #Return to Home Position
     print(f"\n[Square Complete] Returning to Home Posiiton: {home_pos}")
