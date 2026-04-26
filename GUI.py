@@ -1129,22 +1129,22 @@ class GUI:
                     self.test_data.next_movement(0, dist, 0)
                     self.robot._incriment_move(0, dist, 0)
                     self.robot._move_wait()
-                    if not self.stop_movement: raise AssertionError
+                    if self.stop_movement: raise AssertionError
 
                     self.test_data.next_movement(0, 0, H)
                     self.robot._incriment_move(0, 0, H)
                     self.robot._move_wait()
-                    if not self.stop_movement: raise AssertionError
+                    if self.stop_movement: raise AssertionError
 
                     self.test_data.next_movement(0, -dist, 0)
                     self.robot._incriment_move(0, -dist, 0)
                     self.robot._move_wait()
-                    if not self.stop_movement: raise AssertionError
+                    if self.stop_movement: raise AssertionError
 
                     self.test_data.next_movement(0, 0, H)
                     self.robot._incriment_move(0, 0, H)
                     self.robot._move_wait()
-                    if not self.stop_movement: raise AssertionError
+                    if self.stop_movement: raise AssertionError
 
                 self.test_data.end_recording()
 
@@ -1251,6 +1251,8 @@ class TestData:
         self.plot_3d_data(data, self.current_test_name, self.cur_move_id(), label)
         self.cb.insert(END, f'Test {self.current_test_name} - {self.cur_move_id()}')
         self.cb.selection_set(END)
+        self.data = []
+        print('end', self.data)
         return data
 
     def pause_recording(self):
@@ -1267,7 +1269,7 @@ class TestData:
         if not self.ended:
             data = self._interpolate(self.data, self.pos, self.offset)
             self.test_results[self.current_test_name].append((self.offset, data))
-
+            
             label = f'Movement:{",".join(map(str, self.offset))}'
             self.plot_2d_data(data, self.current_test_name, self.cur_move_id(), label)
             self.plot_3d_data(data, self.current_test_name, self.cur_move_id(), label)
@@ -1275,10 +1277,14 @@ class TestData:
             self.cb.selection_set(END)
         else:
             data = self.result(self.cur_move_id())[-1]
+        self.data = []
         self.ended = False
         self.pos += self.offset
         self.offset = numpy.array([dx, dy, dz, drx, dry, drz])
         self.moving = True
+        self.start_time = time.time()
+
+        print('next', self.data)
         return data
     
     def end_recording(self):
@@ -1303,6 +1309,8 @@ class TestData:
             label = f'Movement {self.cur_move_id(test_name)}:{",".join(map(str, self.offset))}'
             self.plot_2d_data(data, test_name, self.cur_move_id(test_name), label)
             self.plot_3d_data(data, test_name, self.cur_move_id(test_name), label)
+
+        self.data = []
         self.ended = False
         self.pos += self.offset
         self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
@@ -1393,8 +1401,9 @@ class TestData:
         self.plotter3d.canvas.draw_idle()
 
     def clear_tests(self):
-        self.test_results = {}
+        self.test_results = {None: []} 
         self._test_lines = {}
+        self.data = []
         self.cb.delete(0, END)
 
         
