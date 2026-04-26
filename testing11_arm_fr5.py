@@ -155,7 +155,7 @@ def grav_test():
     fr5.home() 
 
     #Track Position (Manual)
-    coord = np.array([0.0, 0.0, 0.0])
+    #coord = np.array([0.0, 0.0, 0.0])
     #coord += np.array([dx, dy, dz]) #For Manual Updates
     
     #Path Paramters
