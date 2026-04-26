@@ -187,7 +187,7 @@ def _save_file(file_types = [("All Files", "*.*")]):
     if ("All Files", "*.*") in file_types:
         del file_types[file_types.index(("All Files", "*.*"))]
 
-    return filedialog.asksaveasfile(
+    return filedialog.asksaveasfilename(
     title="Save Test Results",
     initialdir=os.path.dirname(__file__),  # Optional: Set initial directory
     filetypes=(*file_types, all_file_types)# Optional: Filter file types
@@ -382,12 +382,12 @@ class Communicator:
         
         
         ys = ttk.Scrollbar(text_frame, orient = 'vertical', command = self.textbox.yview)
-        xs = ttk.Scrollbar(text_frame, orient = 'horizontal', command = self.textbox.xview)
+        #xs = ttk.Scrollbar(text_frame, orient = 'horizontal', command = self.textbox.xview)
         self.textbox['yscrollcommand'] = ys.set
-        self.textbox['xscrollcommand'] = xs.set
+        #self.textbox['xscrollcommand'] = xs.set
 
         self.textbox.grid(column = 0, row = 0, sticky = NSEW)
-        xs.grid(column = 0, row = 1, sticky = EW)
+        #xs.grid(column = 0, row = 1, sticky = EW)
         ys.grid(column = 1, row = 0, sticky = NS)
 
         self.host_button = Button(Connection_frame, text='Host Remote Connection', command=lambda e=None: self.start_server())
@@ -526,14 +526,37 @@ class RobotCommunicator():
         
         self.HOME = [0, -45, -133.25, -180, -90, 90]
         self.move_thread = None
+        self.user_input_window = None
+        self.error_label = None
+
         #self.home()
         #self.com.SetGripperConfig(1, 1, 0, 2)
 
+    def _status_check(self, root=None):
+        while True:
+            try:
+                err, [mainerr, suberr] = self.com.GetRobotErrorCode()
 
-        # Save Stop motion function in case of error. 
-        # Will update to the current movement type's stop
-        self.motion_stop = None
+                if self.error_label:
+                    self.error_label.configure(text=f'Main Error: {mainerr} Sub Error: {suberr}')
 
+                if root and (mainerr or suberr) and self.user_input_window is None:
+                    self.user_input_window = Toplevel(root, takefocus=True)
+                    self.user_input_window("200x100")
+                    self.error_label = Label(self.user_input_window, text=f'Main Error: {mainerr} Sub Error: {suberr}')
+                    self.error_label.grid(row=0, column=0, sticky=NSEW)
+                    Button(self.user_input_window, text='Clear', command=lambda e=None: self._clear_error()).grid(row=1, column=0, sticky=NSEW)
+                
+            finally:
+                time.sleep(1)
+
+    def _clear_error(self):
+        ierr = self.com.ResetAllError()
+        if self.user_input_window:
+            self.user_input_window.destroy()
+            self.user_input_window = None
+            self.error_label = None
+            
     def _set_gripper(self, state):
         pass
         #print(self.com.SetToolDO(0, 1 if state else 0))
@@ -589,7 +612,7 @@ class RobotCommunicator():
         self._move_wait()
 
         desc_pos = self.com.GetActualTCPPose(0)[1]
-        dpos = [desc_pos[0]-x,desc_pos[3]-r, desc_pos[2]-z,0,0,0] 
+        dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,0,0,0] 
         desc_pos=self.com.GetActualTCPPose(0)[1],
         tool=0
         user=0
@@ -804,11 +827,12 @@ class GUI:
         self.light_intensity: list[tuple[float, float]] = []
 
         self.stop_movement = False
+        self.test_selection_menu = None
 
         self.root: Tk = ttk.setup_master()
         self.root.title("Simulation Plotter")
         self.root.configure(background="white")
-        self.root.geometry("800x800")
+        self.root.geometry("1200x800")
         frame = Frame(self.root, borderwidth=5)
         frame.pack(expand=True, fill=BOTH)
 
@@ -824,7 +848,7 @@ class GUI:
         self.event = True
         
         threading.Thread(target=self._update_widgets, args=(self.connection_bar, self.robot_frame, self.joint_angle_label), daemon=True).start()
-        #threading.Thread(target=self._constant_light_intensity, args=(10,), daemon=True).start()
+        threading.Thread(target=self.robot._status_check, args=(self.root,), daemon=True).start()
         
         self.root.mainloop()
     
@@ -842,24 +866,24 @@ class GUI:
         self._create_menu()
 
         # Test Select frame
-        ts_frame = create_frame(root,0,0,7,3,LabelFrame, text='Test Selection', relief=GROOVE, sticky=NSEW)
+        ts_frame = create_frame(root,0,0,7,3, Frame, text='Test Selection', relief=GROOVE, sticky=NSEW)
         self.TestSelection = Listbox(ts_frame, selectmode=MULTIPLE, )
         self.TestSelection.pack(expand=True, fill=BOTH)#.grid(row=0, column=0, columnspan=2, sticky=NSEW)
         self.TestSelection.bind('<<ListboxSelect>>', lambda e=None: self.test_data._plot_selected())
 
         # tab_frame: Tab Functions
-        tab_frame = create_frame(root,0,3,1,6,LabelFrame, text='Tab Frame', relief=GROOVE, sticky=NSEW)
+        tab_frame = create_frame(root,0,3,1,6, Frame, text='Tab Frame', relief=GROOVE, sticky=NSEW)
 
         self.tabs = ttk.Notebook(tab_frame)
         self.tabs.pack(expand=True, fill=BOTH)
         
         # TODO: Open Automation Test
-        test_frame = create_frame(self.tabs, 1,1,1,1,LabelFrame, relief=GROOVE, sticky=NSEW)
+        test_frame = create_frame(self.tabs, 1,1,1,1,Frame, relief=GROOVE, sticky=NSEW)
         self.tabs.add(test_frame, text='Tests')
         self._build_test_page(test_frame)
 
         # TODO: Arm Communication
-        self.robot_frame = create_frame(self.tabs, 1,1,1,1,LabelFrame, relief=GROOVE, sticky=NSEW)
+        self.robot_frame = create_frame(self.tabs, 1,1,1,1,Frame, relief=GROOVE, sticky=NSEW)
         self.tabs.add(self.robot_frame, text='Robot')
         self._build_robot_controller(self.robot_frame)
 
@@ -871,10 +895,10 @@ class GUI:
 
         #self.create_model(plot_frame, r'FRCobots-V6.0 STEP Models/FRCobots-V6.0 STEP Models/FR3-V6.0 Model.STEP')
 
-        plot_frame = create_frame(self.tabs,1,3,6,6,LabelFrame, relief=GROOVE, sticky=NSEW)
-        self.tabs.add(plot_frame, text='Results')
-        self.plotter_notebook = ttk.Notebook(plot_frame)
-        self.plotter_notebook.pack(expand=True, fill=BOTH)
+        #plot_frame = create_frame(self.tabs,1,3,6,6,LabelFrame, relief=GROOVE, sticky=NSEW)
+        #self.tabs.add(plot_frame, text='Results')
+        self.plotter_notebook = ttk.Notebook(test_frame)
+        self.plotter_notebook.grid(row=0, column=1)
         
         plotter_3d_frame = create_frame(self.plotter_notebook,1,3,6,6,Label, relief=GROOVE, sticky=NSEW)
         
@@ -889,8 +913,9 @@ class GUI:
         self.plotter2d = Plotter2D(plotter_2d_frame)
 
         # TODO Connection Status
-        cs_frame = create_frame(root,7,0,1,9,LabelFrame, text='Connection Frame', relief=GROOVE, sticky=NSEW)
-        text_frame = create_frame(cs_frame,0,0,5,1,LabelFrame, text='Connection Chat', relief=GROOVE, sticky=NSEW)
+        cs_frame = Frame()
+        cs_frame = create_frame(root,7,0,1,9,Frame, text='Connection Frame', relief=GROOVE, sticky=NSEW)
+        text_frame = create_frame(cs_frame,0,0,5,1,Frame, text='Connection Chat', relief=GROOVE, sticky=NSEW)
         self.communicator = Communicator(text_frame)
 
         
@@ -902,35 +927,20 @@ class GUI:
     def _build_test_page(self, root:Frame):
         self.float_var['test'] = {}
 
-        lr_frame = LabelFrame(root, text='Light Reading Settings')
+        lr_frame = LabelFrame(root, text='Test Setup')
         lr_frame.grid(row=0,column=0, sticky=NSEW)
 
         # Create Entry Boxes
-        settings = (('Frequency', 5000), ('Data Points', 1000), ('Average', 1))
+        settings = (('Test Name', 'Default Test'),)
         for row, (setting, default) in enumerate(settings):
-            self.float_var['test'][setting] = IntVar(value=default)
+            self.float_var['test'][setting] = StringVar(value=default)
             Label(lr_frame, text=f'{setting.capitalize()}:').grid(row=row, column=0)
             Entry(lr_frame, textvariable=self.float_var['test'][setting]).grid(row=row, column=1)
-
-        light_test_button = Button(lr_frame, text='Start New Test', command=lambda e=None: self._light_test(light_test_button))
-        light_test_button.grid(row=len(settings),column=1)
-        Button(lr_frame, text='Dummy Test', command=lambda e=None: self.test_data._dummy_test(100, 5)).grid(row=len(settings), column=2)
         
-        Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data._save_test()).grid(row=len(settings), column=3)
-        Button(lr_frame, text='Open Tests', command=lambda e=None: self.test_data._open_file()).grid(row=len(settings), column=4)
-        
-        #Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data.write_test_to_file('Dummy_test_data.tst', [0, self.test_data.cur_move_id])).grid(row=len(settings), column=3)
-        #Button(lr_frame, text='Open Tests', command=lambda e=None: self.test_data.extract_test_file('Dummy_test_data2.tst')).grid(row=len(settings), column=4)
-        
-
-        lrp_frame = LabelFrame(root, text='Light Reading Settings')
-        lrp_frame.grid(row=0, column=1, rowspan=5, sticky=NSEW)
-        self.test_plot = Plotter2D(lrp_frame)
-
-    def _light_test(self, button):
-        line = self.test_plot.ax.plot([],[])[0]
-        thread = threading.Thread(target= self.ls.test, args=(1, 1000, button, (self.test_plot.canvas, self.test_plot.ax, line)), daemon=True)
-        thread.start()
+        self.select_test_button = Button(lr_frame, text='Select Test', command=lambda e=None: self._build_test_selection())
+        self.select_test_button.grid(row=len(settings), column=0)
+        Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data._save_test()).grid(row=len(settings), column=1)
+        Button(lr_frame, text='Open Tests', command=lambda e=None: self.test_data._open_file()).grid(row=len(settings), column=2)
 
     def _build_robot_controller(self, root:Frame):
         
@@ -969,6 +979,41 @@ class GUI:
         Checkbutton(root, text='Set Gripper', command=lambda e=None: self.robot._set_gripper(checkvar_val.get()), variable=checkvar_val).grid(row=3, column=4)
         self._update_joint_angle_label()
     
+    def _build_test_selection(self):
+        if self.test_selection_menu is None:
+            self.select_test_button.configure(state=DISABLED)
+            self.test_selection_menu = Toplevel(self.root, takefocus=True)
+            self.test_selection_menu.geometry(f"200x250")
+            self.test_selection_menu.protocol("WM_DELETE_WINDOW",  self._close_test_selection)
+            Label(self.test_selection_menu, text=f'Choose a test to perform').grid(row=0, column=0, columnspan=3)
+
+            self.available_tests = (
+                (lambda: self.square_test(100), 'Ladder'),
+            )
+            self.testSelection = Listbox(self.test_selection_menu, selectmode=SINGLE, )
+            self.testSelection.grid(row=1, column=0, sticky=NSEW)
+            self.testSelection.bind('<<ListboxSelect>>', lambda e=None: self.test_data._plot_selected())
+
+            for test, test_name in self.available_tests:
+                self.testSelection.insert(END, test_name)
+
+            Button(self.test_selection_menu, text='Start Test', command=lambda e=None: self._start_test()).grid(row=len(self.available_tests)+1, column=0, sticky=NSEW)
+            Button(self.test_selection_menu, text='Exit', command=lambda e=None: self._close_test_selection()).grid(row=len(self.available_tests)+1, column=1, sticky=NSEW)
+
+    def _close_test_selection(self):
+        if self.test_selection_menu:
+            self.test_selection_menu.destroy()
+            self.test_selection_menu = None
+        self.select_test_button.configure(state=NORMAL)
+
+    def _start_test(self):
+        curselect = self.testSelection.curselection()
+        if curselect:
+            test, _ = self.available_tests[curselect[0]]
+            test()
+            self._close_test_selection()
+
+        
     def _update_joint_angle_label(self):
         j1, j2, j3, j4, j5, j6 = self.robot._get_joint_angles(True)
         self.joint_angle_label.config(text=f'Joint Angles:\nj1 = {j1}\n j2 = {j2}\n j3 = {j3}\n j4 = {j4}\n j5 = {j5}\n j6 = {j6}\n')
@@ -994,7 +1039,7 @@ class GUI:
 
             if self.robot.com.is_conect:
                 j1, j2, j3, j4, j5, j6 = self.robot._get_joint_angles(True)
-                joint_label.config(text=f'Joint Angles:\nj1 = {j1}\n j2 = {j2}\n j3 = {j3}\n j4 = {j4}\n j5 = {j5}\n j6 = {j6}\n')
+                joint_label.config(text=f'Joint Angles:\nj1 = {j1:5<0.3f}\nj2 = {j2:5<0.3f}\nj3 = {j3:5<0.3f}\nj4 = {j4:5<0.3f}\nj5 = {j5:5<0.3f}\nj6 = {j6:5<0.3f}\n')
 
     def create_model(self, root, step):
 
@@ -1127,7 +1172,7 @@ class TestData:
     def set_pos(self, x, y, z, rx, ry, rz):
         self.pos = numpy.array([x, y, z, rx, ry, rz])
         self.offset = numpy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        
+
     def _interpolate(self, test_data, start_pos, offset):
         interpolated_data = []
         incriment = offset/max(len(test_data),1)
@@ -1222,7 +1267,7 @@ class TestData:
         self._test_lines[test_name].setdefault(movement, {'3D': None, '2D': None})
         t, intensities, x, y, z, rx, ry, rz = zip(*data)
         intensities = numpy.array(intensities)/max(intensities)
-        intensities[intensities < 0.5] = 0
+        intensities[intensities < 0.5] = 0        
 
         self._test_lines[test_name][movement]['3D']= self.plotter3d.ax.scatter(x, y, z, cmap='plasma', c=intensities, label=label)
         
@@ -1285,40 +1330,32 @@ class TestData:
 
 
     def _save_test(self):
-        f = _save_file([("Test Data", "*.tst"), ("xrb Test Data", "*.xrb")])
+        filename = _save_file([("Test Data", "*.tst"), ("xrb Test Data", "*.xrb")])
 
-        if not f:
+        if not filename:
             return
-        f.write(f'// Time, Intensity, x, y, z, rx, ry, rz\n')
-            
-        test = self.test_results.get(self.current_test_name, None)
-        if test:
-            f.write(f'// Test: {self.current_test_name} \n')
-            for movement, data in test:
-                label = f'Movement:{",".join(map(str, movement))}'
-                f.write(f'// Movement: {label} \n')
-                for dat in data:
-                    f.write(f'{",".join(map(str, dat))}\n')
+        filename = filename if filename.endswith('.xrb') else filename + '.xrb'
+        self.write_test_to_file(filename, self.current_test_name)
+        
 
     def _open_file(self):
-        files = _get_user_file(file_types=[("Test Data", "*.tst"), ("xrb Test Data", "*.xrb")])
+        files = _get_user_file(file_types=[("Test Data File (.tst)", "*.tst"), ("Test Data File (.xrb)", "*.xrb")])
         for file in files:
             self.extract_test_file(file)
 
     def write_test_to_file(self, filename, test_name:str):
-
-
         with open(filename, 'w') as f:
             #write header
             f.write(f'// Time, Intensity, x, y, z, rx, ry, rz\n')
             
-            test = self.test_results.get(test_name, None)
+            test = self.test_results.get(self.current_test_name, None)
             if test:
-                movement, data = test
-                label = f'Movement:{",".join(map(str, movement))}'
-                f.write(f'// Movement: {label} \n')
-                for dat in data:
-                    f.write(f'{",".join(map(str, dat))}\n')
+                f.write(f'// Test: {self.current_test_name} \n')
+                for movement, data in test:
+                    label = f'Movement:{",".join(map(str, movement))}'
+                    f.write(f'// Movement: {label} \n')
+                    for dat in data:
+                        f.write(f'{",".join(map(str, dat))}\n')
             
     def extract_test_file(self, filename):
         extracted_data: dict[str, list] = {}
@@ -1354,6 +1391,7 @@ class TestData:
                 self.cb.insert(END, f'Test {test_name} - {i}')
                 self.cb.selection_set(END)
                 self.current_test_name = test_name
+        self._plot_selected()
         return extracted_data.values()
 
     def _dummy_test(self, L, N):
@@ -1371,6 +1409,7 @@ class TestData:
         self.extract_test_file(filename)
         return self.data                
 
+    
 
 if __name__ == '__main__':
     gui = GUI()
