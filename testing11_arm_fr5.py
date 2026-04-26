@@ -4,6 +4,8 @@ import numpy
 from api.farinoAPI.fairino.Robot import *
 from tkinter import *
 
+#Check here: 4/26/26
+
 class RobotCommunicator():
     def __init__(self):
         self.com = RPC()
