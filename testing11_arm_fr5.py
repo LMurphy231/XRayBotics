@@ -6,12 +6,13 @@ from labquest import LabQuest
 
 from GUI import RobotCommunicator, LightSensor, TestData
 
-#Update: 4/26/26, 2pm
+#Update: 4/26/26, 2:10pm
 
 def square_path(step, length):
 
-    moves = [] #Store Moveset
-    steps_full = int(length/step) #Number of Times to Increment for Full Side
+    #Creating Moveset for Corner-Referenced Square Path
+    moves = []                      #Store Moveset
+    steps_full = int(length/step)   #Number of Times to Increment for Full Side
 
     #Define Movement Vectors (x and z)
     pos_x = np.array([step, 0, 0])
@@ -30,8 +31,9 @@ def square_path(step, length):
 
     return moves
 
-def initial_path(x,y,z, ip_data, path, fr5, threshold):
+def initial_path(test_data, path, fr5, threshold):
 
+    #Conduct Movement in Input Path
     light_data = []
     clamp = 0.5
     curr_max = 0
@@ -44,11 +46,11 @@ def initial_path(x,y,z, ip_data, path, fr5, threshold):
         print(f"\n[STEP] Moving {direction_name} by {move_vec}")
 
         #Move Real Robot 
-        ip_data.next_movement(dx, dy, dz)
+        test_data.next_movement(dx, dy, dz)
         fr5._incriment_move(dx, dy, dz)
         fr5._move_wait()
 
-        _, intensities, *_ = ip_data.result(ip_data.cur_move_id)        #Get Light Data After Each Move
+        _, intensities, *_ = test_data.result(test_data.cur_move_id)        #Get Light Data After Each Move
         intensities[intensities < clamp] = 0                            #Clamp to 0
 
         #Check in Case Clamps All to 0; Normalize per Move
@@ -60,7 +62,7 @@ def initial_path(x,y,z, ip_data, path, fr5, threshold):
             
         light_data.append(norm_intensities)                             #Append Light Data; List of NumPy arrays        
 
-    ip_data.end_recording()
+    test_data.end_recording()
     
     #Get Portion of Points Above Threshold per Move
     portions = []
@@ -80,10 +82,9 @@ def initial_path(x,y,z, ip_data, path, fr5, threshold):
     if len(hits) > 0:
         return True
 
-    
     return False
 
-def zero_point(step, fr5, zp_data, threshold):
+def zero_point(step, fr5, test_data, threshold):
 
     max_z = 200 #Define Max Height (mm)
     z_moved = 0
@@ -100,13 +101,13 @@ def zero_point(step, fr5, zp_data, threshold):
     #Move Up in +z until found light or reach z threshold
     while z_moved < max_z:
 
-        zp_data.new_movement(0, 0, step)
+        test_data.new_movement(0, 0, step)
         fr5._incriment_move(0, 0, step)
         fr5._move_wait()
 
         z_moved += step
 
-        _, intensities, *_ = zp_data.result(zp_data.cur_move_id)        #Get Light Data After Each Move
+        _, intensities, *_ = test_data.result(test_data.cur_move_id)        #Get Light Data After Each Move
         intensities[intensities < clamp] = 0                            #Clamp to 0                               
 
         #Check in Case Clamps All to 0; Normalize per Move
@@ -127,11 +128,11 @@ def zero_point(step, fr5, zp_data, threshold):
             print(f"[DETECTED LASER] at step {z_moved}, Portion = {percent} %")
 
             #End ZP Test: Found Laser
-            zp_data.end_recording()
+            test_data.end_recording()
 
             return True
 
-    zp_data.end_recording()
+    test_data.end_recording()
 
     return False
 
@@ -153,16 +154,19 @@ def grav_test():
     print(f"\n[Initialization] Start Position: {home_pos}")
     fr5.home() 
 
+    #Track Position (Manual)
+    #coord = np.array([0.0, 0.0, 0.0])
+    #coord += np.array([dx, dy, dz]) #For Manual Updates
+    
     #Path Paramters
-    x, y, z = float(0), float(0), float(0)     #Track (x,y,z)
     step = 5 #STC
     length = 100 #mm
     path = square_path(step, length) #Input Path
     
     #Start Initial Scan
-    ip_data = TestData(fr5, sensor) 
-    ip_data.start_recording(freq, Navg, 'zero_point')
-    ip_found = initial_path(x,y,z, ip_data, path, fr5, threshold)
+    test_data = TestData(fr5, sensor) 
+    test_data.start_recording(freq, Navg, 'initial_path')
+    ip_found = initial_path(test_data, path, fr5, threshold)
      
     #Return to Home Position
     print(f"\n[Square Complete] Returning to Home Posiiton: {home_pos}")
@@ -170,9 +174,8 @@ def grav_test():
     
     #Scenarios
     if ip_found is False: 
-        zp_data = TestData(fr5, sensor)
-        zp_data.start_recording(freq, Navg, 'zero_point')
-        zp_found = zero_point(step, fr5, zp_data, threshold)
+        test_data.start_recording(freq, Navg, 'zero_point')
+        zp_found = zero_point(step, fr5, test_data, threshold)
 
         if zp_found is True:
             print("Found Laser During ZP Test") 
@@ -185,8 +188,6 @@ def grav_test():
     #Return to Home Position
         print(f"\n[ZP Complete] Return to Home Posiiton: {home_pos}")
         fr5.home()
-
-
 
 
 if __name__ == "__main__": 
