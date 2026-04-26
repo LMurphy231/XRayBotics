@@ -182,6 +182,18 @@ def _get_user_file(single=False, file_types = [("All Files", "*.*")]):
         filetypes=(all_file_types, *file_types)# Optional: Filter file types
     )
  
+def _save_file(file_types = [("All Files", "*.*")]):
+    all_file_types = ('All Files', tuple(file_type for _, file_type in file_types))
+    if ("All Files", "*.*") in file_types:
+        del file_types[file_types.index(("All Files", "*.*"))]
+
+    return filedialog.asksaveasfile(
+    title="Save Test Results",
+    initialdir=os.path.dirname(__file__),  # Optional: Set initial directory
+    filetypes=(*file_types, all_file_types)# Optional: Filter file types
+    )
+
+ 
 def _radius(x1,y1,z1,x2,y2,z2):
     return numpy.sqrt((x1-x2)**2 + (y1-y2)**2 + (z1-z2)**2)
  
@@ -903,8 +915,12 @@ class GUI:
         light_test_button = Button(lr_frame, text='Start New Test', command=lambda e=None: self._light_test(light_test_button))
         light_test_button.grid(row=len(settings),column=1)
         Button(lr_frame, text='Dummy Test', command=lambda e=None: self.test_data._dummy_test(100, 5)).grid(row=len(settings), column=2)
-        Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data.write_test_to_file('Dummy_test_data.tst', [0, self.test_data.cur_move_id])).grid(row=len(settings), column=3)
-        Button(lr_frame, text='Open Tests', command=lambda e=None: self.test_data.extract_test_file('Dummy_test_data2.tst')).grid(row=len(settings), column=4)
+        
+        Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data._save_test()).grid(row=len(settings), column=3)
+        Button(lr_frame, text='Open Tests', command=lambda e=None: self.test_data._open_file()).grid(row=len(settings), column=4)
+        
+        #Button(lr_frame, text='Save Tests', command=lambda e=None: self.test_data.write_test_to_file('Dummy_test_data.tst', [0, self.test_data.cur_move_id])).grid(row=len(settings), column=3)
+        #Button(lr_frame, text='Open Tests', command=lambda e=None: self.test_data.extract_test_file('Dummy_test_data2.tst')).grid(row=len(settings), column=4)
         
 
         lrp_frame = LabelFrame(root, text='Light Reading Settings')
@@ -1106,7 +1122,7 @@ class TestData:
     
     def individualize(self, data):
         t, intensities, x, y, z, rx, ry, rz = zip(*data)
-        return (t, intensities, x, y, z, rx, ry, rz)
+        return (numpy.array(t), numpy.array(intensities), numpy.array(x), numpy.array(y), numpy.array(z), numpy.array(rx), numpy.array(ry), numpy.array(rz))
     
     def set_pos(self, x, y, z, rx, ry, rz):
         self.pos = numpy.array([x, y, z, rx, ry, rz])
@@ -1258,14 +1274,36 @@ class TestData:
         selected_indices = self.cb.curselection()
         # Use get(index) to retrieve the text for each index
         selected_tests = [str(self.cb.get(i).split('Test ')[-1].split(' - ')[0]) for i in selected_indices]
-        selected_movements = [int(self.cb.get(i)[-1].split(' - ')[-1]) for i in selected_indices]
-        print(selected_tests, selected_movements, [self.cb.get(i) for i in selected_indices])
+        selected_movements = [int(self.cb.get(i).split(' - ')[-1]) for i in selected_indices]
+
         for test_name in self._test_lines:
             for movement in self._test_lines[test_name]:
                 self._toggle_test_line(test_name, movement, test_name in selected_tests and movement in selected_movements)
 
         self.plotter2d.canvas.draw_idle()
         self.plotter3d.canvas.draw_idle()
+
+
+    def _save_test(self):
+        f = _save_file([("Test Data", "*.tst"), ("xrb Test Data", "*.xrb")])
+
+        if not f:
+            return
+        f.write(f'// Time, Intensity, x, y, z, rx, ry, rz\n')
+            
+        test = self.test_results.get(self.current_test_name, None)
+        if test:
+            f.write(f'// Test: {self.current_test_name} \n')
+            for movement, data in test:
+                label = f'Movement:{",".join(map(str, movement))}'
+                f.write(f'// Movement: {label} \n')
+                for dat in data:
+                    f.write(f'{",".join(map(str, dat))}\n')
+
+    def _open_file(self):
+        files = _get_user_file(file_types=[("Test Data", "*.tst"), ("xrb Test Data", "*.xrb")])
+        for file in files:
+            self.extract_test_file(file)
 
     def write_test_to_file(self, filename, test_name:str):
 
@@ -1284,7 +1322,6 @@ class TestData:
             
     def extract_test_file(self, filename):
         extracted_data: dict[str, list] = {}
-        test_id = 0
         movement = None
         move_data = []
         with open(filename, 'r') as f:
@@ -1316,10 +1353,8 @@ class TestData:
                 self.plot_3d_data(data, test_name, i, label)
                 self.cb.insert(END, f'Test {test_name} - {i}')
                 self.cb.selection_set(END)
-
+                self.current_test_name = test_name
         return extracted_data.values()
-
-
 
     def _dummy_test(self, L, N):
         self.data = []
