@@ -2,10 +2,16 @@ import time
 import numpy as np
 import numpy
 from api.farinoAPI.fairino.Robot import *
+<<<<<<< HEAD
+from labquest import LabQuest 
+
+
+=======
 from tkinter import *
 from GUI import RobotCommunicator, LightSensor, TestData
 
 #Check here: 4/26/26
+>>>>>>> f4114f72737c70cf721495cf6bf6c98df0050dc3
 
 class dummy_sensor:
     def dummy_light(self):
