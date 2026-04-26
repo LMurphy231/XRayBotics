@@ -30,9 +30,10 @@ def square_path(step, length):
 
     return moves
 
-def initial_path(x,y,z, data, path, fr5, threshold):
+def initial_path(x,y,z, ip_data, path, fr5, threshold):
 
     found = False
+    light_data = []
 
     #Initial Move and Scan In Square Path: From Corner
     for direction_name, move_vec in path: #Tuple Unpacking
@@ -42,16 +43,23 @@ def initial_path(x,y,z, data, path, fr5, threshold):
         print(f"\n[STEP] Moving {direction_name} by {move_vec}")
 
         #Move Real Robot 
-        data.test_data.new_movement(dx, dy, dz)
-        fr5.robot._incriment_move(dx, dy, dz)
-        fr5.robot._move_wait()
+        ip_data.next_movement(dx, dy, dz)
+        fr5._incriment_move(dx, dy, dz)
+        fr5._move_wait()
 
-        #Consildated Intensity Value into Single Center-Based Value
-        #Code here to check intensity values with threshold
-        if intensity > threshold:
-            found = True
+        _, intensities, *_ = ip_data.result(ip_data.cur_move_id) #Get Light Data After Each Move
+        norm_intensities = intensities / np.max(intensities)
+        light_data.append(norm_intensities) #Append Light Data; List of NumPy arrays
+        
 
-    data.test_data.end_recording()
+    #Consildated Intensity Value into Single Center-Based Value // Ignore, 4/26/26
+    #Check intensity values with threshold
+
+    if norm_intensities > threshold:
+        found = True
+
+
+    ip_data.end_recording()
 
     #Check if there exists intensities that experience sharp jump -> found = True
         
@@ -61,6 +69,7 @@ def zero_point(step, fr5, x,y,z, zp_data, threshold):
 
     max_z = 200 #Define Max Height (mm)
     found = False
+    
 
     print("\nNo Light Points Found in Initial Scan!!!")
     print(f"\nMoving Up Until Light Found or {max_z} mm Above Reached.")
@@ -86,7 +95,6 @@ def grav_test():
     #Objects for Classes
     fr5 = RobotCommunicator()
     sensor = LightSensor() 
-    data = TestData(fr5, sensor) 
 
     #Parameters
     freq = 4500                 # < 5000
@@ -99,21 +107,22 @@ def grav_test():
     fr5.home() 
 
     #Path Paramters
-    x, y, z = float(0), float(0), float(0)     #Track (x,z)
+    x, y, z = float(0), float(0), float(0)     #Track (x,y,z)
     step = 5 #STC
     length = 100 #mm
-    path = square_path(step, length) #Choose Square Path 
+    path = square_path(step, length) #Input Path
     
     #Start Initial Scan
-    zp_data.test_data.start_recording(freq, Navg, 'zero_point')
-    is_found = initial_path(x,y,z, data, path, fr5, threshold)
+    ip_data = TestData(fr5, sensor) 
+    ip_data.test_data.start_recording(freq, Navg, 'zero_point')
+    ip_found = initial_path(x,y,z, ip_data, path, fr5, threshold)
      
     #Return to Home Position
     print(f"\n[Square Complete] Returning to Home Posiiton: {home_pos}")
     fr5.home()
     
     #Scenarios
-    if is_found is False:
+    if ip_found is False:
         zp_data = TestData(fr5, sensor)
         zp_data.test_data.start_recording(freq, Navg, 'zero_point')
         zp_found = zero_point(step, fr5, x,y,z, zp_data, threshold)
