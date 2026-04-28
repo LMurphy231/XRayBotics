@@ -101,8 +101,8 @@ def zero_point(step, fr5, test_data, threshold):
     #Move Up in +z until found light or reach z threshold
     while z_moved < max_z:
 
-        test_data.next_movement(0, 0, step)
-        fr5._incriment_move(0, 0, step)
+        test_data.next_movement(0, step, 0)
+        fr5._incriment_move(0, step, 0)
         fr5._move_wait()
         data = test_data.end_movement()
 

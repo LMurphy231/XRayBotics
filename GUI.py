@@ -1417,10 +1417,9 @@ class TestData:
 
         if not filename:
             return
-        filename = filename if filename.endswith('.xrb') else filename + '.xrb'
+        filename = filename if filename.endswith('.xrb') else filename.split('.')[0] + '.xrb'
         self.write_test_to_file(filename, self.current_test_name)
         
-
     def _open_file(self):
         files = _get_user_file(file_types=[("Test Data File (.tst)", "*.tst"), ("Test Data File (.xrb)", "*.xrb")])
         for file in files:
@@ -1430,16 +1429,17 @@ class TestData:
         with open(filename, 'w') as f:
             #write header
             f.write(f'// Time, Intensity, x, y, z, rx, ry, rz\n')
-            
-            test = self.test_results.get(self.current_test_name, None)
-            if test:
-                f.write(f'// Test: {self.current_test_name} \n')
-                for movement, data in test:
-                    label = f'Movement:{",".join(map(str, movement))}'
-                    f.write(f'// Movement: {label} \n')
-                    for dat in data:
-                        f.write(f'{",".join(map(str, dat))}\n')
-            
+            for test in self.test_results:
+                test_result = self.test_results.get(test, None)
+                print(test)
+                if test_result:
+                    f.write(f'// Test: {test} \n')
+                    for movement, data in test_result:
+                       label = f'{",".join(map(str, movement))}'
+                       f.write(f'// Movement: {label} \n')
+                       for dat in data:
+                         f.write(f'{",".join(map(str, dat))}\n')
+
     def extract_test_file(self, filename):
         extracted_data: dict[str, list] = {}
         movement = None
@@ -1449,9 +1449,10 @@ class TestData:
                 if index == 0:
                     continue
                 if '// Test' in line:
-                    test_name = str(line.split('// Test ')[-1].replace('\n','').rstrip())
+                    test_name = str(line.split('// Test: ')[-1].replace('\n','').rstrip())
                     print(f'Extracting Test {test_name}...')
                     extracted_data.setdefault(test_name, [])
+                    print(test_name)
                     continue
                 if '// Movement:' in line:
                     if movement:
