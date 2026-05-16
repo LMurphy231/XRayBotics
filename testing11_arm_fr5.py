@@ -1,7 +1,11 @@
 import time
 import numpy as np
 import numpy
-from api.farinoAPI.fairino.Robot import *
+try:
+    from api.farinoAPI.fairino.Robot import *
+except:
+    from Robot import RPC
+    
 from labquest import LabQuest 
 try:
     import GUI

@@ -2,7 +2,8 @@ import os, glob, inspect
 import typing
 import dataclasses
 import time
-
+import platform
+print(platform.platform())
 
 from tkinter import *
 from tkinter import ttk, filedialog, colorchooser
@@ -33,7 +34,7 @@ except:
 
 from testing11_arm_fr5 import grav_test
  
-# To Save as an executable: pyinstaller --onefile GUI.py  
+# To Save as an executable: pyinstaller --onefile --add-data "Robot.py;." --add-data "testing11_arm_fr5.py;." --add-data "C:\Python\Lib\site-packages\labquest\data;labquest/data" GUI.py
 
 SCATTER_MARKERS = [('Point', '.'        ),('Pixel', ','        ),('Circle', 'o'       ),
                    ('Triangle Up', '^'  ),('Triangle Down', 'v'),('Triangle Left', '<'),('Triangle Right', '>'),
@@ -45,12 +46,6 @@ SCATTER_MARKERS = [('Point', '.'        ),('Pixel', ','        ),('Circle', 'o' 
                    ('Tick Left', 0      ),('Tick Right', 1     ),('Tick Up', 2        ),('Tick Down', 3),
                    ('Care Left', 4      ),('Care Right', 5     ),('Care Up', 6        ),('Care Down', 7),
                    ('Care Left Base', 8 ),('Care Right Base', 9),('Care Up Base', 10  ),('Care Down Base', 11),]
- 
-
-
-
-
-
 
 def _is_tk_kwarg(tk_class, **kwargs):
     if tk_class == Pack:
@@ -364,6 +359,8 @@ class Plotter3D():
 
 class Communicator:
     def __init__(self, root: Frame):
+        self.passkey = 'I2)&[*G3gpDPS7nai"0H-q9Ro{>M;{i'
+        self.relay_ip = socket.gethostbyname('xraybotics.ddns.net') #'192.168.1.162'
         self.ip_var = StringVar()
         self.chat_var = StringVar()
         self.remote_socket = None
@@ -371,15 +368,22 @@ class Communicator:
         self.clientsocket = None
         self._build(root)
 
-    def _build(self, root):
+    def _build(self, root:Frame):
         self.root = root
-    
+        self.root.grid_columnconfigure(0, weight=1)
+        self.root.grid_rowconfigure(0, weight=0)  # Connection_frame (fixed)
+        self.root.grid_rowconfigure(1, weight=1)  # text_frame (EXPANDS)
+        self.root.grid_rowconfigure(2, weight=0)  # Entry (fixed at bottom)
+
         Connection_frame = Frame(self.root)
-        Connection_frame.grid(row=0,column=0)
+        Connection_frame.grid(row=0,column=0, sticky=NSEW)
 
         text_frame = Frame(self.root)
-        text_frame.grid(row=1,column=0)
-        self.textbox = Text(text_frame, height=10, width=40, state=DISABLED)
+        text_frame.grid(row=1,column=0, sticky=NSEW)
+        text_frame.grid_rowconfigure(0, weight=1)
+        text_frame.grid_columnconfigure(0, weight=1)
+        
+        self.textbox = Text(text_frame, height=10, width=40, state=NORMAL)
         
         
         
@@ -388,19 +392,21 @@ class Communicator:
         self.textbox['yscrollcommand'] = ys.set
         #self.textbox['xscrollcommand'] = xs.set
 
-        self.textbox.grid(column = 0, row = 0, sticky = NSEW)
+        self.textbox.grid(column=0, row=0, sticky=NSEW)
         #xs.grid(column = 0, row = 1, sticky = EW)
         ys.grid(column = 1, row = 0, sticky = NS)
 
-        self.host_button = Button(Connection_frame, text='Host Remote Connection', command=lambda e=None: self.start_server())
+        self.host_button = Button(Connection_frame, text='Host Remote Connection', command=lambda e=None: self._create_user_input_window(True))
         self.host_button.grid(row=0, column=0, sticky=NSEW)
         self.ip_label = Label(Connection_frame, text='')
         self.ip_label.grid(row=0, column=2, sticky=NSEW)
-        self.join_button = Button(Connection_frame, text='Join Remote Connection', command=lambda e=None: self._create_user_input_window())
+        self.join_button = Button(Connection_frame, text='Join Remote Connection', command=lambda e=None: self._create_user_input_window(False))
         self.join_button.grid(row=0, column=3, sticky=NSEW)
 
+        
+
         self.chat_entry = Entry(self.root, textvariable=self.chat_var)
-        self.chat_entry.grid(row = 1, column=0, columnspan=3, sticky=NSEW, pady=12)
+        self.chat_entry.grid(row = 2, column=0, sticky=EW, pady=12)
         self.chat_entry.bind('<Return>', lambda e=None: self.send_message())
 
     def start_server(self, maxConnections=1):
@@ -433,13 +439,13 @@ class Communicator:
         self.ip_label.configure(text=f'')
         self.join_button.config(state=NORMAL)
         self.listensocket = None
-        self.host_button.config(text='Host Remote Connection', command=lambda e=None: self.start_server())
+        self.host_button.config(text='Host Remote Connection', command=lambda e=None: self._create_user_input_window(True))
 
-    def _create_user_input_window(self):
+    def _create_user_input_window(self, is_host=False):
         self.join_button.config(state=DISABLED)
         self.host_button.config(state=DISABLED)
         self.user_input_window = Toplevel(self.root, takefocus=True)
-        #self.user_input_window.bind('<Destroy>', lambda e=None: self._user_input_destroyed())
+        self.user_input_window.bind('<Destroy>', lambda e=None: self._user_input_destroyed())
         
         Label(self.user_input_window, text='Enter IP to join remote GUI').grid(row=0, column=0, columnspan=2, sticky=NSEW)
         Label(self.user_input_window, text='Host IP:').grid(row=1, column=0, sticky=NSEW)
@@ -448,27 +454,72 @@ class Communicator:
         self.user_input_error_label.grid(row=2, column=0, columnspan=2, sticky=NSEW)
 
         
-        self.remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        
-        self.remote_connect_button = Button(self.user_input_window, text='Connect', command=lambda e=None: threading.Thread(target=self._remote_connection_attempt).start())
-        self.remote_connect_button.grid(row=3, column=0, columnspan=2)
 
-    def _remote_connection_attempt(self):
-        self.remote_connect_button.config(state=DISABLED)
+        if self.remote_socket is not None:
+            self.remote_socket.close()
+
+        self.remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         port = 9000
-        ip =  self.ip_var.get() #'192.168.1.141'
         try:
-            self.remote_socket.connect((ip, port))
+            self.remote_socket.connect((self.relay_ip, port))
+        except:
+            self.remote_socket.connect(('192.168.1.162', port))
+
+        self.ServerSelection = Listbox(self.user_input_window, selectmode=SINGLE, )
+        self.ServerSelection.grid(row=3, column=0, columnspan=2)
+        threading.Thread(target=self._get_server_list, daemon=True).start()
+        
+
+        self.remote_connect_button = Button(self.user_input_window, text='Connect', command=lambda e=None: threading.Thread(target=self._remote_connection_attempt, args=(is_host,)).start())
+        self.remote_connect_button.grid(row=4, column=0, columnspan=2)
+
+    def _remote_connection_attempt(self, is_host=False):
+        
+        
+        ip =  self.ip_var.get() #'192.168.1.141'
+        
+        if is_host:
+            join_server = self.ip_var.get()
+        else:
+            selected_indices = self.ServerSelection.curselection()
+            if not selected_indices:
+                return
+            join_server = self.ServerSelection.get(selected_indices[-1])
+        
+        self.remote_connect_button.config(state=DISABLED)
+
+        try:
+            join_code = f'{self.passkey}~{is_host}~{join_server}~No Password'
+            self.remote_socket.send(join_code.encode())
+            message = self.remote_socket.recv(1024).decode()
+            print(f'Return: {message}')
         except Exception as e:
             self.remote_connect_button.config(state=NORMAL)
-            print(e)
+            print(f'Here: {e}')
             self.user_input_error_label.config(text=f'Unable to connect to {ip}')
             return
         
         self.user_input_window.destroy()
-
         listen_process = threading.Thread(target=self.listen, daemon=True, args= (self.remote_socket,))
         listen_process.start() 
+
+    def _get_server_list(self):
+        print(f'Getting Servers')
+        try:
+            join_code = f'{self.passkey}~Get Servers'
+            self.remote_socket.send(join_code.encode())
+            server_list = self.remote_socket.recv(1024).decode()
+        except Exception as e:
+            print(e)
+            server_list = 'None'
+        if server_list == 'None':
+            return
+        
+        server_list = server_list.split('~')
+        print(f'Server list: {server_list}')
+        for server in server_list:
+            self.ServerSelection.insert(END, server)
+
 
     def _user_input_destroyed(self):
         self.join_button.config(state=NORMAL)
@@ -484,21 +535,23 @@ class Communicator:
         try:
             if self.remote_socket:
                 self.remote_socket.sendall(f'{os.getlogin()} <<< {text}'.encode())
-        finally:
+        except:
             pass
 
         try:
             if self.clientsocket:
                 self.clientsocket.sendall(f'{os.getlogin()} <<< {text}'.encode())
-        finally:
+        except:
             pass
         self.chat_var.set('')
             
     def write_message(self, text):
         if self.textbox:
+            self.textbox.configure(state=NORMAL)
             self.textbox.insert(END, '\n')
             self.textbox.insert(END, text)
             self.textbox.see(END)
+            self.textbox.configure(state=DISABLED)
 
     def pair_device(self):
         while True:
@@ -548,7 +601,8 @@ class RobotCommunicator():
                     self.error_label = Label(self.user_input_window, text=f'Main Error: {mainerr} Sub Error: {suberr}')
                     self.error_label.grid(row=0, column=0, sticky=NSEW)
                     Button(self.user_input_window, text='Clear', command=lambda e=None: self._clear_error()).grid(row=1, column=0, sticky=NSEW)
-                
+            except TypeError:
+                pass
             finally:
                 time.sleep(1)
 
@@ -882,6 +936,7 @@ class GUI:
         # tab_frame: Tab Functions
         tab_frame = create_frame(root,0,3,1,6, Frame, text='Tab Frame', relief=GROOVE, sticky=NSEW)
 
+
         self.tabs = ttk.Notebook(tab_frame)
         self.tabs.pack(expand=True, fill=BOTH)
         
@@ -924,14 +979,15 @@ class GUI:
         #cs_frame = Frame(root)
         #cs_frame.grid(row=3, column=10)
         cs_frame = create_frame(root,7,0,3,9,Frame, text='Connection Frame', relief=GROOVE, sticky=NSEW)
-        text_frame = create_frame(cs_frame,0,0,5,1,Frame, text='Connection Chat', relief=GROOVE, sticky=NSEW)
+        cs_frame.grid_rowconfigure(0, weight=1)
+        text_frame = create_frame(cs_frame,0,0,1,1,Frame, text='Connection Chat', relief=GROOVE, sticky=NSEW)
         self.communicator = Communicator(text_frame)
 
         
 
 
 
-        self.connection_bar = ConnectionStatus(cs_frame, 0,0,1,1,4,1, sticky=SE)
+        self.connection_bar = ConnectionStatus(cs_frame, 4,2,1,1,1,1, sticky=SE)
     
     def _build_test_page(self, root:Frame):
         self.float_var['test'] = {}
@@ -1009,11 +1065,11 @@ class GUI:
         #xs.grid(column = 0, row = 1, sticky = EW)
         ys.grid(column = 1, row = 0, sticky = NS)
 
-        self.host_button = Button(Connection_frame, text='Host Remote Connection', command=lambda e=None: self.start_server())
+        self.host_button = Button(Connection_frame, text='Host Remote Connection', command=lambda e=None: self.communicator._create_user_input_window())
         self.host_button.grid(row=0, column=0, sticky=NSEW)
         self.ip_label = Label(Connection_frame, text='')
         self.ip_label.grid(row=0, column=2, sticky=NSEW)
-        self.join_button = Button(Connection_frame, text='Join Remote Connection', command=lambda e=None: self._create_user_input_window())
+        self.join_button = Button(Connection_frame, text='Join Remote Connection', command=lambda e=None: self.communicator._create_user_input_window())
         self.join_button.grid(row=0, column=3, sticky=NSEW)
 
         self.chat_entry = Entry(self.root, textvariable=self.chat_var)

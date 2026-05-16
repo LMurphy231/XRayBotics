@@ -5,7 +5,7 @@ a = Analysis(
     ['GUI.py'],
     pathex=[],
     binaries=[],
-    datas=[('Robot.py', '.')],
+    datas=[('Robot.py', '.'), ('testing11_arm_fr5.py', '.'), ('C:\\Python\\Lib\\site-packages\\labquest\\data\\NGIO_lib_for_64bit_python.dll', 'labquest/data')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
