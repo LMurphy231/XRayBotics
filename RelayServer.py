@@ -3,6 +3,18 @@ import threading
 import requests
 import time
 import dataclasses
+from utill import consts
+import sys
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d] - %(message)s',
+    handlers=[
+        logging.FileHandler("RelayServer.log"),      # Log to a file
+        logging.StreamHandler(sys.stdout)   # Log to the terminal
+    ]
+)
 
 @dataclasses.dataclass()
 class Server:
@@ -14,9 +26,7 @@ class Server:
     host_address: str
     
 class Host:
-    def __init__(self, port=9000):
-        self.port = port
-        self.passkey = 'I2)&[*G3gpDPS7nai"0H-q9Ro{>M;{i'
+    def __init__(self):
         self.servers: dict[str, Server] = {}
         self.public_ip = '0.0.0.0'
 
@@ -24,83 +34,140 @@ class Host:
         while True:
             try:
                 self.public_ip = socket.gethostbyname('xraybotics.ddns.net')
-                print(f'Ip updated: {self.public_ip}...')
+                logging.debug(f'Ip updated: {self.public_ip}...')
             except:
                 pass
             time.sleep(300)
     
     def setup(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.bind(('0.0.0.0', 9000))
+        self.socket.bind((consts._HOST, consts._PORT))
         self.socket.listen()
         threading.Thread(target=self._update_ip, daemon=True).start()
         time.sleep(0.5)
-        print(f'Relay server running on port {self.port}...')
-        print(f'Public: {self.public_ip} Local: {socket.gethostbyname(socket.gethostname())}')
+        logging.info(f'Relay server running on port {consts._PORT}...')
+        logging.info(f'Public: {self.public_ip} Local: {socket.gethostbyname(socket.gethostname())}')
 
         while True:
             conn, addr = self.socket.accept()
+            logging.info(f'Connection attempt by: {addr}')
             threading.Thread(target=self._new_connection, args=(conn, addr), daemon=True).start()
     
-    def _new_connection(self, conn:socket.socket, addr):
+    def send(self, conn:socket.socket, message):
         try:
+            return conn.sendall((str(message)+consts._DELIMITER).encode(encoding=consts._ENCODING))
+        except Exception as e:
+            raise e
+        
+    def listen(self, conn:socket.socket, bufsize=1024, decode=True, delimiter=consts._DELIMITER):
+        try:    
+            data = bytearray()
             while True:
-                recieved_code = conn.recv(1024).decode()
-                print(recieved_code)
-                if self.passkey in recieved_code and 'Get Servers' in recieved_code:
-                    print(f'Getting servers for {addr}')
-                    self.send_servers(conn, addr)
-                else:
-                    print('here')
+                packet = conn.recv(bufsize)
+                if not packet:
+                    break
+                data.extend(packet)
+                if bytes(delimiter, encoding=consts._ENCODING) in packet:
                     break
             
-            client_passkey, is_host, hostname, password = tuple(recieved_code.split('~'))
-            is_host = True if is_host=='True' else False
-            if client_passkey == self.passkey:
-                if not is_host:
-                    if hostname not in self.servers:
-                        conn.send(f'Server "{hostname}" not set up...'.encode())
-                        conn.close()
-                        return
-                    if password == self.servers[hostname].password:
-                        print(f'Client {addr} joined {hostname}...')
-                        conn.send('Connected'.encode())
-                        self.servers[hostname].connection_waitlist.append((conn, addr))
-                    else:
-                        print(f'Client {addr} entered wrong password for {hostname}...')
-                        conn.send('Incorrect Password!'.encode())
-                        conn.close()
-                        return
-                else:
-                    if hostname in self.servers:
-                        print(f'Client {addr} tried to create duplicate {hostname}...')
-                        conn.send('Hostname already exists...'.encode())
-                        conn.close()
-                        return
-                    print(f'Client {addr} created {hostname}...')
-                    conn.send('Connected'.encode())
-                    self.servers.setdefault(hostname, Server(name=hostname, password=password, 
-                                                             connection_waitlist=[], clients=[],
-                                                             host=conn, host_address=addr))
-                    threading.Thread(target=self.handle_server, args=(self.servers[hostname],), daemon=True).start()
-                    return
-            else:
-                print(f'Client {addr} provided the wrong key')
-                conn.send('Incorrect key!'.encode())
+            return data.decode(encoding=consts._ENCODING).replace(delimiter, '') if decode else data[:-len(bytes(delimiter))]
+        except Exception as e:
+            logging.warning(data)
+            logging.warning(e)
+            return None
+
+    def _new_connection(self, conn:socket.socket, addr):
+        try:
+            recieved_code = self.listen(conn)
+            if recieved_code != consts._PASSKEY:
+                logging.info(f'Client {addr} provided the wrong key')
+                self.send(conn, consts._MSG_INCORRECT_PASSKEY)
                 conn.close()
                 return
+            self.send(conn, consts._MSG_PASSKEY_ACCEPTED)
+            
+            while True:
+                code, return_data = self._handle_message(conn, addr, self.listen(conn), in_server=False)
+                
+                if code == consts._ACCEPT_CONNECTION:
+                    (is_host, hostname, password) = return_data
+                    if is_host:
+                        logging.info(f'Client {addr} created {hostname}...')
+                        self.send(conn, 'Connected')
+                        self.servers.setdefault(hostname, Server(name=hostname, password=password, 
+                                                                     connection_waitlist=[], clients=[],
+                                                                     host=conn, host_address=addr))
+                        threading.Thread(target=self.handle_server, args=(self.servers[hostname],), daemon=True).start()
+                    else:
+                        logging.info(f'Client {addr} joined {hostname}...')
+                        self.send(conn, consts._MSG_JOIN_SUCCESS)
+                        self.servers[hostname].connection_waitlist.append((conn, addr))
+                    return
+                elif code == consts._REFUSE_CONNECTION:
+                    logging.warning(f'Client {addr} connection was refused')
+                    self.send(conn, consts._MSG_CONNECTION_REFUSED)
+                    conn.close()
+                    return
+                
+        except ConnectionResetError:
+            logging.warning(f'Client {addr} disconnected')
+            return
+        
         except Exception as e:
-            print(f'Client {addr} not from GUI\n{e}')
+            logging.warning(f'Client {addr} not from GUI: {e}')
             conn.close()
             return
+    
+    def _handle_message(self, conn: socket.socket, addr, message:str, in_server=False):
+        logging.info('Checking message')
+        if message is None:
+            return consts._REFUSE_CONNECTION, None
+        split_message = message.split(consts._DIVIDER)
 
+        # Client Awaiting Server connection
+        if not in_server and len(split_message) == 3:
+            is_host, hostname, password = tuple(message.split('~'))
+            is_host = True if is_host=='True' else False
+            
+            if not is_host and hostname not in self.servers:
+                logging.info(f'Client {addr} tried to join nonexistant {hostname}...')
+                self.send(conn, consts._MSG_HOSTNAME_NOT_EXISTS_ERROR)
+                return consts._IGNORE_MESSAGE, None
+            
+            elif not is_host and password == self.servers[hostname].password:
+                return consts._ACCEPT_CONNECTION, (is_host, hostname, password)
+
+            elif not is_host and password != self.servers[hostname].password:
+                logging.info(f'Client {addr} entered wrong password for {hostname}...')
+                self.send(conn, consts._MSG_INCORRECT_PASSWORD)
+                return consts._IGNORE_MESSAGE, None
+            
+            elif is_host and hostname in self.servers:
+                logging.info(f'Client {addr} tried to create duplicate server of {hostname}...')
+                self.send(conn, conn, consts._MSG_HOSTNAME_EXISTS_ERROR)
+                return consts._IGNORE_MESSAGE, None
+            
+            elif is_host and hostname not in self.servers:
+                return consts._ACCEPT_CONNECTION, (is_host, hostname, password)
+            
+            logging.info(f'Client {addr} created {hostname}...')
+
+        if message == consts._PING:
+            self.send(conn, consts._PING)
+            return consts._IGNORE_MESSAGE, None
+
+        return consts._IGNORE_MESSAGE, None
+
+    @property
+    def server_list(self):
+        return list(self.servers.keys())
+    
     def send_servers(self, conn: socket.socket, addr):
-        serverlist = '~'.join(self.servers.keys())
-        print(f'sending: {serverlist}')
-        serverlist = 'None' if not serverlist else serverlist
-        conn.send(serverlist.encode())
+        serverlist = consts._DIVIDER.join(self.server_list)
+        logging.debug(f'sending: {serverlist}')
+        serverlist = consts._MSG_NO_ACTIVE_SERVERS if not serverlist else serverlist
+        self.send(conn, serverlist)
 
-        
     def handle_server(self, server: Server):
         threading.Thread(target=self.handle_host, args=(server, server.host, server.host_address), daemon=True).start()
         server.clients.append((server.host, server.host_address))
@@ -114,46 +181,45 @@ class Host:
     def handle_host(self, server:Server, conn: socket.socket, addr):
         while True:
             try:
-                data = conn.recv(1024)
+                data = self.listen(conn)
                 # Forward to all other clients
                 for (c, addr) in server.clients:
                     if c != conn:
-                        c.sendall(data)
+                        self.send(c, data)
             except:
                 break
         try:
             conn.close()
         except:
             pass
-        print('Host Disconnected')
+        logging.critical(f'Server {server.name} Host Disconnected')
         self._server_closed(server)
             
-
     def handle_client(self, server:Server, conn: socket.socket, addr):
-        print(f"Handeling: {conn}\n{addr}\n\n")
+        logging.info(f"Handeling: {conn}\n{addr}\n\n")
         try:
             while server.host is not None:
-                data = conn.recv(1024)
+                data = self.listen(conn)
                 # Forward to all other clients
                 for (c, addr) in server.clients:
                     if c != conn:
                         try:
-                            c.sendall(data)
+                            self.send(c, data)
                         except:
                             pass
         except Exception as e:
-            print(e)
+            logging.warning(e)
             pass
-        print(f"Disconnected: {conn}\n{addr}")
+        logging.critical(f"Disconnected: {conn}\n{addr}")
         server.clients.remove((conn, addr))
         conn.close()
             
     def _server_closed(self, server:Server):
-        print('Server Closing')
+        logging.critical(f'Server {server.name} Closing')
         try:
             for (c, addr) in server.clients:
                 try:
-                    c.sendall(f'Host {addr} has disconnected!'.encode())
+                    self.send(c, f'Host {addr} has disconnected!')
                     c.close()
                 except:
                     pass
@@ -161,8 +227,8 @@ class Host:
             server.host = None
             del self.servers[server.name]
             
-            
-
-
-relay_server = Host(9000)
-threading.Thread(target=relay_server.setup).start()
+relay_server = Host()
+relay_server.setup()
+while True:
+    pass
+#threading.Thread(target=relay_server.setup).start()

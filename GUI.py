@@ -3,7 +3,6 @@ import typing
 import dataclasses
 import time
 import platform
-print(platform.platform())
 
 from tkinter import *
 from tkinter import ttk, filedialog, colorchooser
@@ -513,7 +512,7 @@ class Communicator:
             print(e)
             server_list = 'None'
         if server_list == 'None':
-            return
+            return None
         
         server_list = server_list.split('~')
         print(f'Server list: {server_list}')
