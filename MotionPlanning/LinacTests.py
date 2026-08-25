@@ -4,6 +4,7 @@ import MotionPlanning.TestInitialization as TestInitialization
 import MotionPlanning.MovementPaths as MovementPaths
 import MotionPlanning.LightScanning as LightScanning
 
+#TODO: Update Test Logic to Include Cases and Thresholds
 def gravityTest(fr5=None, testData=None):
     #Assume all move/scan functions are already implemented
     print("Starting Gravity-Laser Test...")
