@@ -7,6 +7,9 @@ except:
 
 #TODO: Update Logic on Moving Robot
 def MoveRobot(fr5, path, testData, lightData, clamp):
+     """
+     Move robot here #doc strings
+     """
      for direction_name, move_vec in path: #Tuple Unpacking
 
         dx, dy, dz = move_vec

@@ -1,7 +1,13 @@
 import numpy as np
 
 def rectanglePath(step, length, width):
+    """
+    rectanglePath hehe
 
+    Inputs
+    ------
+     MORE
+    """
     #Creating Moveset for Corner-Referenced Rectangle Path
     moves = []                      #Store Moveset
     sideOne = length/int(step)   #Number of Times to Increment for length side
