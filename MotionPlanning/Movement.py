@@ -14,7 +14,7 @@ def MoveRobot(fr5, path, testData, lightData, clamp):
 
         #Move Real Robot 
         testData.next_movement(dx, dy, dz)
-        fr5._incriment_move(dx, dy, dz)
+        fr5._incriment_move(dx, dy, dz) #STC #TODO
         fr5._move_wait()
         data = testData.end_movement()
 
