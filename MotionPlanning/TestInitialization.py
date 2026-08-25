@@ -2,8 +2,7 @@ try:
     from api.farinoAPI.fairino.Robot import *
 except:
     from Robot import RPC
-    
-from labquest import LabQuest 
+
 try:
     import GUI
     #from GUI import RobotCommunicator, LightSensor, TestData

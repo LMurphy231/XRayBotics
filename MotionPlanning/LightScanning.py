@@ -1,18 +1,22 @@
 import numpy as np
 
-import Movement
+import MotionPlanning.Movement as Movement
 
 try:
     from api.farinoAPI.fairino.Robot import *
 except:
     from Robot import RPC
+
+def lightScanHits(lightData, threshold, portions, hits, accuracyPercent):
+    for i, arr in enumerate(lightData): #Want to Track Index and Value 
+            percent = len(arr[arr > threshold]) / len(arr)
+            portions.append(percent) #Store Portions for Each Move
     
-from labquest import LabQuest 
-try:
-    import GUI
-    #from GUI import RobotCommunicator, LightSensor, TestData
-except:
-    pass
+            if percent < accuracyPercent:
+                hits.append((i, percent)) #Save Which Moves Had Light (Enough Values)
+
+    print(f"Portions: {portions} --- Hits: {hits}")
+
 
 #TODO #First path to guess where laser is located
 def initialPath(testData, path, fr5, threshold):
@@ -28,16 +32,9 @@ def initialPath(testData, path, fr5, threshold):
     #Get Portion of Points Above Threshold per Move
     portions = []
     hits = []
-    acc_perc = 0.1
+    accuracyPercent = 0.1
 
-    for i, arr in enumerate(lightData): #Want to Track Index and Value 
-        percent = len(arr[arr > threshold]) / len(arr)
-        portions.append(percent) #Store Portions for Each Move
-
-        if percent < acc_perc:
-            hits.append((i, percent)) #Save Which Moves Had Light (Enough Values)
-
-    print(f"Portions: {portions} --- Hits: {hits}")
+    lightScanHits(lightData, threshold, portions, hits, accuracyPercent) #Conduct Light Scan
 
     #Update Found Status
     if len(hits) > 0:
@@ -55,7 +52,7 @@ def zeroPoint(step, fr5, testData, threshold):
    
     #Detection Parameters
     clamp = 0.5
-    acc_perc = 0.1
+    accuracyPercent = 0.1
 
     print("\nNo Light Points Found in Initial Scan!!!")
     print(f"\nMoving Up Until Light Found or {max_z} mm Above Reached.")
@@ -81,7 +78,7 @@ def zeroPoint(step, fr5, testData, threshold):
 
         #Check if Laser Found Early
         percent = len(norm_intensities[norm_intensities > threshold]) / len(norm_intensities)
-        if percent <= acc_perc:
+        if percent <= accuracyPercent:
             hits.append((z_moved, percent))  
 
             print(f"Hits: {hits}")

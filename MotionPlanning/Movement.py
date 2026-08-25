@@ -1,17 +1,9 @@
-import time
 import numpy as np
 
 try:
     from api.farinoAPI.fairino.Robot import *
 except:
     from Robot import RPC
-    
-from labquest import LabQuest 
-try:
-    import GUI
-    #from GUI import RobotCommunicator, LightSensor, TestData
-except:
-    pass
 
 def MoveRobot(fr5, path, testData, lightData, clamp):
      for direction_name, move_vec in path: #Tuple Unpacking

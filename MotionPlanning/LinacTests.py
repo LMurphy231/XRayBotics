@@ -1,22 +1,8 @@
-import time
 import numpy as np
 
-import TestInitialization
-import Movement
-import MovementPaths
-import LightScanning
-
-try:
-    from api.farinoAPI.fairino.Robot import *
-except:
-    from Robot import RPC
-  
-from labquest import LabQuest 
-try:
-    import GUI
-    #from GUI import RobotCommunicator, LightSensor, TestData
-except:
-    pass
+import MotionPlanning.TestInitialization as TestInitialization
+import MotionPlanning.MovementPaths as MovementPaths
+import MotionPlanning.LightScanning as LightScanning
 
 def gravityTest(fr5=None, testData=None):
     #Assume all move/scan functions are already implemented
