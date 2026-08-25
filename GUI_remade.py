@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import logging
 import os
 import sys
@@ -10,6 +11,7 @@ import multiprocessing
 import requests
 import socket
 import threading
+import queue
 
 
 
@@ -18,88 +20,15 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 import matplotlib.axes as axes
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
-import numpy
+import numpy as np
 
-from Robot import RPC
+import RobotCommunicator as rc
+
+import inspect
+print(inspect.getmembers(rc, inspect.isclass))
 
 from utill import communications
 from utill import consts
-
-
-class RobotCommunicator(RPC):
-    HOME = [0, -45, -133.25, -180, -90, 90]
-
-    def __init__(self, ip="192.168.58.2"):
-        RPC.__init__(self, ip)
-        self.move_thread = threading.Thread(target=lambda:None)
-        self.move_loc = threading.Lock()
-
-    def _move_wait(self):
-        while self.move_thread.is_alive():
-            time.sleep(0.01)
-
-    def _incriment_move(self, dx, dy, dz, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=100.0):
-        '''
-        Move Arm with incrimental movements. 
-
-        ref: Movement reference
-         0 - joint point movement
-         2 - base coordinate system point movement
-         4 - tool coordinate system point movement
-         8 - workpiece coordinate system point movement
-
-        vel: Velocity - default: 20.0
-        
-        acc: Acceleration - default: 100.0
-        '''
-        # wait until current movement command is finished
-
-        funct = lambda: self.MoveL(
-            desc_pos=self.GetActualTCPPose(0)[1],
-            tool=0,
-            user=0,
-            joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            vel=10.0,
-            acc=20.0,
-            ovl=100.0,
-            blendR=-1.0,
-            blendMode=0,
-            exaxis_pos=[0.0, 0.0, 0.0, 0.0],
-            search=0,
-            offset_flag=2,
-            offset_pos=[dz, dy, dx, drx, dry, drz],
-            oacc=20.0,
-            velAccParamMode=0,
-            )
-        self.move_thread = threading.Thread(target=self._move, args=(funct, ), daemon=True)
-        self.move_thread.start()
-
-    def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0):
-
-        
-        self._move_wait()
-
-        desc_pos = self.GetActualTCPPose(0)[1]
-        dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,0,0,0] 
-        desc_pos=self.GetActualTCPPose(0)[1],
-        tool=0
-        user=0
-        vel=10.0
-        acc=20.0
-        ovl=100.0
-        blendR=-1.0
-        blendMode=0
-        exaxis_pos=[0.0, 0.0, 0.0, 0.0]
-        search=0
-        offset_flag=2
-        offset_pos=dpos
-        oacc=20.0
-        velAccParamMode=0
-
-        funct = lambda: self.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode)
-        self.move_thread = threading.Thread(target=self._move, args=(funct, ), daemon=True)
-        self.move_thread.start()
- 
 
 
 class TestPage:
@@ -201,11 +130,9 @@ class GravityTest(TestPage):
     def build(self):
         return super().build()
 
-
-
 class GUI:
     def __init__(self, name = 'XRayBotics'):
-        self.robot = RobotCommunicator()
+        self.robot = rc.RobotCom()
         self.window = tk.Tk()
         self.name = name
         self.window.title(name)
@@ -256,7 +183,23 @@ class GUI:
         self.current_test.show()
 
 
+# region Logging setup
+def _create_debug_logger(log_file=None):
+    debug_logger = logging.getLogger('Debug Logger')
+    debug_logger.setLevel(logging.DEBUG)
+    if log_file:
+        log_handler = logging.FileHandler(log_file, mode='w' if __name__ == '__main__' else 'a')
+        log_handler.setFormatter(logging.Formatter('%(threadName)s - %(name)s - %(levelname)s - %(message)s'))
+        debug_logger.addHandler(log_handler)
 
+    stdout = logging.StreamHandler(sys.stdout)
+    stdout.setFormatter(logging.Formatter('%(threadName)s - %(name)s - %(levelname)s - %(message)s'))
+    debug_logger.addHandler(stdout)
 
+_create_debug_logger()
+    
+debug_logger = logging.getLogger('Debug Logger')
+debug_logger.propagate = False
+debug_logger.debug(f'Testing')
 if __name__ == '__main__':
     GUI()
