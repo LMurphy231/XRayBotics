@@ -8,8 +8,8 @@ except:
     
 from labquest import LabQuest 
 try:
-    import GUI
-    #from GUI import RobotCommunicator, LightSensor, TestData
+    #import GUI
+    from GUI_remade import RobotCommunicator, LightSensor, TestData
 except:
     pass
 
