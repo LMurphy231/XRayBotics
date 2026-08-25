@@ -34,15 +34,6 @@ def MoveRobot(fr5, path, testData, lightData, clamp):
             
         lightData.append(norm_intensities)                             #Append Light Data; List of NumPy arrays        
 
-
-
-
-
-
-
-
-
-
 #TODO: Complete Movement Actions and defined Movement states
 class Movement:  # Movement Actions to be Performed    
     def __init__(self, arm):
