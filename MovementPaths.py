@@ -1,15 +1,16 @@
-import time
 import numpy as np
 
-def square_path(step, length):
+def rectanglePath(step, length, width):
 
-    #Creating Moveset for Corner-Referenced Square Path
+    #Creating Moveset for Corner-Referenced Rectangle Path
     moves = []                      #Store Moveset
-    steps_full = length/int(step)   #Number of Times to Increment for Full Side
+    sideOne = length/int(step)   #Number of Times to Increment for length side
+    sideTwo = width/int(step)   #Number of Times to Increment for width side
 
-    #Define Movement Vectors (x and z)
-    pos_x = np.array([0,steps_full, 0])
-    pos_z = np.array([0, 0, steps_full])
+    #Define Movement Vectors (x, y, z)
+    pos_x = np.array([0,sideOne, 0])
+    #pos_y = np.array([0, steps_full, 0])
+    pos_z = np.array([0, 0, sideTwo])
 
     directions = [("+x", pos_x), ("+z", pos_z), ("-x", -pos_x), ("-z", -pos_z)] #Tuple for Directions
 
