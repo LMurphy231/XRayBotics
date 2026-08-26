@@ -1,3 +1,4 @@
+import logging
 import threading
 import tkinter as tk
 import time
@@ -10,6 +11,8 @@ class RobotCom(RPC):
     HOME = [0, -45, -133.25, -180, -90, 90]
 
     def __init__(self, ip="192.168.58.2"):
+        self.logger = logging.getLogger('GUI logger')
+        self.logger.info('Connecting to Farino FR5')
         threading.Thread(target=RPC.__init__, args=(self, ip), daemon=True).start()
         self.move_thread = threading.Thread(target=lambda:None)
         self.action_queue:queue.Queue[threading.Thread] = queue.Queue()
@@ -34,8 +37,9 @@ class RobotCom(RPC):
                 time.sleep(1)
 
     def home(self):
-            self.stop()
-            self._joint_move(self.HOME)
+        self.logger.debug('Moving to home position')
+        self.stop()
+        self._joint_move(self.HOME)
 
     def _monitor(self):
         thread = threading.Thread(target=lambda:None)
@@ -67,7 +71,7 @@ class RobotCom(RPC):
         
         acc: Acceleration - default: 100.0
         '''
-
+        self.logger.debug(f'Queing Incrimental Movement ({dx}, {dy}, {dz})')
         self.action_queue.put(threading.Thread(
             target = lambda: self.MoveL(
                 desc_pos=self.GetActualTCPPose(0)[1],
@@ -90,6 +94,7 @@ class RobotCom(RPC):
             ))
 
     def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0):
+        
         desc_pos = self.GetActualTCPPose(0)[1]
         dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,0,0,0] 
         desc_pos=self.GetActualTCPPose(0)[1],
@@ -106,7 +111,7 @@ class RobotCom(RPC):
         offset_pos=dpos
         oacc=20.0
         velAccParamMode=0
-
+        self.logger.debug(f'Queing Movement to ({x}, {y}, {z})')
         self.action_queue.put(
             threading.Thread(
                 target = lambda: self.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode),
@@ -125,7 +130,7 @@ class RobotCom(RPC):
         blendT = -1.0
         offset_flag = 0
         offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0]
-
+        self.logger.debug(f'Queing joint movement to {tuple(joint_pos)}')
         self.action_queue.put(
             threading.Thread(
                 target= lambda: self.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos),
@@ -167,10 +172,12 @@ class RobotCom(RPC):
         return join_pos
     
     def _update_connection(self):
+        self.logger.debug(f'Attempting to reconnect to Farino FR5')
         while True:
             if not self.is_conect:
                 self.reconnect()     
             else:
+                self.logger.debug(f'Robot connection restored')
                 return 
             time.sleep(5)
 

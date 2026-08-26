@@ -25,7 +25,6 @@ import numpy as np
 import RobotCommunicator as rc
 
 import inspect
-print(inspect.getmembers(rc, inspect.isclass))
 
 from utill import communications
 from utill import consts
@@ -130,23 +129,49 @@ class GravityTest(TestPage):
     def build(self):
         return super().build()
 
+class MessageTerminal(logging.Handler):
+    def __init__(self, text:tk.Text, level):
+        super().__init__(level)
+        self.text = text
+
+    def emit(self, record:logging.LogRecord):
+        if record.levelno < self.level:
+            return
+        try:
+            msg = self.format(record)
+            _write_to_textbox(self.text, msg)
+        except Exception:
+            self.handleError(record)
+    
 class GUI:
     def __init__(self, name = 'XRayBotics'):
-        self.robot = rc.RobotCom()
         self.window = tk.Tk()
         self.name = name
         self.window.title(name)
+        self._create_gui_logger()
         self._create_window()
-
+        self.robot = rc.RobotCom()
+        self.gui_logger.debug(f'Running Mainloop')
         self.window.mainloop()
+
+    def _create_gui_logger(self):
+        self.gui_logger = logging.getLogger('GUI logger')
+        self.gui_logger.setLevel(1)
+        self.gui_logger.propagate = False
+        
+
 
     def _create_window(self):
         self.root = tk.Frame(self.window)
         self.root.grid(row=0, column=0, sticky=tk.NSEW)
 
         test_setup_frame = tk.Frame(self.root)
-        test_setup_frame.grid(row=0, column=1, sticky=tk.NSEW)
+        test_setup_frame.grid(row=0, column=0, sticky=tk.NSEW)
         self._create_test_setup(test_setup_frame)
+
+        text_window_frame = tk.Frame(self.root)
+        text_window_frame.grid(row=1, column=0, sticky=tk.NSEW)
+        self._create_text_window(text_window_frame)
     
     def _create_test_setup(self, frame:tk.Frame):
         self.test_frame = tk.Frame(frame)
@@ -163,6 +188,33 @@ class GUI:
         self.test_selection.bind('<<ListboxSelect>>', self._change_test_page)
         for test in self.test_types:
             self.test_selection.insert(tk.END, test)
+
+    def _create_text_window(self, frame:tk.Frame):
+
+        textbox_notebook = ttk.Notebook(frame)
+        textbox_notebook.grid(row=0, column=0, sticky=tk.NSEW)
+
+        debug_frame = tk.Frame(textbox_notebook)
+        textbox_notebook.add(debug_frame, text='Messages')
+
+
+        textbox = tk.Text(debug_frame, state=tk.NORMAL)
+        textbox.grid(row=0, column=0, sticky=tk.NSEW)
+
+        self.user_message_textbox = MessageTerminal(textbox, logging.INFO) 
+        self.user_message_textbox.setFormatter(logging.Formatter('[%(levelname)s] - %(message)s'))
+        self.gui_logger.addHandler(self.user_message_textbox)
+
+        message_frame = tk.Frame(textbox_notebook)
+        textbox_notebook.add(message_frame, text='Debug')
+
+        textbox2 = tk.Text(message_frame, state=tk.NORMAL)
+        textbox2.grid(row=0, column=0, sticky=tk.NSEW)
+
+        self.debug_textbox = MessageTerminal(textbox2, logging.DEBUG) 
+        self.debug_textbox.setFormatter(logging.Formatter('[%(threadName)s][%(name)s][%(levelname)s] - %(message)s'))
+        self.gui_logger.addHandler(self.debug_textbox)
+        
 
     def _change_test_page(self, event:tk.Event):
         if event is None:
@@ -181,6 +233,12 @@ class GUI:
 
         self.current_test = test
         self.current_test.show()
+
+def _write_to_textbox(textbox:tk.Text, message, endswith='\n'):
+    textbox.config(state=tk.NORMAL)
+    textbox.insert(tk.END, f'{message}{endswith}')
+    textbox.config(state=tk.DISABLED)
+
 
 
 # region Logging setup
