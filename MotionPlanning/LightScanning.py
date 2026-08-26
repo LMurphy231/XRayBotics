@@ -17,3 +17,13 @@ def lightScanHits(lightData, threshold, portions, hits, accuracyPercent):
                 hits.append((i, percent)) #Save Which Moves Had Light (Enough Values)
 
     print(f"Portions: {portions} --- Hits: {hits}")
+
+def normalizeLightData():
+    _, intensities, *_ = testData.individualize(data) #testData.result(testData.cur_move_id)        #Get Light Data After Each Move
+                                        #Clamp to 0
+    
+            #Check in Case Clamps All to 0; Normalize per Move
+            norm_intensities = np.array(intensities) / max(np.max(intensities),1)
+            norm_intensities[norm_intensities < clamp] = 0   
+                
+            lightData.append(norm_intensities)                             #Append Light Data; List of NumPy arrays  

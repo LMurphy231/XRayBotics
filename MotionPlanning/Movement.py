@@ -1,5 +1,7 @@
 import numpy as np
 
+import MotionPlanning.LightScanning as LightScanning
+
 try:
     from api.farinoAPI.fairino.Robot import *
 except:
@@ -10,6 +12,7 @@ def MoveRobot(fr5, path, testData, lightData, clamp):
      """
      Move robot here #doc strings
      """
+
      for direction_name, move_vec in path: #Tuple Unpacking
 
         dx, dy, dz = move_vec
@@ -20,6 +23,8 @@ def MoveRobot(fr5, path, testData, lightData, clamp):
         fr5._incriment_move(dx, dy, dz) #STC #TODO
         fr5._move_wait()
         data = testData.end_movement()
+
+        LightScanning.normalizeLightData(testData)
 
         _, intensities, *_ = testData.individualize(data) #testData.result(testData.cur_move_id)        #Get Light Data After Each Move
                                     #Clamp to 0
