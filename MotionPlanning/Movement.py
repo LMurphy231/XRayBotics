@@ -5,7 +5,11 @@ try:
 except:
     from Robot import RPC
 
+#TODO: Update Logic on Moving Robot
 def MoveRobot(fr5, path, testData, lightData, clamp):
+     """
+     Move robot here #doc strings
+     """
      for direction_name, move_vec in path: #Tuple Unpacking
 
         dx, dy, dz = move_vec
@@ -13,7 +17,7 @@ def MoveRobot(fr5, path, testData, lightData, clamp):
 
         #Move Real Robot 
         testData.next_movement(dx, dy, dz)
-        fr5._incriment_move(dx, dy, dz)
+        fr5._incriment_move(dx, dy, dz) #STC #TODO
         fr5._move_wait()
         data = testData.end_movement()
 
@@ -52,7 +56,9 @@ class Movement:  # Movement Actions to be Performed
     def move_out(self, delta):
         self.arm.move(0, delta, 0)
 
-#Track Position (Manual) 
-#coord = np.array([0.0, 0.0, 0.0])
-#coord += np.array([dx, dy, dz]) #For Manual Updates TODO
+#TODO: UPDATE FUNCTION TO PROPERLY TRACK HISTORY OF MOVEMENTS
+def trackPosition(dx, dy, dz):
+    #Track Position (Manual) 
+    coord = np.array([0.0, 0.0, 0.0])
+    coord += np.array([dx, dy, dz]) #For Manual Updates
 
