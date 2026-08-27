@@ -5,15 +5,12 @@ import MotionPlanning.MovementPaths as MovementPaths
 import MotionPlanning.LightScanning as LightScanning
 
 #TODO: Update Test Logic to Include Cases and Thresholds
-def gravityTest(fr5=None, gravityTestData=None):
+def gravityTest(fr5=None):
     #Assume all move/scan functions are already implemented
     print("Starting Gravity-Laser Test...")
 
     #We also have the parameter gravityTesData ---> this would b the tuple version
-    gravityTestMovementData[]
-    gravityTestLightData[]
-
-    gravityTestData = [((dx, dy, dz), []),]
+    gravityTestData =  [((dx, dy, dz), lightIntensity)]
     gravityTestMovementData = gravityTestData[0]
     gravityTestLightData = gravityTestData[1]
 
