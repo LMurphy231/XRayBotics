@@ -1,36 +1,43 @@
 import numpy as np
 
 import MotionPlanning.TestInitialization as TestInitialization
+import MotionPlanning.Movement as Movement
 import MotionPlanning.MovementPaths as MovementPaths
 import MotionPlanning.LightScanning as LightScanning
 
+import RobotCommunicator as com
+
 #TODO: Update Test Logic to Include Cases and Thresholds
-def gravityTest(fr5=None):
+def gravityTest(fr5=None, freq=4500, Navg=4, threshold=0.75, 
+                step=1, length=100, width=100):
     #Assume all move/scan functions are already implemented
     print("Starting Gravity-Laser Test...")
 
     #We also have the parameter gravityTesData ---> this would b the tuple version
-    gravityTestData =  [((dx, dy, dz), lightIntensity)]
-    gravityTestMovementData = gravityTestData[0]
-    gravityTestLightData = gravityTestData[1]
+    if fr5 is None:
+        fr5 = com.RobotCom()
 
-    TestInitialization.initializeRobot()
-    TestInitialization.returnToHomePosition(fr5)
+    fr5.home() # Start at home position
+    #fr5._get_tool_position() # Show current position (home)
+    print(f"{fr5._get_tool_position()}") #Debug output
 
-    #Parameters
-    freq = 4500                 # < 5000
-    Navg = 4                    # < 5
-    threshold = 0.75            #STC
-    
-    #Path Paramters
-    step = 1 #STC
-    length = 100 #mm
-    width = 100
-    path = MovementPaths.rectanglePath(step, length, width) #Input Path
-    
+    gravityTestData =  []
+    path = MovementPaths.rectanglePath(step, length, width) # Define Input Path
+
+    Movement.MoveRobot(fr5, path, testData, clamp) #Move in path
+
+
+
+
+
+
+
+    #Conduct Movement in Input Path
+    clamp = 0.5
+
     #Start Initial Scan
-    
     gravityTestData.start_recording(freq, Navg, 'initial_path')
+
     ipFound = LightScanning.initialPath(gravityTestData, path, fr5, threshold)
     gravityTestData.end_recording()
 
@@ -51,3 +58,11 @@ def gravityTest(fr5=None):
     #Change to While Loop Later --> Repeat Both Until Laser Found    
 
     
+# Add more args
+def gravity_test(fr5=None, *args):
+    # Return to home pos
+    # Define pathto move in
+    # Call movement function to move in path
+        # Scans light data
+            # Process data ---> append to data lists ---> [(dx,dy,dz), lightIntensity]
+    # if not enough light data then m
