@@ -12,8 +12,8 @@ def initialPath(testData, path, fr5, threshold):
     clamp = 0.5
 
     #Initial Move and Scan In Square Path: From Corner
-    Movement.MoveRobot(fr5, path, testData, lightData, clamp)
-    
+    Movement.MoveRobot(fr5, path, testData, clamp)
+
     #Get Portion of Points Above Threshold per Move
     portions = []
     hits = []

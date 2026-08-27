@@ -1,11 +1,14 @@
 import numpy as np
 
+import MotionPlanning.LightScanning as LightScanning
+
 try:
     from api.farinoAPI.fairino.Robot import *
 except:
     from Robot import RPC
 
 #TODO: Update Logic on Moving Robot
+# Generic Move Function
 def MoveRobot(fr5, path, testData, lightData, clamp):
      """
      Move robot here #doc strings
@@ -15,20 +18,14 @@ def MoveRobot(fr5, path, testData, lightData, clamp):
         dx, dy, dz = move_vec
         print(f"\n[STEP] Moving {direction_name} by {move_vec}")
 
-        #Move Real Robot 
+        #Move Real Robot
         testData.next_movement(dx, dy, dz)
         fr5._incriment_move(dx, dy, dz) #STC #TODO
         fr5._move_wait()
         data = testData.end_movement()
 
-        _, intensities, *_ = testData.individualize(data) #testData.result(testData.cur_move_id)        #Get Light Data After Each Move
-                                    #Clamp to 0
 
-        #Check in Case Clamps All to 0; Normalize per Move
-        norm_intensities = np.array(intensities) / max(np.max(intensities),1)
-        norm_intensities[norm_intensities < clamp] = 0   
-            
-        lightData.append(norm_intensities)                             #Append Light Data; List of NumPy arrays        
+#main move function is above ^
 
 #TODO: Complete Movement Actions and defined Movement states
 class Movement:  # Movement Actions to be Performed    
