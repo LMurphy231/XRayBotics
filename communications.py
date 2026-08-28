@@ -3,30 +3,20 @@ import socket
 import time
 import logging
 import sys
-
-try:
-    from . import consts
-except:
-    import consts
+import atexit
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d] - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)   # Log to the terminal
-    ]
-)
-
+from utill import consts
 
 class Communicator:
     def __init__(self, retry_on_dc=True):
+        self.messenger  = logging.getLogger('messenger')
+        self.gui_logger = logging.getLogger('GUI logger')
         self.socket   = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
         self.current_hostname = None
-        self._connect_to_relay()
-
-        if retry_on_dc:
-            threading.Thread(target=self._reconnect_on_dc, daemon=True).start()
+        self.initial_thread = threading.Thread(target= self._connect_to_relay, daemon=True)
+        self.initial_thread.start()
+        atexit.register(lambda: self.socket.close())
             
     @property
     def ping(self):
@@ -49,24 +39,26 @@ class Communicator:
         self.send(consts._PING)
         return True if self.listen() is None else False
 
-
     def _reconnect_on_dc(self, delay_time=10):
-        self._connect_to_relay()
+        while self.initial_thread.is_alive():
+            time.sleep(0.1)
+
         while True:
             if not self.is_connected:
                 self._connect_to_relay()
             time.sleep(delay_time)
-
+    
     def _connect_to_relay(self):
         try:
+            self.gui_logger.info(f'Trying to connect to {self.relay_ip}')
             self.socket.connect((self.relay_ip, consts._PORT))
             self.send(consts._PASSKEY)
-            logging.info(self.listen())
+            self.gui_logger.info(self.listen())
             return True if self.listen() == consts._MSG_PASSKEY_ACCEPTED else False
         except Exception as e:
             self.socket.connect((consts._LOCAL_RELAY_IP, consts._PORT))
             self.send(consts._PASSKEY)
-            logging.info(self.listen())
+            self.gui_logger.info(self.listen())
             return True
         except Exception as e:
             logging.critical(f'here {e}')
@@ -78,7 +70,7 @@ class Communicator:
             return self.socket.sendall(message.encode(encoding=consts._ENCODING))
         except Exception as e:
             raise e
-    
+
     def listen(self, bufsize=1024, decode=True, delimiter=consts._DELIMITER):
         try:    
             data = bytearray()
