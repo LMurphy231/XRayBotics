@@ -119,7 +119,7 @@ class Host:
             return
     
     def _handle_message(self, conn: socket.socket, addr, message:str, in_server=False):
-        logging.info('Checking message')
+        logging.info(f'Checking message {(message,)}: {conn.getpeername()} {conn.fileno()}')
         if message is None:
             return consts._REFUSE_CONNECTION, None
         split_message = message.split(consts._DIVIDER)
@@ -228,7 +228,7 @@ class Host:
             del self.servers[server.name]
             
 relay_server = Host()
-relay_server.setup()
-while True:
-    pass
-#threading.Thread(target=relay_server.setup).start()
+#relay_server.setup()
+#while True:
+#    pass
+threading.Thread(target=relay_server.setup).start()

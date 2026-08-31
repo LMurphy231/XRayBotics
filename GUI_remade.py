@@ -24,10 +24,7 @@ import numpy as np
 
 import RobotCommunicator as rc
 
-import inspect
-print(inspect.getmembers(rc, inspect.isclass))
-
-from utill import communications
+import communications as com
 from utill import consts
 
 
@@ -130,23 +127,103 @@ class GravityTest(TestPage):
     def build(self):
         return super().build()
 
+class MessageTerminal(logging.Handler):
+    def __init__(self, text:tk.Text, level):
+        super().__init__(level)
+        self.text = text
+
+    def emit(self, record:logging.LogRecord):
+        if record.levelno < self.level:
+            return
+        try:
+            msg = self.format(record)
+            _write_to_textbox(self.text, msg)
+        except Exception:
+            self.handleError(record)
+    
 class GUI:
     def __init__(self, name = 'XRayBotics'):
-        self.robot = rc.RobotCom()
         self.window = tk.Tk()
         self.name = name
         self.window.title(name)
+        self._create_loggers()
         self._create_window()
+        
+        self.robot = rc.RobotCom()
+        self.coms  = com.Communicator(True)
 
+        self.gui_logger.debug(f'Running Mainloop')
         self.window.mainloop()
+
+    def _create_loggers(self):
+        self.gui_logger = logging.getLogger('GUI logger')
+        self.gui_logger.setLevel(1)
+        self.gui_logger.propagate = False
+
+
+        self.messenger = logging.getLogger('messenger')
+        self.messenger.setLevel(1)
+        self.messenger.propagate = False
 
     def _create_window(self):
         self.root = tk.Frame(self.window)
         self.root.grid(row=0, column=0, sticky=tk.NSEW)
 
         test_setup_frame = tk.Frame(self.root)
-        test_setup_frame.grid(row=0, column=1, sticky=tk.NSEW)
+        test_setup_frame.grid(row=0, column=0, sticky=tk.NSEW)
         self._create_test_setup(test_setup_frame)
+
+        text_window_frame = tk.Frame(self.root)
+        text_window_frame.grid(row=1, column=0, sticky=tk.NSEW)
+        self._create_text_window(text_window_frame)
+
+        robot_window_frame = tk.Frame(self.root)
+        robot_window_frame.grid(row=0, column=1, sticky=tk.NSEW)
+        self._create_robot_controller(robot_window_frame)
+
+    def _create_robot_controller(self, frame:tk.Frame):
+        self.robot_vars = {}
+        coord_move_frame = tk.LabelFrame(frame, text='Coordinate Movement')
+        coord_move_frame.grid(row=0,column=0,sticky=tk.NSEW)
+
+        increment_move_frame = tk.LabelFrame(frame, text='Incrimental Movement')
+        increment_move_frame.grid(row=1,column=0,sticky=tk.NSEW)
+
+        for frame, vars in ((coord_move_frame, ('X', 'Y', 'Z')), (increment_move_frame, ('dx', 'dy', 'dz'))):
+            for index, var_name in enumerate(vars):
+                tk.Label(frame, text=f'{var_name}:').grid(row=index, column=0,sticky=tk.NSEW)
+                var = tk.DoubleVar(value=0.0)
+                entry = tk.Entry(frame, textvariable=var)
+                entry.grid(row=index,column=1,sticky=tk.NSEW, columnspan=2)
+                self.robot_vars[var_name.lower()] = {
+                    'var'   : var,
+                    'widget': entry,
+                }
+
+        tk.Button(coord_move_frame, text='Reset Position', 
+        command= lambda: _reset_var(0.0, *(self.robot_vars[var_name]['var'] for var_name in ('x','y','z')))
+        ).grid(row=3, column=1, sticky=tk.NSEW)
+
+        tk.Button(coord_move_frame, text='Move', 
+            command= lambda: self.robot._position_move(
+                x=self.robot_vars['x']['var'].get(),
+                y=self.robot_vars['y']['var'].get(),
+                z=self.robot_vars['z']['var'].get(),
+            )
+            ).grid(row=3, column=2, sticky=tk.NSEW)
+
+
+        tk.Button(increment_move_frame, text='Reset Position', 
+        command= lambda: _reset_var(0.0, *(self.robot_vars[var_name]['var'] for var_name in ('dx','dy','dz')))
+        ).grid(row=3, column=1, sticky=tk.NSEW)
+
+        tk.Button(increment_move_frame, text='Move', 
+            command= lambda: self.robot._incriment_move(
+                dx=self.robot_vars['dx']['var'].get(),
+                dy=self.robot_vars['dy']['var'].get(),
+                dz=self.robot_vars['dz']['var'].get(),
+            )
+            ).grid(row=3, column=2, sticky=tk.NSEW)
     
     def _create_test_setup(self, frame:tk.Frame):
         self.test_frame = tk.Frame(frame)
@@ -164,6 +241,32 @@ class GUI:
         for test in self.test_types:
             self.test_selection.insert(tk.END, test)
 
+    def _create_text_window(self, frame:tk.Frame):
+
+        textbox_notebook = ttk.Notebook(frame)
+        textbox_notebook.grid(row=0, column=0, sticky=tk.NSEW)
+
+        debug_frame = tk.Frame(textbox_notebook)
+        textbox_notebook.add(debug_frame, text='Messages')
+
+
+        textbox = tk.Text(debug_frame, state=tk.NORMAL)
+        textbox.grid(row=0, column=0, sticky=tk.NSEW)
+
+        message_handler = MessageTerminal(textbox, logging.INFO) 
+        message_handler.setFormatter(logging.Formatter('[%(user)s] - %(message)s'))
+        self.messenger.addHandler(message_handler)
+
+        message_frame = tk.Frame(textbox_notebook)
+        textbox_notebook.add(message_frame, text='Debug')
+
+        textbox2 = tk.Text(message_frame, state=tk.NORMAL)
+        textbox2.grid(row=0, column=0, sticky=tk.NSEW)
+
+        self.debug_textbox = MessageTerminal(textbox2, logging.DEBUG) 
+        self.debug_textbox.setFormatter(logging.Formatter('[%(threadName)s][%(levelname)s] - %(message)s'))
+        self.gui_logger.addHandler(self.debug_textbox)
+        
     def _change_test_page(self, event:tk.Event):
         if event is None:
             return
@@ -183,6 +286,15 @@ class GUI:
         self.current_test.show()
 
 
+def _write_to_textbox(textbox:tk.Text, message, endswith='\n'):
+    textbox.config(state=tk.NORMAL)
+    textbox.insert(tk.END, f'{message}{endswith}')
+    textbox.config(state=tk.DISABLED)
+
+def _reset_var(value, *vars: tk.Variable):
+    for var in vars:
+        var.set(value)
+
 # region Logging setup
 def _create_debug_logger(log_file=None):
     debug_logger = logging.getLogger('Debug Logger')
@@ -200,6 +312,6 @@ _create_debug_logger()
     
 debug_logger = logging.getLogger('Debug Logger')
 debug_logger.propagate = False
-debug_logger.debug(f'Testing')
+
 if __name__ == '__main__':
     GUI()
