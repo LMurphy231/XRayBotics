@@ -128,9 +128,18 @@ class GravityTest(TestPage):
         return super().build()
 
 class MessageTerminal(logging.Handler):
-    def __init__(self, text:tk.Text, level):
-        super().__init__(level)
+    def __init__(self, text:tk.Text, level, handlers=[]):
         self.text = text
+        self.handlers = handlers
+        super().__init__(level)
+
+    def write(self, line):
+        for handler in self.handlers:
+            handler.write(line)
+
+    def writelines(self, lines):
+        for handler in self.handlers:
+            handler.writelines(lines)
 
     def emit(self, record:logging.LogRecord):
         if record.levelno < self.level:

@@ -5,12 +5,14 @@ import time
 import queue
 
 from Robot import RPC
+from LightSensor import SensorManager
 
 
 class RobotCom(RPC):
     HOME = [0, -45, -133.25, -180, -90, 90]
 
     def __init__(self, ip="192.168.58.2"):
+        self.robot_logger = logging.getLogger('robot')
         self.logger = logging.getLogger('GUI logger')
         self.logger.info('Connecting to Farino FR5')
         threading.Thread(target=RPC.__init__, args=(self, ip), daemon=True).start()
@@ -72,7 +74,7 @@ class RobotCom(RPC):
         acc: Acceleration - default: 100.0
         '''
         self.logger.debug(f'Queing Incrimental Movement ({dx}, {dy}, {dz})')
-        self.action_queue.put(threading.Thread(
+        thread = threading.Thread(
             target = lambda: self.MoveL(
                 desc_pos=self.GetActualTCPPose(0)[1],
                 tool=0,
@@ -91,7 +93,9 @@ class RobotCom(RPC):
                 velAccParamMode=0,
                 ), 
             daemon=True,
-            ))
+            )
+        self.action_queue.put(thread)
+        return thread
 
     def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0):
         
@@ -112,12 +116,13 @@ class RobotCom(RPC):
         oacc=20.0
         velAccParamMode=0
         self.logger.debug(f'Queing Movement to ({x}, {y}, {z})')
-        self.action_queue.put(
-            threading.Thread(
+        
+        thread = threading.Thread(
                 target = lambda: self.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode),
                 daemon=True,
                 )
-            )
+        self.action_queue.put(thread)
+        return thread
 
     def _joint_move(self, joint_pos):
         tool=0
@@ -131,13 +136,33 @@ class RobotCom(RPC):
         offset_flag = 0
         offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0]
         self.logger.debug(f'Queing joint movement to {tuple(joint_pos)}')
-        self.action_queue.put(
-            threading.Thread(
+        
+        thread = threading.Thread(
                 target= lambda: self.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos),
                 daemon= True,
             )
-        )
-    
+        return thread
+
+    def _move_path(self, path, lq:SensorManager):
+        recordings = []
+        for direction_name, move_vec in path:
+            drx, dry, drz = 0.0
+            if len(move_vec) == 3:
+                dx, dy, dz = move_vec
+            elif len(move_vec) == 6:
+                dx, dy, dz, drx, dry, drz = move_vec
+            else:
+                raise ValueError(f'Move Vector recieved an unexpected amount of values {move_vec}')
+            
+            self.robot_logger.debug('Moving {} ({})'.format(direction_name, '{:>0.3f}'.join(move_vec)))
+            move_thread = self._incriment_move(dx, dy, dz, drx, dry, drz)
+
+            time_data, light_data = _record_thread(move_thread, lq)
+
+            recordings.append((time_data, light_data))
+
+        return recordings         
+        
     def _get_tool_position(self):
         ierr, tcp_pose = self.GetActualTCPPose()
         return tcp_pose
@@ -186,3 +211,18 @@ class RobotCom(RPC):
         while not self.action_queue.empty():
             self.action_queue.get()
         self.StopMove()
+
+def _wait_thread_start(thread:threading.Thread, delay=0.001):
+    while thread.ident is None:
+        time.sleep(delay)
+
+def _wait_on_thread(thread:threading.Thread, delay=0.001):
+    while thread.ident is None or thread.is_alive():
+        time.sleep(delay)
+
+def _record_thread(thread:threading.Thread, lq:SensorManager, delay=0.001):
+    _wait_thread_start(thread, delay)
+    with lq.record():
+        _wait_on_thread(thread, delay)
+    time_data, light_data = lq.get()
+    return time_data, light_data

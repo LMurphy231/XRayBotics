@@ -2,59 +2,40 @@ import os
 import multiprocessing
 import threading
 import time
+from contextlib import contextmanager
 
 import numpy as np
 import labquest as lq
 
 
-class LightSensor:
-    def __init__(self, freq=5000):
-        self.queue = multiprocessing.Queue()
- 
-        self.ls = lq.LabQuest()
-        self.ls.open()
-        self.ls.select_sensors(ch1="lq_sensor")
-        self.ls.start(period=int(1/freq*1000))
+_START = 'start'
+_STOP  = 'stop'
+_CLOSE = 'close'
 
-    def connect(self):
-        self.status = self.lq.open()
-        self.lq.select_sensors(ch1="lq_sensor")
-        return self.status
+_record_lock = threading.Lock()
+
+class SensorManager:
+    def __init__(self, freq):
+        self.command_queue = multiprocessing.Queue()
+        self.return_queue  = multiprocessing.Queue()
+        self.process = multiprocessing.Process(target=start, args=(self.command_queue, self.return_queue, freq), daemon=True)
+        self.process.start()
+
+    @contextmanager
+    def record(self):
+        with _record_lock:
+            self.command_queue.put(_START)
+            yield 
+            self.command_queue.put(_STOP)
+
+    def get(self) -> tuple[list, list]: 
+        time_data, light_data = self.return_queue.get()
+        return time_data, light_data
 
     def close(self):
-        try:
-            self.lq.stop()
-            self.lq.close()
-        except:
-            pass
-
-    def start(self, freq=5000):
-        self.freq = freq
-        self.lq.start(period = int(1/self.freq*1000))
+        self.command_queue.put(_CLOSE)
+        self.process.join()
     
-    def get_single(self):
-        
-        if self.status == -1:
-            self.connect()
-            self.lq.start(period=int(1/self.freq*1000))
-
-        return self.lq.read('ch1')
-    
-    def get(self, Navg=1):
-        '''
-        Get sample of size N over avgn readings per sample returned
-        '''
-        try:
-            if self.status == -1:
-                self.connect()
-                self.lq.start(period=int(1/self.freq*1000))
-        except:
-            return 0
-        
-        data = self.lq.read_multi_pt('ch1', Navg)
-        data = data if data else np.full(Navg, 0)
-        return np.average(data)
-
 def _read(ls:lq.LabQuest, event:threading.Event, time_data:list, light_data:list):
     while not event.is_set():
         data = ls.read('ch1')
@@ -68,20 +49,22 @@ def _end_read(thread:threading.Thread, event:threading.Event, q:multiprocessing.
         thread.join()
         event.clear()
         q.put((np.array(time_data), np.array(light_data)))
-
-
+        time_data  = []
+        light_data = []
+    return time_data, light_data
 
 def start(command_queue:multiprocessing.Queue, return_queue:multiprocessing.Queue, freq=5000):
-    ls = lq.LabQuest()
-    ls.open()
-    ls.select_sensors(ch1="lq_sensor")
-    ls.start(period=int(1/freq*1000))
-    print('here')
-    event = threading.Event()
-    light_data = []
-    time_data  = []
-    thread = threading.Thread(target=lambda:None)
     try:
+        ls = lq.LabQuest()
+        ls.open()
+        ls.select_sensors(ch1="lq_sensor")
+        ls.start(period=int(1/freq*1000))
+
+        event = threading.Event()
+        light_data = []
+        time_data  = []
+        thread = threading.Thread(target=lambda:None)
+    
         while multiprocessing.parent_process().is_alive():
             given = command_queue.get()
             if isinstance(given, (list, tuple)):
@@ -91,16 +74,16 @@ def start(command_queue:multiprocessing.Queue, return_queue:multiprocessing.Queu
                 command = given
 
             print(f'Running {command}')
-            if command == 'start':
-                _end_read(thread, event, return_queue, time_data, light_data)
+            if command == _START:
+                time_data, light_data = _end_read(thread, event, return_queue, time_data, light_data)
                 thread = threading.Thread(target=_read, args=(ls, event, time_data, light_data))
                 thread.start()
 
-            elif command == 'stop':
-                _end_read(thread, event, return_queue, time_data, light_data)
+            elif command == _STOP:
+                time_data, light_data = _end_read(thread, event, return_queue, time_data, light_data)
 
-            elif command == 'close':
-                print('Closing')
+            elif command == _CLOSE:
+                time_data, light_data = _end_read(thread, event, return_queue, time_data, light_data)
                 break
             
     finally:
@@ -108,19 +91,3 @@ def start(command_queue:multiprocessing.Queue, return_queue:multiprocessing.Queu
         ls.stop()
         ls.close()
 
-
-if __name__ == '__main__':
-    command_queue = multiprocessing.Queue()
-    return_queue = multiprocessing.Queue()
-    freq = 5000
-    process = multiprocessing.Process(target=start, args=(command_queue, return_queue, freq), daemon=True)
-    process.start()
-    for i in range(5):
-        command_queue.put(('start', None))
-        time.sleep(4)
-        command_queue.put(('stop', None))   
-        time_data, light_data = return_queue.get()
-        print(f'Got\ntime: {time_data}\nlight: {light_data}')
-    print('Closing process')
-    command_queue.put(('close'))
-    process.join()
