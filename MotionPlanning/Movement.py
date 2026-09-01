@@ -59,3 +59,4 @@ def trackPosition(dx, dy, dz):
     coord = np.array([0.0, 0.0, 0.0])
     coord += np.array([dx, dy, dz]) #For Manual Updates
 
+

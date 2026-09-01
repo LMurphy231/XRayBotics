@@ -61,8 +61,10 @@ def gravityTest(fr5=None, freq=4500, Navg=4, threshold=0.75,
 # Add more args
 def gravity_test(fr5=None, *args):
     # Return to home pos
-    # Define pathto move in
+    # Define path to move in
     # Call movement function to move in path
         # Scans light data
-            # Process data ---> append to data lists ---> [(dx,dy,dz), lightIntensity]
-    # if not enough light data then m
+            # Process data ---> append to data lists ---> [(dx,dy,dz), lightIntensity] # Tuple array
+    # if not enough light data then move up to max_z
+
+
