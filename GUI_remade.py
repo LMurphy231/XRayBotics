@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import configparser
 import logging
 import os
 import sys
@@ -23,16 +24,20 @@ from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationTool
 import numpy as np
 
 import RobotCommunicator as rc
-
 import communications as com
+from XRBPlotter import Plotter
 from utill import consts
 
+if os.path.basename(sys.executable) == 'pythonw.exe':
+    sys.stdout = open(os.devnull, 'w')
+    sys.stderr = open(os.devnull, 'w')
 
 class TestPage:
     def __init__(self, name, base_frame:tk.Frame):
         self.name = name
         self.base_frame = base_frame
         self.winfo_manager = base_frame.winfo_manager()
+        self.vars:dict[str, tk.Variable] = {}
         self.hide()
    
     def _create_header_frame(self) -> tk.Frame:
@@ -72,15 +77,15 @@ class TestPage:
     def build(self):
         self.header_frame = self._create_header_frame()
         if self.header_frame is not None:
-            self.header_frame.grid(row=0, column=0)
+            self.header_frame.grid(row=0, column=0, sticky=tk.NSEW)
 
         self.input_frame = self._create_input_frame()
         if self.input_frame is not None:
-            self.input_frame.grid(row=1, column=0)
+            self.input_frame.grid(row=1, column=0, sticky=tk.NSEW)
 
         self.start_frame = self._create_start_frame()
         if self.start_frame is not None:
-            self.start_frame.grid(row=2, column=0)
+            self.start_frame.grid(row=2, column=0, sticky=tk.NSEW)
 
     def hide(self):
         self._update_winfo()
@@ -109,8 +114,8 @@ class LadderTest(TestPage):
 
     def _create_input_frame(self):
         input_frame = tk.LabelFrame(self.frame)
-        self.width_var = tk.DoubleVar(value=100.0)
-        tk.Entry(input_frame, textvariable=self.width_var).grid(row=1,column=0)
+        self.vars['width'] = tk.DoubleVar(value=100.0)
+        tk.Entry(input_frame, textvariable=self.vars['width']).grid(row=1,column=0)
         return input_frame
 
     def start(self):
@@ -121,9 +126,29 @@ class GravityTest(TestPage):
         self.root = root
         self.frame = tk.Frame(self.root)
         self.frame.grid(row=0, column=0, sticky=tk.NSEW)
+        
         TestPage.__init__(self, name, self.frame)
         self.build()
 
+    def _create_input_frame(self):
+        input_frame = tk.LabelFrame(self.frame)
+
+        light_sensor_frame = tk.LabelFrame(input_frame, text='Light Sensor Settings')
+        light_sensor_frame.grid(row=0, column=0,  columnspan=2, sticky=tk.NSEW)
+
+        self.vars['Frequency']       = _quick_test_var(light_sensor_frame, 'Frequency'      , 5000, 0, 0)
+        self.vars['Sample Average']  = _quick_test_var(light_sensor_frame, 'Sample Average', 4   , 1, 0)
+
+        path_frame = tk.LabelFrame(input_frame, text='Path Settings')
+        path_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
+        self.vars['Steps']           = _quick_test_var(path_frame, 'Steps'          , 1   , 0, 0)
+        self.vars['Length']          = _quick_test_var(path_frame, 'Length'         , 100 , 1, 0)
+        self.vars['Width']           = _quick_test_var(path_frame, 'Width'          , 100 , 2, 0)
+
+        self.vars['Threshold']       = _quick_test_var(input_frame, 'Threshold'      , 0.75, 2, 0)
+
+        return input_frame
+    
     def build(self):
         return super().build()
 
@@ -149,8 +174,10 @@ class MessageTerminal(logging.Handler):
             _write_to_textbox(self.text, msg)
         except Exception:
             self.handleError(record)
-    
+
+
 class GUI:
+    INI = 'xrb.ini'
     def __init__(self, name = 'XRayBotics'):
         self.window = tk.Tk()
         self.name = name
@@ -163,6 +190,24 @@ class GUI:
 
         self.gui_logger.debug(f'Running Mainloop')
         self.window.mainloop()
+
+    def _create_settings_file(self):
+        self.opts = configparser.ConfigParser()
+        if os.path.exists(self.INI):
+            self.opts.read(self.INI)
+
+        self.opts.setdefault('Robot', {})
+        for var, default in (
+                            ('tool', 0),
+                            ('user', 0),
+                            ('vel' , 10.0),
+                            ('acc' , 20.0),
+                            ('ovl' , 0),
+                            ):
+            self.opts['Robot'].setdefault(var, default)
+            self.opts['Robot'][var] = type(default)(self.opts['Robot'][var])
+
+
 
     def _create_loggers(self):
         self.gui_logger = logging.getLogger('GUI logger')
@@ -182,13 +227,29 @@ class GUI:
         test_setup_frame.grid(row=0, column=0, sticky=tk.NSEW)
         self._create_test_setup(test_setup_frame)
 
+        robot_window_frame = tk.Frame(self.root)
+        robot_window_frame.grid(row=0, column=1, sticky=tk.NSEW)
+        self._create_robot_controller(robot_window_frame)
+
+        plotter_frame = tk.Frame(self.root)
+        plotter_frame.grid(row=0, column=2, sticky=tk.NSEW)
+        self._create_plotter_window(plotter_frame)
+
         text_window_frame = tk.Frame(self.root)
         text_window_frame.grid(row=1, column=0, sticky=tk.NSEW)
         self._create_text_window(text_window_frame)
 
-        robot_window_frame = tk.Frame(self.root)
-        robot_window_frame.grid(row=0, column=1, sticky=tk.NSEW)
-        self._create_robot_controller(robot_window_frame)
+    def _create_plotter_window(self, frame:tk.Frame):
+        plotter_notebook = ttk.Notebook(frame)
+        plotter_notebook.grid(row=0, column=0, sticky=tk.NSEW)
+
+        plotter_3d_frame = tk.Frame(plotter_notebook)
+        plotter_notebook.add(plotter_3d_frame, text='3D Plotter')
+        self.plotter_3d = Plotter(plotter_3d_frame, projection='3d')
+
+        plotter_2d_frame = tk.Frame(plotter_notebook)
+        plotter_notebook.add(plotter_2d_frame, text='2D Plotter')
+        self.plotter_2d = Plotter(plotter_2d_frame)
 
     def _create_robot_controller(self, frame:tk.Frame):
         self.robot_vars = {}
@@ -303,6 +364,20 @@ def _write_to_textbox(textbox:tk.Text, message, endswith='\n'):
 def _reset_var(value, *vars: tk.Variable):
     for var in vars:
         var.set(value)
+
+# region Quick GUI
+def _quick_test_var(frame:tk.Frame, name, default, row, column):
+    tk.Label(frame, text=f'{name}:').grid(row=row,column=column)
+    if isinstance(type(default), int):
+        var_type = tk.IntVar
+    elif isinstance(type(default), float):
+        var_type = tk.DoubleVar
+    else:
+        var_type = tk.StringVar
+
+    var = var_type(value=default)
+    tk.Entry(frame, textvariable=var).grid(row=row,column=column+1)
+    return var
 
 # region Logging setup
 def _create_debug_logger(log_file=None):

@@ -101,7 +101,6 @@ class RobotCom(RPC):
         
         desc_pos = self.GetActualTCPPose(0)[1]
         dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,0,0,0] 
-        desc_pos=self.GetActualTCPPose(0)[1],
         tool=0
         user=0
         vel=10.0
@@ -115,7 +114,7 @@ class RobotCom(RPC):
         offset_pos=dpos
         oacc=20.0
         velAccParamMode=0
-        self.logger.debug(f'Queing Movement to ({x}, {y}, {z})')
+        self.logger.debug(f'Queueing Movement to ({x}, {y}, {z})')
         
         thread = threading.Thread(
                 target = lambda: self.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode),
