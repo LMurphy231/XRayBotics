@@ -8,7 +8,7 @@ except:
     from Robot import RPC
 
 #TODO: Update Logic on Light Scanning
-def lightScanHits(lightData, threshold, portions, hits, accuracyPercent):
+def light_scan_hits(lightData, threshold, portions, hits, accuracyPercent):
     for i, arr in enumerate(lightData): #Want to Track Index and Value 
             percent = len(arr[arr > threshold]) / len(arr)
             portions.append(percent) #Store Portions for Each Move
@@ -18,7 +18,8 @@ def lightScanHits(lightData, threshold, portions, hits, accuracyPercent):
 
     print(f"Portions: {portions} --- Hits: {hits}")
 
-def normalizeLightData():
+
+def normalize_light_data(data):
     _, intensities, *_ = testData.individualize(data) #testData.result(testData.cur_move_id)        #Get Light Data After Each Move
                                         #Clamp to 0
     
