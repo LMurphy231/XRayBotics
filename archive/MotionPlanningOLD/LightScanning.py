@@ -1,6 +1,6 @@
 import numpy as np
 
-import MotionPlanning.Movement as Movement
+import archive.MotionPlanning.Movement as Movement
 
 try:
     from api.farinoAPI.fairino.Robot import *

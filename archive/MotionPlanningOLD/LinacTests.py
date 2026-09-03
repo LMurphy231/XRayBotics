@@ -1,9 +1,9 @@
 import numpy as np
 
-import MotionPlanning.TestInitialization as TestInitialization
-import MotionPlanning.Movement as Movement
-import MotionPlanning.MovementPaths as MovementPaths
-import MotionPlanning.LightScanning as LightScanning
+import archive.MotionPlanning.TestInitialization as TestInitialization
+import archive.MotionPlanning.Movement as Movement
+import archive.MotionPlanning.MovementPaths as MovementPaths
+import archive.MotionPlanning.LightScanning as LightScanning
 
 import RobotCommunicator as com
 
@@ -64,14 +64,21 @@ def gravityTest(fr5=None, freq=4500, Navg=4, threshold=0.75,
 #TODO ---> PSEUDOCODE for automated Gravity test
 # Add more args
 def gravity_test_automated(fr5=None, *args, x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, length=100, width=100):
+
+    # Define data to collect
+        # grav_test_light_data[]
+        # 
+
     # Return to home pos
     # Define path to move in (rectangle for now; optional: straight_paths)
         # path = rectangle(z, *args)
-            # Defines max deltas to prevent collisions
+            # Defines max positions to prevent collisions
 
+
+    # start_data_recording()
     # Call movement function to move in path: move(path)
         # while(moving "up +z" until max height)
-            # Store light intensity data ---> append.light_intensity[]
+            # Store light intensity data ---> append.light_data[]
             # Store positional data (movement vectors) ---> append.coordinates[(x,y,z)]
             # TODO [(dx,dy,dz), light_intensity] # Tuple array possibly
             

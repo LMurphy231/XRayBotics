@@ -1,8 +1,8 @@
 import numpy as np
 
-def rectanglePath(step, length, width):
+def rectangle_path(step, length, width):
     """
-    rectanglePath
+    rectangle_path
     """
     #Creating Moveset for Corner-Referenced Rectangle Path
     moves = []                      #Store Moveset
@@ -12,7 +12,7 @@ def rectanglePath(step, length, width):
     #Define Movement Vectors (x, y, z)
     pos_x = np.array([sideOne, 0, 0])
     #pos_y = np.array([0, sideOne, 0])
-    pos_z = np.array([0, 0, sideTwo])
+    pos_z = np.array([0, 0, sideTwo]) # Scan horizontal laser
 
     directions = [("+x", pos_x), ("+z", pos_z), ("-x", -pos_x), ("-z", -pos_z)] #Tuple for Directions
 
