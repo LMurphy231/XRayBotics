@@ -3,10 +3,6 @@ import numpy as np
 def rectanglePath(step, length, width):
     """
     rectanglePath
-
-    Inputs
-    ------
-     MORE
     """
     #Creating Moveset for Corner-Referenced Rectangle Path
     moves = []                      #Store Moveset
