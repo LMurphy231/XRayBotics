@@ -24,6 +24,7 @@ from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationTool
 import numpy as np
 
 import RobotCommunicator as rc
+import LightSensor as ls
 import communications as com
 from XRBPlotter import Plotter
 from utill import consts
@@ -104,22 +105,42 @@ class TestPage:
         """
         return
 
-class LadderTest(TestPage):
-    def __init__(self, name, root:tk.Frame):
+class SquareTest(TestPage):
+    def __init__(self, name, root:tk.Frame, sensor:ls.SensorManager, robot:rc.RobotCom):
         self.root = root
         self.frame = tk.Frame(self.root)
         self.frame.grid(row=0, column=0, sticky=tk.NSEW)
+        self.robot = robot
+        self.sensor = sensor
         TestPage.__init__(self, name, self.frame)
         self.build()
 
     def _create_input_frame(self):
+        
         input_frame = tk.LabelFrame(self.frame)
-        self.vars['width'] = tk.DoubleVar(value=100.0)
-        tk.Entry(input_frame, textvariable=self.vars['width']).grid(row=1,column=0)
+        self.vars['x']           = _quick_test_var(input_frame, 'x'              , 0.0  , 1, 0)
+        self.vars['y']           = _quick_test_var(input_frame, 'y'              , 0.0  , 2, 0)
+        self.vars['z']           = _quick_test_var(input_frame, 'z'              , 0.0  , 3, 0)
+        self.vars['angle']       = _quick_test_var(input_frame, 'angle'          , 0.0  , 4, 0)
+        self.vars['width']       = _quick_test_var(input_frame, 'width'          , 5.0, 5, 0)
+        self.vars['length']      = _quick_test_var(input_frame, 'length'         , 5.0, 6, 0)
+        self.vars['step length'] = _quick_test_var(input_frame, 'Step Length'    , 1, 7, 0)
+        self.vars['avg sample']  = _quick_test_var(input_frame, 'Average Samples', 1, 8, 0)
+        print(type(self.vars['x']))
+        #self.vars['width'] = tk.DoubleVar(value=100.0)
+        #tk.Entry(input_frame, textvariable=self.vars['width']).grid(row=1,column=0)
         return input_frame
 
     def start(self):
-        print(f'Running Ladder with width: {self.width_var.get()}')
+        print(f'Running Ladder with width: {self.vars['width'].get()}')
+        threading.Thread(target=self.robot._test_square, 
+                         args = (
+                            self.sensor, 
+                            self.vars['x'].get(), self.vars['y'].get(), self.vars['z'].get(),
+                            self.vars['width'].get(), self.vars['length'].get(), self.vars['angle'].get(), self.vars['step length'].get(),
+                            self.vars['avg sample'].get()
+                                ),
+                        ).start()
         
 class GravityTest(TestPage):
     def __init__(self, name, root:tk.Frame):
@@ -182,10 +203,12 @@ class GUI:
         self.window = tk.Tk()
         self.name = name
         self.window.title(name)
+        self.robot = rc.RobotCom()
+        self.ls = ls.SensorManager()
         self._create_loggers()
         self._create_window()
         
-        self.robot = rc.RobotCom()
+        
         self.coms  = com.Communicator(True)
 
         self.gui_logger.debug(f'Running Mainloop')
@@ -300,7 +323,7 @@ class GUI:
         self.test_frame.grid(row=1, column=1, sticky=tk.NSEW)
         
         self.test_types:dict[str, TestPage] = {
-            'Ladder' : LadderTest('LadderTest', self.test_frame),
+            'Ladder' : SquareTest('SquareTest', self.test_frame, self.ls, self.robot),
             'Gravity': GravityTest('GravityTest', self.test_frame),
         }
         self.current_test:TestPage = None
@@ -368,13 +391,12 @@ def _reset_var(value, *vars: tk.Variable):
 # region Quick GUI
 def _quick_test_var(frame:tk.Frame, name, default, row, column):
     tk.Label(frame, text=f'{name}:').grid(row=row,column=column)
-    if isinstance(type(default), int):
+    if isinstance(default, int):
         var_type = tk.IntVar
-    elif isinstance(type(default), float):
+    elif isinstance(default, float):
         var_type = tk.DoubleVar
     else:
         var_type = tk.StringVar
-
     var = var_type(value=default)
     tk.Entry(frame, textvariable=var).grid(row=row,column=column+1)
     return var

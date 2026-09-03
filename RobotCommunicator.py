@@ -4,6 +4,8 @@ import tkinter as tk
 import time
 import queue
 
+import numpy as np
+
 from Robot import RPC
 from LightSensor import SensorManager
 
@@ -15,6 +17,8 @@ class RobotCom(RPC):
         self.robot_logger = logging.getLogger('robot')
         self.logger = logging.getLogger('GUI logger')
         self.logger.info('Connecting to Farino FR5')
+        self._move_lock = threading.Lock()
+
         threading.Thread(target=RPC.__init__, args=(self, ip), daemon=True).start()
         self.move_thread = threading.Thread(target=lambda:None)
         self.action_queue:queue.Queue[threading.Thread] = queue.Queue()
@@ -98,8 +102,12 @@ class RobotCom(RPC):
         return thread
 
     def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0):
-        
-        desc_pos = self.GetActualTCPPose(0)[1]
+        pos = self.GetActualTCPPose(0)
+        if isinstance(pos, int):
+            desc_pos = [0.0, 0.0, 0.0, 0.0, 0.0]
+        else:
+            desc_pos = pos[1]
+        #desc_pos = [1]
         dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,0,0,0] 
         tool=0
         user=0
@@ -211,6 +219,62 @@ class RobotCom(RPC):
             self.action_queue.get()
         self.StopMove()
 
+    def _test_square(self, lq:SensorManager, x1, y1, z, length, width, angle=0.0, step_length=0.001, avg_sample=5):
+        print((x1, y1, z))
+        #_wait_on_thread(self._position_move(x1, y1, z))
+        test_results = []
+        x2 = x1 + width* np.cos(angle)
+        y2 = y1 + width* np.sin(angle)
+        light_data = []
+        time_data = []
+        pos_data  = []
+        print(angle, np.cos(angle), np.sin(angle))
+        nsteps = int(width // step_length)
+        for i in range(nsteps+1):
+            x = x1+(i/nsteps)*width*np.cos(angle)
+            y = y1+(i/nsteps)*width*np.sin(angle)
+            
+            #_wait_on_thread(self._position_move(x, y, z))
+            t, ld = lq.read(avg_sample)
+            print(i, nsteps, x, y, ld)
+            time_data.append(t)
+            light_data.append(ld)
+            pos_data.append((x, y, z))
+        test_results.append((pos_data, time_data, light_data))
+        #_wait_on_thread(self._position_move(x2, y2, z))
+            
+
+        x3 = x2 + length*np.cos(angle-np.pi/2)
+        y3 = y2 + length*np.sin(angle-np.pi/2)
+        #_wait_on_thread(self._position_move(x3, y3, z))
+        
+
+        x4 = x3 + width*np.cos(angle-np.pi)
+        y4 = y3 + width*np.sin(angle-np.pi)
+        dist = np.sqrt((x4-x3)**2+(y4-y3)**2)
+        nsteps = int(width // step_length)
+
+        light_data = []
+        time_data = []
+        pos_data  = []
+        for i in range(nsteps+1):
+            x = x3+(i/nsteps)*width*np.cos(angle)
+            y = y3+(i/nsteps)*width*np.sin(angle)
+            #_wait_on_thread(self._position_move(x, y, z))
+            t, ld = lq.read(avg_sample)
+            print(i, nsteps, x, y, ld)
+            time_data.append(t)
+            light_data.append(ld)
+            pos_data.append((x, y, z))
+            
+        test_results.append((pos_data, time_data, light_data))
+        #_wait_on_thread(self._position_move(x4, y4, z))
+        print(f'Start: {(x1, y1, z)}')
+        print(f'Pos1: {(x2, y2, z)}')
+        print(f'Pos2: {(x3, y3, z)}')
+        print(f'Pos3: {(x4, y4, z)}')
+
+
 def _wait_thread_start(thread:threading.Thread, delay=0.001):
     while thread.ident is None:
         time.sleep(delay)
@@ -221,7 +285,8 @@ def _wait_on_thread(thread:threading.Thread, delay=0.001):
 
 def _record_thread(thread:threading.Thread, lq:SensorManager, delay=0.001):
     _wait_thread_start(thread, delay)
-    with lq.record():
+    with lq.record() as (light_data, time_data):
         _wait_on_thread(thread, delay)
-    time_data, light_data = lq.get()
     return time_data, light_data
+
+
