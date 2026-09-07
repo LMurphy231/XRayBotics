@@ -1,7 +1,7 @@
 import numpy as np
 
-import MotionPlanning.Movement as Movement
-import MotionPlanning.LightScanning as LightScanning
+import archive.MotionPlanning.Movement as Movement
+import archive.MotionPlanning.LightScanning as LightScanning
 
 #TODO: Remove/Modify/Fix initialPath() Function
 #First path to guess where laser is located

@@ -1,6 +1,6 @@
 import numpy as np
 
-import MotionPlanning.LightScanning as LightScanning
+import archive.MotionPlanning.LightScanning as LightScanning
 
 try:
     from api.farinoAPI.fairino.Robot import *
