@@ -104,7 +104,7 @@ class RobotCom(RPC):
     def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0):
         pos = self.GetActualTCPPose(0)
         if isinstance(pos, int):
-            desc_pos = [0.0, 0.0, 0.0, 0.0, 0.0]
+            desc_pos = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         else:
             desc_pos = pos[1]
         #desc_pos = [1]

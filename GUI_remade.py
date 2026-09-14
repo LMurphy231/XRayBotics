@@ -33,12 +33,17 @@ if os.path.basename(sys.executable) == 'pythonw.exe':
     sys.stdout = open(os.devnull, 'w')
     sys.stderr = open(os.devnull, 'w')
 
+INI = 'xrb.ini'
+
 class TestPage:
-    def __init__(self, name, base_frame:tk.Frame):
+    def __init__(self, name, root:tk.Frame):
         self.name = name
-        self.base_frame = base_frame
-        self.winfo_manager = base_frame.winfo_manager()
+        self.frame = tk.Frame(root)
+        self.frame.grid(row=0, column=0, sticky=tk.NSEW)
+
+        self.winfo_manager = self.frame.winfo_manager()
         self.vars:dict[str, tk.Variable] = {}
+        self.build()
         self.hide()
    
     def _create_header_frame(self) -> tk.Frame:
@@ -48,7 +53,7 @@ class TestPage:
 
         Default creates a frame that displays test name
         """
-        header_frame = tk.Frame(self.base_frame)
+        header_frame = tk.Frame(self.frame)
         tk.Label(header_frame, text=self.name).grid(row=0, column=0, sticky=tk.NSEW)
 
         return header_frame
@@ -67,13 +72,13 @@ class TestPage:
 
         Default creates button that runs start command with no inputs
         """
-        header_frame = tk.Frame(self.base_frame)
+        header_frame = tk.Frame(self.frame)
         tk.Button(header_frame, command=self.start, text='start').grid(row=0, column=0)
         return header_frame
 
     def _update_winfo(self):
-        self.winfo_manager = self.base_frame.winfo_manager()
-        self.current_winfo = getattr(self.base_frame, f'{self.winfo_manager}_info')()
+        self.winfo_manager = self.frame.winfo_manager()
+        self.current_winfo = getattr(self.frame, f'{self.winfo_manager}_info')()
     
     def build(self):
         self.header_frame = self._create_header_frame()
@@ -90,13 +95,13 @@ class TestPage:
 
     def hide(self):
         self._update_winfo()
-        getattr(self.base_frame, f'{self.winfo_manager}_forget')()
+        getattr(self.frame, f'{self.winfo_manager}_forget')()
 
     def show(self):
         """Re-apply pack, place, or grid function to frame with last saved
         winfo data.
         """
-        getattr(self.base_frame, self.winfo_manager)(self.current_winfo)
+        getattr(self.frame, self.winfo_manager)(self.current_winfo)
 
     def start(self):
         """Default start command, has no function.
@@ -108,27 +113,22 @@ class TestPage:
 class SquareTest(TestPage):
     def __init__(self, name, root:tk.Frame, sensor:ls.SensorManager, robot:rc.RobotCom):
         self.root = root
-        self.frame = tk.Frame(self.root)
-        self.frame.grid(row=0, column=0, sticky=tk.NSEW)
+        
         self.robot = robot
         self.sensor = sensor
-        TestPage.__init__(self, name, self.frame)
-        self.build()
+        TestPage.__init__(self, name, self.root)
 
     def _create_input_frame(self):
         
         input_frame = tk.LabelFrame(self.frame)
-        self.vars['x']           = _quick_test_var(input_frame, 'x'              , 0.0  , 1, 0)
-        self.vars['y']           = _quick_test_var(input_frame, 'y'              , 0.0  , 2, 0)
-        self.vars['z']           = _quick_test_var(input_frame, 'z'              , 0.0  , 3, 0)
-        self.vars['angle']       = _quick_test_var(input_frame, 'angle'          , 0.0  , 4, 0)
+        self.vars['x']           = _quick_test_var(input_frame, 'x'              , 0.0, 1, 0)
+        self.vars['y']           = _quick_test_var(input_frame, 'y'              , 0.0, 2, 0)
+        self.vars['z']           = _quick_test_var(input_frame, 'z'              , 0.0, 3, 0)
+        self.vars['angle']       = _quick_test_var(input_frame, 'angle'          , 0.0, 4, 0)
         self.vars['width']       = _quick_test_var(input_frame, 'width'          , 5.0, 5, 0)
         self.vars['length']      = _quick_test_var(input_frame, 'length'         , 5.0, 6, 0)
-        self.vars['step length'] = _quick_test_var(input_frame, 'Step Length'    , 1, 7, 0)
-        self.vars['avg sample']  = _quick_test_var(input_frame, 'Average Samples', 1, 8, 0)
-        print(type(self.vars['x']))
-        #self.vars['width'] = tk.DoubleVar(value=100.0)
-        #tk.Entry(input_frame, textvariable=self.vars['width']).grid(row=1,column=0)
+        self.vars['step length'] = _quick_test_var(input_frame, 'Step Length'    , 1  , 7, 0)
+        self.vars['avg sample']  = _quick_test_var(input_frame, 'Average Samples', 1  , 8, 0)
         return input_frame
 
     def start(self):
@@ -145,11 +145,7 @@ class SquareTest(TestPage):
 class GravityTest(TestPage):
     def __init__(self, name, root:tk.Frame):
         self.root = root
-        self.frame = tk.Frame(self.root)
-        self.frame.grid(row=0, column=0, sticky=tk.NSEW)
-        
-        TestPage.__init__(self, name, self.frame)
-        self.build()
+        TestPage.__init__(self, name, self.root)
 
     def _create_input_frame(self):
         input_frame = tk.LabelFrame(self.frame)
@@ -158,7 +154,7 @@ class GravityTest(TestPage):
         light_sensor_frame.grid(row=0, column=0,  columnspan=2, sticky=tk.NSEW)
 
         self.vars['Frequency']       = _quick_test_var(light_sensor_frame, 'Frequency'      , 5000, 0, 0)
-        self.vars['Sample Average']  = _quick_test_var(light_sensor_frame, 'Sample Average', 4   , 1, 0)
+        self.vars['Sample Average']  = _quick_test_var(light_sensor_frame, 'Sample Average' , 4   , 1, 0)
 
         path_frame = tk.LabelFrame(input_frame, text='Path Settings')
         path_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
@@ -196,17 +192,72 @@ class MessageTerminal(logging.Handler):
         except Exception:
             self.handleError(record)
 
+class SettingsWindow:
+    def __init__(self, root, opts:configparser.ConfigParser):
+        self.root = root
+        self.opts = opts
+        self.window = None
+        self.section_frame = None
+
+    def save(self, sections):
+        for section in sections:
+            for option in self.vars[section]:
+                self.opts[section][option] = str(self.vars[section][option].get())
+
+        with open(INI, 'w') as f:
+            self.opts.write(f)
+
+    def show(self, section='all'):
+        if self.window is None:
+            self.window = tk.Toplevel(self.root)
+        self.window.title(f'{section.capitalize()} Settings')
+        self.window.grab_set()
+        self.window.protocol("WM_DELETE_WINDOW", self._destroy_window) 
+
+        self._build_section(section)
+        
+    def _destroy_window(self):
+        self.section_frame = self.section_frame.grid_forget()
+        self.window        = self.window.destroy()
+
+    def _build_section(self, sections:str):
+        if isinstance(sections, str):
+            
+            if sections == 'all': # Add all sections to section list
+                sections = tuple(self.opts.sections())
+            else: # Only add selected section to section list
+                sections = (sections,)
+            
+        if self.section_frame:
+            self.section_frame.grid_forget()
+        self.section_frame = tk.Frame(self.window)
+        self.section_frame.grid(row=0, column=0, sticky=tk.NSEW)
+        self.vars = {}
+        i = 0
+        for section in sections:
+            assert section in self.opts.sections(), f'Section {section} not in current settings!'
+            tk.Label(self.section_frame, text=f'[{section}]').grid(row=i, column=0)
+            for j, option in enumerate(self.opts.options(section)):
+                tk.Label(self.section_frame, text=option.capitalize()).grid(row=i+j+1, column=0)
+                var = tk.StringVar(value=self.opts.get(section, option))
+                tk.Entry(self.section_frame, textvariable=var).grid(row=i+j+1, column=1, sticky=tk.NSEW)
+                self.vars.setdefault(section, {})
+                self.vars[section][option] = var
+            i += j + 1
+
+        tk.Button(self.window, text='Save', command=lambda: self.save(sections)).grid(row=1, column=0)
+
 
 class GUI:
-    INI = 'xrb.ini'
     def __init__(self, name = 'XRayBotics'):
         self.window = tk.Tk()
         self.name = name
         self.window.title(name)
+        self.settings_window = None
         self.robot = rc.RobotCom()
         self.ls = ls.SensorManager()
         self._create_loggers()
-        self._create_window()
+        self._build()
         
         
         self.coms  = com.Communicator(True)
@@ -214,35 +265,7 @@ class GUI:
         self.gui_logger.debug(f'Running Mainloop')
         self.window.mainloop()
 
-    def _create_settings_file(self):
-        self.opts = configparser.ConfigParser()
-        if os.path.exists(self.INI):
-            self.opts.read(self.INI)
-
-        self.opts.setdefault('Robot', {})
-        for var, default in (
-                            ('tool', 0),
-                            ('user', 0),
-                            ('vel' , 10.0),
-                            ('acc' , 20.0),
-                            ('ovl' , 0),
-                            ):
-            self.opts['Robot'].setdefault(var, default)
-            self.opts['Robot'][var] = type(default)(self.opts['Robot'][var])
-
-
-
-    def _create_loggers(self):
-        self.gui_logger = logging.getLogger('GUI logger')
-        self.gui_logger.setLevel(1)
-        self.gui_logger.propagate = False
-
-
-        self.messenger = logging.getLogger('messenger')
-        self.messenger.setLevel(1)
-        self.messenger.propagate = False
-
-    def _create_window(self):
+    def _build(self):
         self.root = tk.Frame(self.window)
         self.root.grid(row=0, column=0, sticky=tk.NSEW)
 
@@ -261,6 +284,20 @@ class GUI:
         text_window_frame = tk.Frame(self.root)
         text_window_frame.grid(row=1, column=0, sticky=tk.NSEW)
         self._create_text_window(text_window_frame)
+
+        self._create_settings_file()
+        self.settings_window = SettingsWindow(self.root, self.opts)
+
+
+    def _create_loggers(self):
+        self.gui_logger = logging.getLogger('GUI logger')
+        self.gui_logger.setLevel(1)
+        self.gui_logger.propagate = False
+
+
+        self.messenger = logging.getLogger('messenger')
+        self.messenger.setLevel(1)
+        self.messenger.propagate = False
 
     def _create_plotter_window(self, frame:tk.Frame):
         plotter_notebook = ttk.Notebook(frame)
@@ -317,7 +354,25 @@ class GUI:
                 dz=self.robot_vars['dz']['var'].get(),
             )
             ).grid(row=3, column=2, sticky=tk.NSEW)
-    
+
+    def _create_settings_file(self):
+        self.opts = configparser.ConfigParser()
+        if os.path.exists(INI):
+            self.opts.read(INI)
+
+        self.opts.setdefault('Robot', {})
+        for var, default in (
+                            ('tool', 0),
+                            ('user', 0),
+                            ('vel' , 10.0),
+                            ('acc' , 20.0),
+                            ('ovl' , 0),
+                            ):
+            self.opts['Robot'].setdefault(var, str(default))
+            
+        with open(INI, 'w') as f:
+            self.opts.write(f)
+
     def _create_test_setup(self, frame:tk.Frame):
         self.test_frame = tk.Frame(frame)
         self.test_frame.grid(row=1, column=1, sticky=tk.NSEW)
@@ -377,6 +432,7 @@ class GUI:
 
         self.current_test = test
         self.current_test.show()
+
 
 
 def _write_to_textbox(textbox:tk.Text, message, endswith='\n'):
