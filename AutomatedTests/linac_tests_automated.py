@@ -3,22 +3,27 @@ from os import path
 import numpy as np
 import RobotCommunicator as com
 import AutomatedTests.paths as paths
+import LightSensor as lightSensor
 
 #TODO ---> PSEUDOCODE for automated Gravity test
 # Add more args
-def gravity_test_automated(fr5=None, *args, x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, length=100, width=100):
+def gravity_test_automated(fr5=None, x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, length=100, width=100):
 
     # Return to "home" pos
-        # move(home) # Whatever this may be
-    
+    # move(home) # Whatever this may be # TODO Estimated isocenter inputted by Sam!!!
+
+    est_isocenter = [x,y,z]
+    com._position_move(fr5, est_isocenter)
+
     # Define data to collect
-        # grav_test_light_data[]
-        # grav_test_position_data[] # (x,y,z)
+    grav_test_light_data = []
+    grav_test_position_data = [] # (x,y,z)
 
     # Define path to move in (rectangle)
-        # path = paths.rectangle_path(x,y,z, *args)
+
+    path = paths.rectangle_path(step, length, width)
             # Defines path "moveset;" (x,y,z)
-            # Defines max positions to prevent collisions
+                # Defines max positions to prevent collisions
 
     # start_data_recording()
 
@@ -56,9 +61,22 @@ def gravity_test_automated(fr5=None, *args, x, y, z, freq=4500, Navg=4, threshol
 
 # Add more args
 #TODO ---> PSEUDOCODE
-def collimator_test_automated(fr5=None, x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, length=100, width=100):
-    #here
+def collimator_test_automated(fr5=None, (x, y, z), freq:int=4500; Navg=4, threshold=0.75, step=1, length=100, width=100):
+
+   # Return to "home" pos
+        # move(home) # Whatever this may be # TODO Estimated isocenter inputted by Sam!!!
+        
+    # Define data to collect
+        # collimator_test_light_data[]
+        # grav_test_position_data[] # (x,y,z)
+        #  
+
+   
+
     return
+
+
+
 
 
 # NOT ACTUAL IMPLEMENTATION - that's for Alan
@@ -82,3 +100,9 @@ class DataProcessing:
             # offset = max - min
             # Returns offset as single value
         return
+
+
+ # 
+ # 
+ # step:float = 1; 
+ # assert step <= 2
