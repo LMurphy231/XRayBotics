@@ -114,20 +114,26 @@ def _lq_process(command_queue:multiprocessing.Queue, return_queue:multiprocessin
 
             elif command == _CLOSE:
                 break
-            
-
 
 if __name__ == '__main__':
-   
     sm = SensorManager()
     try:
         
         for i in range(5):
             start_time = time.time()
             print(sm.read(1), time.time()-start_time)
-        with sm.record() as (time_data, light_data):
+
+        with sm.record() as (gravity_time, gravity_light):
             time.sleep(0.01)
-        print((time_data, light_data))
+            
+            # logic...
+
+        gravity_time, gravity_light = sm.record()
+        
+        with sm.record() as (square_time, square_light):
+            time.sleep(0.01)
+            
+            # logic...
 
 
     finally:

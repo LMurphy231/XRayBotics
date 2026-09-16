@@ -33,12 +33,18 @@ if os.path.basename(sys.executable) == 'pythonw.exe':
     sys.stdout = open(os.devnull, 'w')
     sys.stderr = open(os.devnull, 'w')
 
+INI = 'xrb.ini'
+
 class TestPage:
-    def __init__(self, name, base_frame:tk.Frame):
+    def __init__(self, name, root:tk.Frame, opts:configparser.ConfigParser=None):
         self.name = name
-        self.base_frame = base_frame
-        self.winfo_manager = base_frame.winfo_manager()
+        self.opts = opts
+        self.frame = tk.Frame(root)
+        self.frame.grid(row=0, column=0, sticky=tk.NSEW)
+
+        self.winfo_manager = self.frame.winfo_manager()
         self.vars:dict[str, tk.Variable] = {}
+        self.build()
         self.hide()
    
     def _create_header_frame(self) -> tk.Frame:
@@ -48,7 +54,7 @@ class TestPage:
 
         Default creates a frame that displays test name
         """
-        header_frame = tk.Frame(self.base_frame)
+        header_frame = tk.Frame(self.frame)
         tk.Label(header_frame, text=self.name).grid(row=0, column=0, sticky=tk.NSEW)
 
         return header_frame
@@ -67,13 +73,23 @@ class TestPage:
 
         Default creates button that runs start command with no inputs
         """
-        header_frame = tk.Frame(self.base_frame)
-        tk.Button(header_frame, command=self.start, text='start').grid(row=0, column=0)
+        header_frame = tk.Frame(self.frame)
+        if self.opts is not None:
+            tk.Button(header_frame, command=lambda: _update_opts(self.vars, self.opts), text='Save settings').grid(row=0, column=0)
+            tk.Button(header_frame, command=self._load_vars, text='Load').grid(row=0, column=1)
+        tk.Button(header_frame, command=self.start, text='start').grid(row=0, column=21)
         return header_frame
 
+    def _load_vars(self):
+        for section in self.opts.sections():
+            print(self.opts.sections())
+            subsections = section.split('.')
+            for var in self.opts.options(section):
+                _update_var(self.vars, self.opts.get(section, var), subsections+[var,])
+            
     def _update_winfo(self):
-        self.winfo_manager = self.base_frame.winfo_manager()
-        self.current_winfo = getattr(self.base_frame, f'{self.winfo_manager}_info')()
+        self.winfo_manager = self.frame.winfo_manager()
+        self.current_winfo = getattr(self.frame, f'{self.winfo_manager}_info')()
     
     def build(self):
         self.header_frame = self._create_header_frame()
@@ -90,13 +106,13 @@ class TestPage:
 
     def hide(self):
         self._update_winfo()
-        getattr(self.base_frame, f'{self.winfo_manager}_forget')()
+        getattr(self.frame, f'{self.winfo_manager}_forget')()
 
     def show(self):
         """Re-apply pack, place, or grid function to frame with last saved
         winfo data.
         """
-        getattr(self.base_frame, self.winfo_manager)(self.current_winfo)
+        getattr(self.frame, self.winfo_manager)(self.current_winfo)
 
     def start(self):
         """Default start command, has no function.
@@ -104,31 +120,26 @@ class TestPage:
         Intended to be overridden in subclasses.
         """
         return
-
+    
 class SquareTest(TestPage):
     def __init__(self, name, root:tk.Frame, sensor:ls.SensorManager, robot:rc.RobotCom):
         self.root = root
-        self.frame = tk.Frame(self.root)
-        self.frame.grid(row=0, column=0, sticky=tk.NSEW)
+        
         self.robot = robot
         self.sensor = sensor
-        TestPage.__init__(self, name, self.frame)
-        self.build()
+        TestPage.__init__(self, name, self.root)
 
     def _create_input_frame(self):
         
         input_frame = tk.LabelFrame(self.frame)
-        self.vars['x']           = _quick_test_var(input_frame, 'x'              , 0.0  , 1, 0)
-        self.vars['y']           = _quick_test_var(input_frame, 'y'              , 0.0  , 2, 0)
-        self.vars['z']           = _quick_test_var(input_frame, 'z'              , 0.0  , 3, 0)
-        self.vars['angle']       = _quick_test_var(input_frame, 'angle'          , 0.0  , 4, 0)
+        self.vars['x']           = _quick_test_var(input_frame, 'x'              , 0.0, 1, 0)
+        self.vars['y']           = _quick_test_var(input_frame, 'y'              , 0.0, 2, 0)
+        self.vars['z']           = _quick_test_var(input_frame, 'z'              , 0.0, 3, 0)
+        self.vars['angle']       = _quick_test_var(input_frame, 'angle'          , 0.0, 4, 0)
         self.vars['width']       = _quick_test_var(input_frame, 'width'          , 5.0, 5, 0)
         self.vars['length']      = _quick_test_var(input_frame, 'length'         , 5.0, 6, 0)
-        self.vars['step length'] = _quick_test_var(input_frame, 'Step Length'    , 1, 7, 0)
-        self.vars['avg sample']  = _quick_test_var(input_frame, 'Average Samples', 1, 8, 0)
-        print(type(self.vars['x']))
-        #self.vars['width'] = tk.DoubleVar(value=100.0)
-        #tk.Entry(input_frame, textvariable=self.vars['width']).grid(row=1,column=0)
+        self.vars['step length'] = _quick_test_var(input_frame, 'Step Length'    , 1  , 7, 0)
+        self.vars['avg sample']  = _quick_test_var(input_frame, 'Average Samples', 1  , 8, 0)
         return input_frame
 
     def start(self):
@@ -143,30 +154,48 @@ class SquareTest(TestPage):
                         ).start()
         
 class GravityTest(TestPage):
-    def __init__(self, name, root:tk.Frame):
+    def __init__(self, name, root:tk.Frame, opts:configparser.ConfigParser):
         self.root = root
-        self.frame = tk.Frame(self.root)
-        self.frame.grid(row=0, column=0, sticky=tk.NSEW)
-        
-        TestPage.__init__(self, name, self.frame)
-        self.build()
+        TestPage.__init__(self, name, self.root, opts)
 
     def _create_input_frame(self):
         input_frame = tk.LabelFrame(self.frame)
 
-        light_sensor_frame = tk.LabelFrame(input_frame, text='Light Sensor Settings')
-        light_sensor_frame.grid(row=0, column=0,  columnspan=2, sticky=tk.NSEW)
+        lianc_settings_frame = tk.LabelFrame(input_frame, text='LINAC Parameters')
+        lianc_settings_frame.grid(row=0, column=0,  columnspan=2, sticky=tk.NSEW)
+        self.vars.setdefault('linac', {})
+        jaw_frame = tk.LabelFrame(lianc_settings_frame, text='Jaws')
+        jaw_frame.grid(row=0, column=0,  columnspan=2, sticky=tk.NSEW)
+        self.vars['linac'].setdefault('jaws', {})
+        self.vars['linac']['jaws']['x1'] = _quick_test_var(jaw_frame, 'x1', 0.0, 0, 0)
+        self.vars['linac']['jaws']['y1'] = _quick_test_var(jaw_frame, 'y1', 0.0, 1, 0)
+        self.vars['linac']['jaws']['x2'] = _quick_test_var(jaw_frame, 'x2', 0.0, 0, 2)
+        self.vars['linac']['jaws']['y2'] = _quick_test_var(jaw_frame, 'y2', 0.0, 1, 2)
 
-        self.vars['Frequency']       = _quick_test_var(light_sensor_frame, 'Frequency'      , 5000, 0, 0)
-        self.vars['Sample Average']  = _quick_test_var(light_sensor_frame, 'Sample Average', 4   , 1, 0)
+        angle_frame = tk.LabelFrame(lianc_settings_frame, text='Set Angles')
+        angle_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
+        self.vars['linac'].setdefault('angles', {})
+        self.vars['linac']['angles']['collimator'] = _quick_test_var(angle_frame, 'Collimator Angle', 0.0, 0, 0)
+        self.vars['linac']['angles']['gantry']     = _quick_test_var(angle_frame, 'Gantry Angle'    , 0.0, 1, 0)
+        self.vars['linac']['angles']['couch']      = _quick_test_var(angle_frame, 'Couch Angle'     , 0.0, 2, 0)
+        
+        light_sensor_frame = tk.LabelFrame(input_frame, text='Light Sensor Settings')
+        light_sensor_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
+        self.vars.setdefault('light sensor', {})
+        self.vars['light sensor']['Frequency']      = _quick_test_var(light_sensor_frame, 'Frequency'     , 5000, 0, 0)
+        self.vars['light sensor']['Sample Average'] = _quick_test_var(light_sensor_frame, 'Sample Average', 4   , 1, 0)
 
         path_frame = tk.LabelFrame(input_frame, text='Path Settings')
-        path_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
-        self.vars['Steps']           = _quick_test_var(path_frame, 'Steps'          , 1   , 0, 0)
-        self.vars['Length']          = _quick_test_var(path_frame, 'Length'         , 100 , 1, 0)
-        self.vars['Width']           = _quick_test_var(path_frame, 'Width'          , 100 , 2, 0)
+        path_frame.grid(row=2, column=0,  columnspan=2, sticky=tk.NSEW)
+        self.vars.setdefault('robot', {})
+        self.vars['robot'].setdefault('path', {})
+        self.vars['robot']['path']['Steps']  = _quick_test_var(path_frame, 'Steps' , 1   , 0, 0)
+        self.vars['robot']['path']['Length'] = _quick_test_var(path_frame, 'Length', 100 , 1, 0)
+        self.vars['robot']['path']['Width']  = _quick_test_var(path_frame, 'Width' , 100 , 2, 0)
 
-        self.vars['Threshold']       = _quick_test_var(input_frame, 'Threshold'      , 0.75, 2, 0)
+        self.vars.setdefault('tests', {})
+        self.vars['tests'].setdefault('gravity', {})
+        self.vars['tests']['gravity']['Threshold'] = _quick_test_var(input_frame, 'Threshold', 0.75, 3, 0)
 
         return input_frame
     
@@ -196,53 +225,81 @@ class MessageTerminal(logging.Handler):
         except Exception:
             self.handleError(record)
 
+class SettingsWindow:
+    def __init__(self, root, opts:configparser.ConfigParser):
+        self.root = root
+        self.opts = opts
+        self.window = None
+        self.section_frame = None
+
+    def save(self, sections):
+        for section in sections:
+            for option in self.vars[section]:
+                self.opts[section][option] = str(self.vars[section][option].get())
+
+        with open(INI, 'w') as f:
+            self.opts.write(f)
+
+    def show(self, section='all'):
+        if self.window is None:
+            self.window = tk.Toplevel(self.root)
+        self.window.title(f'{section.capitalize()} Settings')
+        self.window.grab_set()
+        self.window.protocol("WM_DELETE_WINDOW", self._destroy_window) 
+
+        self._build_section(section)
+        
+    def _destroy_window(self):
+        self.section_frame = self.section_frame.grid_forget()
+        self.window        = self.window.destroy()
+
+    def _build_section(self, sections:str):
+        if isinstance(sections, str):
+            
+            if sections == 'all': # Add all sections to section list
+                sections = tuple(self.opts.sections())
+            else: # Only add selected section to section list
+                sections = (sections,)
+            
+        if self.section_frame:
+            self.section_frame.grid_forget()
+        self.section_frame = tk.Frame(self.window)
+        self.section_frame.grid(row=0, column=0, sticky=tk.NSEW)
+        self.vars = {}
+        i = 0
+        for section in sections:
+            assert section in self.opts.sections(), f'Section {section} not in current settings!'
+            tk.Label(self.section_frame, text=f'[{section}]').grid(row=i, column=0)
+            for j, option in enumerate(self.opts.options(section)):
+                tk.Label(self.section_frame, text=option.capitalize()).grid(row=i+j+1, column=0)
+                var = tk.StringVar(value=self.opts.get(section, option))
+                tk.Entry(self.section_frame, textvariable=var).grid(row=i+j+1, column=1, sticky=tk.NSEW)
+                self.vars.setdefault(section, {})
+                self.vars[section][option] = var
+            i += j + 1
+
+        tk.Button(self.window, text='Save', command=lambda: self.save(sections)).grid(row=1, column=0)
+
 
 class GUI:
-    INI = 'xrb.ini'
     def __init__(self, name = 'XRayBotics'):
         self.window = tk.Tk()
         self.name = name
         self.window.title(name)
+        self.settings_window = None
         self.robot = rc.RobotCom()
         self.ls = ls.SensorManager()
         self._create_loggers()
-        self._create_window()
+        self._create_settings_file()
+        self._build()
         
         
-        self.coms  = com.Communicator(True)
+        #self.coms  = com.Communicator(True)
 
         self.gui_logger.debug(f'Running Mainloop')
         self.window.mainloop()
 
-    def _create_settings_file(self):
-        self.opts = configparser.ConfigParser()
-        if os.path.exists(self.INI):
-            self.opts.read(self.INI)
-
-        self.opts.setdefault('Robot', {})
-        for var, default in (
-                            ('tool', 0),
-                            ('user', 0),
-                            ('vel' , 10.0),
-                            ('acc' , 20.0),
-                            ('ovl' , 0),
-                            ):
-            self.opts['Robot'].setdefault(var, default)
-            self.opts['Robot'][var] = type(default)(self.opts['Robot'][var])
-
-
-
-    def _create_loggers(self):
-        self.gui_logger = logging.getLogger('GUI logger')
-        self.gui_logger.setLevel(1)
-        self.gui_logger.propagate = False
-
-
-        self.messenger = logging.getLogger('messenger')
-        self.messenger.setLevel(1)
-        self.messenger.propagate = False
-
-    def _create_window(self):
+    def _build(self):
         self.root = tk.Frame(self.window)
         self.root.grid(row=0, column=0, sticky=tk.NSEW)
 
@@ -261,6 +318,19 @@ class GUI:
         text_window_frame = tk.Frame(self.root)
         text_window_frame.grid(row=1, column=0, sticky=tk.NSEW)
         self._create_text_window(text_window_frame)
+
+        
+        self.settings_window = SettingsWindow(self.root, self.opts)
+
+    def _create_loggers(self):
+        self.gui_logger = logging.getLogger('GUI logger')
+        self.gui_logger.setLevel(1)
+        self.gui_logger.propagate = False
+
+
+        self.messenger = logging.getLogger('messenger')
+        self.messenger.setLevel(1)
+        self.messenger.propagate = False
 
     def _create_plotter_window(self, frame:tk.Frame):
         plotter_notebook = ttk.Notebook(frame)
@@ -317,14 +387,48 @@ class GUI:
                 dz=self.robot_vars['dz']['var'].get(),
             )
             ).grid(row=3, column=2, sticky=tk.NSEW)
-    
+
+    def _create_settings_file(self):
+        self.opts = configparser.ConfigParser()
+        if os.path.exists(INI):
+            self.opts.read(INI)
+
+        self.opts.setdefault('robot.move', {})
+        self.opts['robot.move'].setdefault('tool', str(0))
+        self.opts['robot.move'].setdefault('user', str(0))
+        self.opts['robot.move'].setdefault('vel' , str(10.0))
+        self.opts['robot.move'].setdefault('acc' , str(20.0))
+        self.opts['robot.move'].setdefault('ovl' , str(0))
+
+        #self.opts.setdefault('robot.path', {})
+        #self.opts['robot.path'].setdefault('frequency'     , str(5000))
+        #self.opts['robot.path'].setdefault('sample average', str(4))
+#
+        #self.opts.setdefault('linac.angles', {})
+        #self.opts['linac.angles'].setdefault('collimator', str(0.0))
+        #self.opts['linac.angles'].setdefault('gantry'    , str(0.0))
+        #self.opts['linac.angles'].setdefault('couch'     , str(0.0))
+#
+        #self.opts.setdefault('linac.jaws', {})
+        #self.opts['linac.jaws'].setdefault('x1', str(0.0))
+        #self.opts['linac.jaws'].setdefault('y1', str(0.0))
+        #self.opts['linac.jaws'].setdefault('x2', str(0.0))
+        #self.opts['linac.jaws'].setdefault('y2', str(0.0))
+#
+        #self.opts.setdefault('light sensor', {})
+        #self.opts['light sensor'].setdefault('frequency'     , str(5000))
+        #self.opts['light sensor'].setdefault('sample average', str(4))
+
+        with open(INI, 'w') as f:
+            self.opts.write(f)
+
     def _create_test_setup(self, frame:tk.Frame):
         self.test_frame = tk.Frame(frame)
         self.test_frame.grid(row=1, column=1, sticky=tk.NSEW)
         
         self.test_types:dict[str, TestPage] = {
             'Ladder' : SquareTest('SquareTest', self.test_frame, self.ls, self.robot),
-            'Gravity': GravityTest('GravityTest', self.test_frame),
+            'Gravity': GravityTest('GravityTest', self.test_frame, self.opts),
         }
         self.current_test:TestPage = None
 
@@ -378,7 +482,35 @@ class GUI:
         self.current_test = test
         self.current_test.show()
 
+def _update_var(vars:dict[str, tk.Variable], value, sections=[]):
+    if sections[0] not in vars:
+        return
+    if len(sections) == 1:
+        print(sections, vars[sections[0]])
+        vars[sections[0]].set(value)
+    else:
+        _update_var(vars[sections[0]], value, sections[1:])
 
+
+
+
+def _update_opts(vars:dict[str, dict[str, tk.Variable]], opts:configparser.ConfigParser, sub_sections=[]):
+    for section, item in vars.items():
+        cur_section = sub_sections + [section,]
+        section_name = '.'.join(cur_section[:-1])
+        if isinstance(item, dict):
+            _update_opts(item, opts, cur_section)
+        elif isinstance(item, tk.Variable):
+            print(f'Updating: ["{section_name}"]["{section}"] = {item.get()}')
+            opts.setdefault(section_name, {})
+            opts[section_name][section] = str(item.get())
+        else:
+            print(f'Updating: ["{section_name}"] = {item}')
+            opts.setdefault(section_name, {})
+            opts[section_name][section] = str(item)
+
+    with open(INI, 'w') as f:
+        opts.write(f)
 def _write_to_textbox(textbox:tk.Text, message, endswith='\n'):
     textbox.config(state=tk.NORMAL)
     textbox.insert(tk.END, f'{message}{endswith}')
