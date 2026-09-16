@@ -9,7 +9,7 @@ import LightSensor as lightSensor
 # Add more args
 def gravity_test_automated(fr5=None, x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, length=100, width=100):
 
-    # Return to "home" pos
+    # Return to "home" pos ---> isocenter
     # move(home) # Whatever this may be # TODO Estimated isocenter inputted by Sam!!!
 
     est_isocenter = [x, y, z]
@@ -103,4 +103,9 @@ class DataProcessing:
  # 
  # 
  # step:float = 1; 
- # assert step <= 2
+ # assert step <= 2:
+ 
+ 
+ def return_to_isocenter(fr5, est_isocenter):
+    com._position_move(fr5, est_isocenter) # Start test as estimated isocenter ("origin")
+    return
