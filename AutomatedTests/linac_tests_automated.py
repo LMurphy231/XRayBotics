@@ -12,19 +12,17 @@ def gravity_test_automated(fr5=None, x, y, z, freq=4500, Navg=4, threshold=0.75,
     # Return to "home" pos
     # move(home) # Whatever this may be # TODO Estimated isocenter inputted by Sam!!!
 
-    est_isocenter = [x,y,z]
-    com._position_move(fr5, est_isocenter)
+    est_isocenter = [x, y, z]
+    com._position_move(fr5, est_isocenter) # Start test as estimated isocenter ("origin")
 
     # Define data to collect
-    grav_test_light_data = []
-    grav_test_position_data = [] # (x,y,z)
+    grav_test_light_data = []       # Light intensity values
+    grav_test_position_data = []    # Position Vectors (x,y,z)
 
     # Define path to move in (rectangle)
-
-    path = paths.rectangle_path(step, length, width)
-            # Defines path "moveset;" (x,y,z)
-                # Defines max positions to prevent collisions
-
+    grav_test_axes = ["0", "y", "z"] # Gets changed internally
+    path = paths.rectangle_path_center_referenced(grav_test_axes, step, length, width)
+    
     # start_data_recording()
 
     # for direction_name, move_vec in path:
