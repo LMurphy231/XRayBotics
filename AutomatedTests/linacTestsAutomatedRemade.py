@@ -2,10 +2,11 @@ from os import path
 
 import numpy as np
 import RobotCommunicator as com
-import AutomatedTests.paths as paths
+import AutomatedTests.pathsRemade as paths
 import LightSensor as lightSensor
+import AutomatedTests.pathMovement as move
 
-def gravity_test_automated(fr5=None, x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, length=100, width=100):
+def gravity_test_automated(fr5=None, x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, length=100, width=100, angle=0):
 
     # Return to "home" pos ---> isocenter
     # move(home) # Whatever this may be # TODO Estimated isocenter inputted by Sam!!!
@@ -16,12 +17,18 @@ def gravity_test_automated(fr5=None, x, y, z, freq=4500, Navg=4, threshold=0.75,
     # Define data to collect
     grav_test_light_data = []       # Light intensity values
     grav_test_position_data = []    # Position Vectors (x,y,z)
+    
+    p1: np.drarray
+    p2: np.drarray
 
     # Define path to move in (rectangle)
     grav_test_axes = ["0", "y", "z"] # Gets changed internally
     path = paths.rectangle_path_center_referenced(grav_test_axes, step, length, width)
+    # path = paths.straight_path(p1, p2)
     
     # start_data_recording()
+    
+    # move_and_scan()
 
     # for direction_name, move_vec in path:
         # start.move(path)
