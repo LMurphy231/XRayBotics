@@ -124,12 +124,46 @@ def point_to_point(fr5, dx1, dy1, dz1, dx2, dy2, dz2, distance):
     com._position_move(fr5, )
     return
 
-def straight_path():
-    #Creating Moveset for Center-Referenced Rectangle Path
-    moves = []          # Store Moveset
-    # Track which axes are being used
+# Creating Moveset for straight-path movement
+def straight_path(p1, p2, step):
+    """
+    straight_path(p1, p2, step)
+    return moves[]
+    example: 
+        step = 2
+        p1 = (1,2,3)
+        p2 = (2,3,4)
+        path = straight_path(p1, p2, step)
+    """
+
+    moves = [] # Store Moveset
+
+    displacement = p2 - p1 # Vector from p1 to p2
+
+    distance = np.linalg.norm(displacement) # Calculate total distance
+
+    movement = displacement / step # Calculate one movement increment
+
+    straight_path_debug(p1, p2, step, distance, movement)
+
+    #Create Moves List
+    for name, direction in directions:
+        for _ in range(step):
+            moves.append((name, direction))
     
-    return
+    return moves
+
+def straight_path_debug(p1, p2, step, distance, movement):
+    # Debug
+    print(f"\n[STRAIGHT PATH]")
+    print(f"  Start:       {p1}")
+    print(f"  End:         {p2}")
+    print(f"  Distance:    {distance:.3f} mm")
+    print(f"  Increments:  {step}")
+    print(f"  Move/step:   {np.linalg.norm(movement):.3f} mm")
+    print(f"  Movement:    {movement}")
+
+
 
 # r = sqrt(a^2 + b^2)
 # floor function if non-integer
