@@ -4,7 +4,7 @@ import numpy as np
 # (x,y,z): tuple ---> immutable: can't change
 # [x,y,z]: list ---> mutable: can change
 
-def straight_path(p1: np.ndarray, p2: np.ndarray, increment: int = 1, discrete: bool = False) -> list:
+def straight_path(p1: np.ndarray, p2: np.ndarray, step_length: float = 1.0, discrete: bool = False) -> list:
     """
     straight_path()
     Return a move list that stores the straight path
@@ -20,13 +20,14 @@ def straight_path(p1: np.ndarray, p2: np.ndarray, increment: int = 1, discrete: 
     displacement: np.ndarray        # Store the displacement vector
     movement: np.ndarray            # Store how much to move in each axis
     
-    displacement = p2 - p1          # Find displacement vector
+    displacement = p2  - p1        # Find Magnitude displacement vector
+    mag_displacement = np.linalg.norm(displacement)          # Find Magnitude displacement vector
 
     # Create moveset
     if discrete:
         # Find movement for each increment too
-        movement = displacement / increment     
-        for i in range(increment):         
+        movement = displacement / (mag_displacement / step_length)    
+        for i in range(step_length):         
             moves.append(movement)
         return moves  
     else:
@@ -35,7 +36,7 @@ def straight_path(p1: np.ndarray, p2: np.ndarray, increment: int = 1, discrete: 
         moves.append(movement)
         return moves
 
-def rectangle_path(isocenter: np.ndarray, points: list, increment: int):
+def rectangle_path(isocenter: np.ndarray, points: list, step_length: int):
     """
     rectangle_path()
     Create the movement paths needed to travel around a rectangle.
@@ -47,20 +48,20 @@ def rectangle_path(isocenter: np.ndarray, points: list, increment: int):
         P3 -> P4              Scan
     """
 
-    # Access the 4 rectangle points
+    # Access the 4 rectangle points; Class is drarray
     p1: np.ndarray = points[0]
     p2: np.ndarray = points[1]
     p3: np.ndarray = points[2]
     p4: np.ndarray = points[3]
 
-    # Create paths for each side
-    path_to_p1:     list = straight_path(isocenter, p1, increment, False)   # Non-Incremental
-    path_p1_to_p2:  list = straight_path(p1, p2, increment, True)           # Incremental
-    path_p2_to_p3:  list = straight_path(p2, p3, increment, False)          # Non-Incremental
-    path_p3_to_p4:  list = straight_path(p3, p4, increment, True)           # Incremental
+    # Create paths for each side; Decided internally
+    path_to_p1:     list = straight_path(isocenter, p1, step_length, False)   # Non-Incremental
+    path_p1_to_p2:  list = straight_path(p1, p2, step_length, True)           # Incremental
+    path_p2_to_p3:  list = straight_path(p2, p3, step_length, False)          # Non-Incremental
+    path_p3_to_p4:  list = straight_path(p3, p4, step_length, True)           # Incremental
 
     # Store paths with scan information; True/False for Scanning
-    rectangle_paths: list = [
+    rectangle_paths: list[tuple[list[np.ndarray], bool]]= [
         (path_to_p1, False),
         (path_p1_to_p2, True),
         (path_p2_to_p3, False),
@@ -125,19 +126,20 @@ def calculate_four_points_trig(isocenter: np.ndarray, length: float, width: floa
         # Find distance from isocenter using only the active axes
         if axis_1 == "x" and axis_2 == "y":
             radius: float = np.sqrt(x**2 + y**2)
-            original_angle: float = np.arctan2(y, x) # Angle to point AND User Angle Input
+            #original_angle: float = np.arctan2(y, x) # Angle to point AND User Angle Input
 
         elif axis_1 == "y" and axis_2 == "z":
             radius: float = np.sqrt(y**2 + z**2)
-            original_angle: float = np.arctan2(z, y)
+            #original_angle: float = np.arctan2(z, y)
 
         else:
             radius: float = np.sqrt(x**2 + z**2)
-            original_angle: float = np.arctan2(z, x)
+            #original_angle: float = np.arctan2(z, x)
 
         # Add requested rotation
-        new_angle: float = original_angle + angle_radians
-
+        #new_angle: float = original_angle + angle_radians
+        new_angle: float = angle_radians
+        
         # Find new coordinates in the selected plane
         if axis_1 == "x" and axis_2 == "y":
             new_x: float = radius * np.cos(new_angle)

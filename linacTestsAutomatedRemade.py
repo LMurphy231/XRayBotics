@@ -6,11 +6,14 @@ import LightSensor as lightSensor
 import AutomatedTests.pathMovement as move
 import AutomatedTests.pathsRemade as paths
 
-def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, length=100, width=100, angle=0, fr5=None):
+def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step_length=1, length=100, width=100, angle=0, fr5=None):
     '''
     gravity_test_automated
     Perform the gravity test: Scan laser to find true z
     '''
+    
+    # step_length in mm
+    
     # Return to "home" pos ---> isocenter+
     est_isocenter = np.array([x, y, z])
     com._position_move(fr5, est_isocenter) # Start test as estimated isocenter ("origin"); by Sam
@@ -23,7 +26,7 @@ def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, l
     # Define path to move in (rectangle)
     grav_test_axes = ("y", "z") # Define active axes
     rectangle_points = paths.calculate_four_points_trig(est_isocenter, length, width,angle, grav_test_axes[0], grav_test_axes[1])
-    path = paths.rectangle_path(est_isocenter,rectangle_points, step)
+    path = paths.rectangle_path(est_isocenter,rectangle_points, step_length)
 
     # Move the robot and scan in the defined path
     # start_data_recording()
