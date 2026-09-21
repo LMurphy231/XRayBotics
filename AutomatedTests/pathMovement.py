@@ -10,19 +10,23 @@ def move_path(path: list):
     Helper Function: making move compatible with a defined path
     """
     for movement in path:
-        #move(movement) # Robot's/GUI move function here
-        com._position_move(fr5, )
-        pass
+        dx: float = movement[0]     # Extract dx from moveset for that move
+        dy: float = movement[1]     # Extract dy from moveset for that move
+        dz: float = movement[2]     # Extract dz from moveset for that move
+
+        # Robot's/GUI move function here; vectors or absolute posion?
+        #fr5._incriment_move(10, 20, 30)
+        #fr5._position_move(dx, dy, dz)
         
     return
 
-def move_and_scan(path:list, light_data: list, pos_data: list):
+def move_and_scan(path: list, light_data: list, pos_data: list):
     """
     move_and_path
     Move ---> scan AFTER the movement
     """
     light_intensity: float  # Store light values
-    position: np.drarry     # Store position values
+    position: np.darray     # Store position values
     
     for movement in path:
         #move(movement)
@@ -37,4 +41,7 @@ def store_data(light_data: list, pos_data: list, light_intensity: float, positio
     light_data.append(light_intensity)
     pos_data.append(position)
     return
-    
+
+def calculate_points():
+
+    return

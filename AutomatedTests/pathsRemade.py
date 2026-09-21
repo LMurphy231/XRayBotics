@@ -16,7 +16,7 @@ def straight_path(p1: np.ndarray, p2: np.ndarray, increment: int, discrete: bool
     """
 
     moves: list = []                # Store movements into a list
-    displacement: np.array          # Store the displacement vector
+    displacement: np.ndarray        # Store the displacement vector
     movement: np.ndarray            # Store how much to move in each axis
     
     displacement = p2 - p1          # Find displacement vector

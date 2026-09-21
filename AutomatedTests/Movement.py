@@ -7,7 +7,7 @@ def move_in_absolute_path(path: list):
     Interpret as (x,y,z): absolute positions relative to defined "origin" (isocenter)
     """
     for movement in path:
-        x = 4
+        continue
         # move(movement)    # Move robot to ABSOLUTE position
         # scan()            # Take light data AFTER moving
     
