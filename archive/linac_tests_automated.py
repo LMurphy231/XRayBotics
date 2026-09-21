@@ -2,7 +2,7 @@ from os import path
 
 import numpy as np
 import RobotCommunicator as com
-import AutomatedTests.paths as paths
+import archive.paths as paths
 import LightSensor as lightSensor
 
 #TODO ---> PSEUDOCODE for automated Gravity test
