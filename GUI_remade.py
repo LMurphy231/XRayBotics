@@ -28,6 +28,7 @@ import LightSensor as ls
 import communications as com
 from XRBPlotter import Plotter
 from utill import consts
+import settingshandler as settings
 
 if os.path.basename(sys.executable) == 'pythonw.exe':
     sys.stdout = open(os.devnull, 'w')
@@ -44,6 +45,7 @@ class TestPage:
 
         self.winfo_manager = self.frame.winfo_manager()
         self.vars:dict[str, tk.Variable] = {}
+        self._default_settings()
         self.build()
         self.hide()
    
@@ -80,9 +82,11 @@ class TestPage:
         tk.Button(header_frame, command=self.start, text='start').grid(row=0, column=21)
         return header_frame
 
+    def _default_settings(self):
+        pass
+    
     def _load_vars(self):
         for section in self.opts.sections():
-            print(self.opts.sections())
             subsections = section.split('.')
             for var in self.opts.options(section):
                 _update_var(self.vars, self.opts.get(section, var), subsections+[var,])
@@ -182,16 +186,16 @@ class GravityTest(TestPage):
         light_sensor_frame = tk.LabelFrame(input_frame, text='Light Sensor Settings')
         light_sensor_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
         self.vars.setdefault('light sensor', {})
-        self.vars['light sensor']['Frequency']      = _quick_test_var(light_sensor_frame, 'Frequency'     , 5000, 0, 0)
-        self.vars['light sensor']['Sample Average'] = _quick_test_var(light_sensor_frame, 'Sample Average', 4   , 1, 0)
+        self.vars['light sensor']['frequency']      = _quick_test_var(light_sensor_frame, 'Frequency'     , 5000, 0, 0)
+        self.vars['light sensor']['sample_average'] = _quick_test_var(light_sensor_frame, 'Sample Average', 4   , 1, 0)
 
         path_frame = tk.LabelFrame(input_frame, text='Path Settings')
         path_frame.grid(row=2, column=0,  columnspan=2, sticky=tk.NSEW)
         self.vars.setdefault('robot', {})
         self.vars['robot'].setdefault('path', {})
-        self.vars['robot']['path']['Steps']  = _quick_test_var(path_frame, 'Steps' , 1   , 0, 0)
-        self.vars['robot']['path']['Length'] = _quick_test_var(path_frame, 'Length', 100 , 1, 0)
-        self.vars['robot']['path']['Width']  = _quick_test_var(path_frame, 'Width' , 100 , 2, 0)
+        self.vars['robot']['path']['step_length']  = _quick_test_var(path_frame, 'Step Length' , 1   , 0, 0)
+        self.vars['robot']['path']['length']       = _quick_test_var(path_frame, 'Length', 100 , 1, 0)
+        self.vars['robot']['path']['width']        = _quick_test_var(path_frame, 'Width' , 100 , 2, 0)
 
         self.vars.setdefault('tests', {})
         self.vars['tests'].setdefault('gravity', {})
@@ -199,8 +203,17 @@ class GravityTest(TestPage):
 
         return input_frame
     
-    def build(self):
-        return super().build()
+    def _default_settings(self):
+        section = 'tests.gravity.path'
+        settings.add_default(self.opts, section, 'step_length', 1.0  , display_name='Step length', units='mm' , description='Distance between data recordings.')
+        settings.add_default(self.opts, section, 'length'     , 100.0, display_name='Length'     , units='mm' , description='Length of rectangular path.')
+        settings.add_default(self.opts, section, 'height'     , 100.0, display_name='Height'     , units='mm' , description='Height of rectangular path.')
+        settings.add_default(self.opts, section, 'theta'      , 100.0, display_name='Theta'      , units='deg', description='Angle of overall path in relation to the Z axis.')
+
+        section = 'tests.gravity.variables'
+        settings.add_default(self.opts, section, 'threshold', 0.75, display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
+    
+        
 
 class MessageTerminal(logging.Handler):
     def __init__(self, text:tk.Text, level, handlers=[]):
@@ -280,6 +293,124 @@ class SettingsWindow:
 
         tk.Button(self.window, text='Save', command=lambda: self.save(sections)).grid(row=1, column=0)
 
+class OptionTree():
+    def __init__(self, frame:tk.Frame, opts:configparser.ConfigParser):
+        self.opts = opts
+        self.columns = {'program_default': 'Default',
+                        'default'        : 'Set Value',
+                        'description'    : 'Description',
+                        }
+
+       # columns = ("Default", "Set Value")
+        self.tree = ttk.Treeview(frame, columns=tuple(self.columns.values()))
+
+        self.tree.heading("#0", text="Option", anchor="w")
+        for column in self.columns.values():
+            self.tree.heading(column, text=column)
+            
+        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Bind double-click event to trigger editing
+        self.tree.bind("<Double-1>", self.on_double_click)
+        self._update()
+
+    def _format_option(self, obj:settings.ProgramOption):
+        values = []
+        for attr in self.columns.keys():
+            value = getattr(obj,attr)
+            values.append(str(value) if value is not None else '')
+        return values
+
+
+    def _update(self):
+        self.sections_ids = {(): ''}
+        self.vars = {}
+        opt_dict = settings.get_opt_dict(self.opts)
+
+        def add_section(opt_dict:dict[str, settings.ProgramOption], prev_sections):
+            prev_id = self.sections_ids[tuple(prev_sections)]
+            for name, obj in opt_dict.items():
+                if isinstance(obj, dict):
+                    self.sections_ids[tuple(prev_sections+[name,])] = self.tree.insert(prev_id, tk.END, text=name.capitalize())
+                    add_section(obj, prev_sections+[name,])
+                else:
+                    index = self.tree.insert(prev_id, tk.END, text=obj.display_unit_name, values=self._format_option(obj))
+                    self.vars[index] = ('.'.join(prev_sections), name)
+
+        prev_sections = []
+        add_section(opt_dict, prev_sections)
+        # Go through each section
+        #for section in settings.sections(self.opts):
+        #    print(section)
+        #    prev_sections = []
+        #    add_section(opt_dict, prev_sections)
+            
+            
+        #for section_name in self.opts.sections():
+        #    sections = section_name.split('.')
+        #    section_key = set()
+        #    # Create a parent for each section
+        #    for section in sections:
+        #        prev_id = self.sections_ids[tuple(section_key)]
+        #        section_key.add(section)
+        #        if tuple(section_key) not in self.sections_ids:
+        #            self.sections_ids[tuple(section_key)] = self.tree.insert(prev_id, tk.END, text=section.capitalize())
+#
+        #    # Create an entry for 
+        #    key = self.sections_ids[tuple(section_key)]
+        #    for option in self.opts.options(section_name):
+        #        index = self.tree.insert(key, tk.END, text=option, values=[self.opts.get(section_name, option),])
+        #        self.vars[index] = (section_name, option)
+
+    def on_double_click(self, event):
+        # Identify the exact region clicked
+        region = self.tree.identify_region(event.x, event.y)
+        if region != "cell":
+            return
+
+        # Find the row ID and column name
+        row_id = self.tree.identify_row(event.y)
+        column = self.tree.identify_column(event.x)
+        
+        # Determine numerical column index (e.g., '#1' -> 0)
+        col_index = int(column.replace("#", "")) - 1
+        
+        # Get bounding box coordinates of the targeted cell
+        x, y, width, height = self.tree.bbox(row_id, column)
+
+        if col_index >= len(self.tree.item(row_id, "values")):
+                    return
+
+        # Create and overlay the temporary Entry widget
+        entry = ttk.Entry(self.tree)
+        entry.place(x=x, y=y, width=width, height=height)
+
+        
+        # Pre-populate entry with the current value
+        current_val = self.tree.item(row_id, "values")[col_index]
+        entry.insert(0, current_val)
+        entry.select_range(0, tk.END)
+        entry.focus()
+
+        # Inner function to save the new value
+        def save_edit(event_obj=None):
+            new_val = entry.get()
+
+            (section_name, option) = self.vars[row_id] 
+            self.opts[section_name][option] = str(new_val)
+
+            # Fetch all current values for this row
+            row_values = list(self.tree.item(row_id, "values"))
+            # Update the specific column value
+            row_values[col_index] = new_val
+            # Apply changes back to the tree row
+            self.tree.item(row_id, values=row_values)
+            
+            entry.destroy()
+
+        # Bind lifecycle events to the temporary widget
+        entry.bind("<Return>", save_edit)
+        entry.bind("<FocusOut>", lambda e: entry.destroy())
 
 class GUI:
     def __init__(self, name = 'XRayBotics'):
@@ -287,12 +418,17 @@ class GUI:
         self.name = name
         self.window.title(name)
         self.settings_window = None
-        self.robot = rc.RobotCom()
+
+        # Load options
+        self.opts = configparser.ConfigParser()
+        if os.path.exists(INI):
+            self.opts.read(INI)
+        self._default_options()
+
+        self.robot = rc.RobotCom(self.opts)
         self.ls = ls.SensorManager()
         self._create_loggers()
-        self._create_settings_file()
         self._build()
-        
         
         #self.coms  = com.Communicator(True)
 
@@ -319,8 +455,9 @@ class GUI:
         text_window_frame.grid(row=1, column=0, sticky=tk.NSEW)
         self._create_text_window(text_window_frame)
 
-        
-        self.settings_window = SettingsWindow(self.root, self.opts)
+        settings_frame = tk.Frame(self.root)
+        settings_frame.grid(row=1, column=1, sticky=tk.NSEW)
+        self._create_options_window(settings_frame)
 
     def _create_loggers(self):
         self.gui_logger = logging.getLogger('GUI logger')
@@ -352,7 +489,8 @@ class GUI:
         increment_move_frame = tk.LabelFrame(frame, text='Incrimental Movement')
         increment_move_frame.grid(row=1,column=0,sticky=tk.NSEW)
 
-        for frame, vars in ((coord_move_frame, ('X', 'Y', 'Z')), (increment_move_frame, ('dx', 'dy', 'dz'))):
+        for frame, vars, funct in ((coord_move_frame, ('X', 'Y', 'Z'), self.robot._position_move), (increment_move_frame, ('dx', 'dy', 'dz'), self.robot._incriment_move)):
+            
             for index, var_name in enumerate(vars):
                 tk.Label(frame, text=f'{var_name}:').grid(row=index, column=0,sticky=tk.NSEW)
                 var = tk.DoubleVar(value=0.0)
@@ -362,65 +500,22 @@ class GUI:
                     'var'   : var,
                     'widget': entry,
                 }
+            tk.Button(frame, text='Reset Position', 
+                    command= lambda vars=vars: _reset_var(0.0, *(self.robot_vars[var_name.lower()]['var'] for var_name in vars))
+                    ).grid(row=3, column=1, sticky=tk.NSEW)
+            
+            tk.Button(frame, text='Move', 
+                        command= lambda vars=vars, funct=funct: funct(
+                            **{var_name.lower(): self.robot_vars[var_name.lower()]['var'].get() for var_name in vars},
+                            in_thread=True,
+                        )
+                        ).grid(row=3, column=2, sticky=tk.NSEW)
 
-        tk.Button(coord_move_frame, text='Reset Position', 
-        command= lambda: _reset_var(0.0, *(self.robot_vars[var_name]['var'] for var_name in ('x','y','z')))
-        ).grid(row=3, column=1, sticky=tk.NSEW)
+    def _create_options_window(self, frame:tk.Frame):
+        self.option_tree = OptionTree(frame, self.opts)
 
-        tk.Button(coord_move_frame, text='Move', 
-            command= lambda: self.robot._position_move(
-                x=self.robot_vars['x']['var'].get(),
-                y=self.robot_vars['y']['var'].get(),
-                z=self.robot_vars['z']['var'].get(),
-            )
-            ).grid(row=3, column=2, sticky=tk.NSEW)
-
-
-        tk.Button(increment_move_frame, text='Reset Position', 
-        command= lambda: _reset_var(0.0, *(self.robot_vars[var_name]['var'] for var_name in ('dx','dy','dz')))
-        ).grid(row=3, column=1, sticky=tk.NSEW)
-
-        tk.Button(increment_move_frame, text='Move', 
-            command= lambda: self.robot._incriment_move(
-                dx=self.robot_vars['dx']['var'].get(),
-                dy=self.robot_vars['dy']['var'].get(),
-                dz=self.robot_vars['dz']['var'].get(),
-            )
-            ).grid(row=3, column=2, sticky=tk.NSEW)
-
-    def _create_settings_file(self):
-        self.opts = configparser.ConfigParser()
-        if os.path.exists(INI):
-            self.opts.read(INI)
-
-        self.opts.setdefault('robot.move', {})
-        self.opts['robot.move'].setdefault('tool', str(0))
-        self.opts['robot.move'].setdefault('user', str(0))
-        self.opts['robot.move'].setdefault('vel' , str(10.0))
-        self.opts['robot.move'].setdefault('acc' , str(20.0))
-        self.opts['robot.move'].setdefault('ovl' , str(0))
-
-        #self.opts.setdefault('robot.path', {})
-        #self.opts['robot.path'].setdefault('frequency'     , str(5000))
-        #self.opts['robot.path'].setdefault('sample average', str(4))
-#
-        #self.opts.setdefault('linac.angles', {})
-        #self.opts['linac.angles'].setdefault('collimator', str(0.0))
-        #self.opts['linac.angles'].setdefault('gantry'    , str(0.0))
-        #self.opts['linac.angles'].setdefault('couch'     , str(0.0))
-#
-        #self.opts.setdefault('linac.jaws', {})
-        #self.opts['linac.jaws'].setdefault('x1', str(0.0))
-        #self.opts['linac.jaws'].setdefault('y1', str(0.0))
-        #self.opts['linac.jaws'].setdefault('x2', str(0.0))
-        #self.opts['linac.jaws'].setdefault('y2', str(0.0))
-#
-        #self.opts.setdefault('light sensor', {})
-        #self.opts['light sensor'].setdefault('frequency'     , str(5000))
-        #self.opts['light sensor'].setdefault('sample average', str(4))
-
-        with open(INI, 'w') as f:
-            self.opts.write(f)
+    def _default_options(self):
+        return
 
     def _create_test_setup(self, frame:tk.Frame):
         self.test_frame = tk.Frame(frame)
@@ -491,9 +586,6 @@ def _update_var(vars:dict[str, tk.Variable], value, sections=[]):
     else:
         _update_var(vars[sections[0]], value, sections[1:])
 
-
-
-
 def _update_opts(vars:dict[str, dict[str, tk.Variable]], opts:configparser.ConfigParser, sub_sections=[]):
     for section, item in vars.items():
         cur_section = sub_sections + [section,]
@@ -511,10 +603,14 @@ def _update_opts(vars:dict[str, dict[str, tk.Variable]], opts:configparser.Confi
 
     with open(INI, 'w') as f:
         opts.write(f)
+
 def _write_to_textbox(textbox:tk.Text, message, endswith='\n'):
+    is_at_bottom = textbox.yview()[1] >= 1.0
     textbox.config(state=tk.NORMAL)
     textbox.insert(tk.END, f'{message}{endswith}')
     textbox.config(state=tk.DISABLED)
+    if is_at_bottom:
+        textbox.see(tk.END)
 
 def _reset_var(value, *vars: tk.Variable):
     for var in vars:
@@ -550,6 +646,7 @@ _create_debug_logger()
     
 debug_logger = logging.getLogger('Debug Logger')
 debug_logger.propagate = False
+
 
 if __name__ == '__main__':
     GUI()

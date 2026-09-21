@@ -1,4 +1,5 @@
 import logging
+import configparser
 import threading
 import tkinter as tk
 import time
@@ -8,20 +9,33 @@ import numpy as np
 
 from Robot import RPC
 from LightSensor import SensorManager
+import settingshandler as settings
 
 
 class RobotCom(RPC):
     HOME = [0, -45, -133.25, -180, -90, 90]
 
-    def __init__(self, ip="192.168.58.2"):
+    def __init__(self, opts=configparser.ConfigParser(), ip="192.168.58.2", ):
         self.robot_logger = logging.getLogger('robot')
         self.logger = logging.getLogger('GUI logger')
         self.logger.info('Connecting to Farino FR5')
         self._move_lock = threading.Lock()
+        
+        self.opts = opts
+        self._default_options()
 
         threading.Thread(target=RPC.__init__, args=(self, ip), daemon=True).start()
         self.move_thread = threading.Thread(target=lambda:None)
         self.action_queue:queue.Queue[threading.Thread] = queue.Queue()
+
+    def _default_options(self):
+        # Default Variables
+        section = 'robot.move'
+        settings.add_default(self.opts, section, 'tool', 0   , display_name='Tool'           , units=None, description='Tool number')
+        settings.add_default(self.opts, section, 'user', 0   , display_name='User'           , units=None, description='Artifact number')
+        settings.add_default(self.opts, section, 'vel' , 10.0, display_name='Velocity'       , units='%%', description='Percentage of speed')
+        settings.add_default(self.opts, section, 'acc' , 20.0, display_name='Acceleration'   , units='%%', description='Percentage of acceleration')
+        settings.add_default(self.opts, section, 'ovl' , 0   , display_name='Velocity factor', units='%%', description='Velocity scaling factor')
 
     def _status_check(self, root=None):
         while True:
@@ -62,8 +76,8 @@ class RobotCom(RPC):
             self.user_input_window.destroy()
         self.user_input_window = None
         self.error_label = None
-
-    def _incriment_move(self, dx, dy, dz, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=100.0):
+    
+    def _incriment_move(self, dx, dy, dz, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=100.0, in_thread=False):
         '''
         Move Arm with incrimental movements. 
 
@@ -77,31 +91,35 @@ class RobotCom(RPC):
         
         acc: Acceleration - default: 100.0
         '''
+        print( dx, dy, dz, drx, dry, drz, ref, vel, acc, in_thread)
         self.logger.debug(f'Queing Incrimental Movement ({dx}, {dy}, {dz})')
-        thread = threading.Thread(
-            target = lambda: self.MoveL(
-                desc_pos=self.GetActualTCPPose(0)[1],
-                tool=0,
-                user=0,
-                joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                vel=10.0,
-                acc=20.0,
-                ovl=100.0,
-                blendR=-1.0,
-                blendMode=0,
-                exaxis_pos=[0.0, 0.0, 0.0, 0.0],
-                search=0,
-                offset_flag=2,
-                offset_pos=[dz, dy, dx, drx, dry, drz],
-                oacc=20.0,
-                velAccParamMode=0,
-                ), 
-            daemon=True,
-            )
-        self.action_queue.put(thread)
-        return thread
+        funct = lambda: self.MoveL(
+                    desc_pos=self.GetActualTCPPose(0)[1],
+                    tool=0,
+                    user=0,
+                    joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    vel=10.0,
+                    acc=20.0,
+                    ovl=100.0,
+                    blendR=-1.0,
+                    blendMode=0,
+                    exaxis_pos=[0.0, 0.0, 0.0, 0.0],
+                    search=0,
+                    offset_flag=2,
+                    offset_pos=[dz, dy, dx, drx, dry, drz],
+                    oacc=20.0,
+                    velAccParamMode=0,
+                    )
+        if in_thread:
+            thread = threading.Thread(
+                target = funct, 
+                daemon=True,
+                )
+            self.action_queue.put(thread)
+            return thread
+        funct()
 
-    def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0):
+    def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0, in_thread=False):
         pos = self.GetActualTCPPose(0)
         if isinstance(pos, int):
             desc_pos = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -123,15 +141,17 @@ class RobotCom(RPC):
         oacc=20.0
         velAccParamMode=0
         self.logger.debug(f'Queueing Movement to ({x}, {y}, {z})')
-        
-        thread = threading.Thread(
-                target = lambda: self.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode),
-                daemon=True,
-                )
-        self.action_queue.put(thread)
-        return thread
+        funct = lambda: self.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode)
+        if in_thread:
+            thread = threading.Thread(
+                    target = funct,
+                    daemon=True,
+                    )
+            self.action_queue.put(thread)
+            return thread
+        funct()
 
-    def _joint_move(self, joint_pos):
+    def _joint_move(self, joint_pos, in_thread=False):
         tool=0
         user=0
         desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0]
@@ -143,12 +163,15 @@ class RobotCom(RPC):
         offset_flag = 0
         offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0]
         self.logger.debug(f'Queing joint movement to {tuple(joint_pos)}')
+        funct = lambda: self.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos)
+        if in_thread:
+            thread = threading.Thread(
+                    target= funct,
+                    daemon= True,
+                )
+            return thread
         
-        thread = threading.Thread(
-                target= lambda: self.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos),
-                daemon= True,
-            )
-        return thread
+        funct()
 
     def _move_path(self, path, lq:SensorManager):
         recordings = []
