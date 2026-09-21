@@ -47,13 +47,13 @@ def rectangle_path(isocenter: np.ndarray, points: list, increment: int):
         P3 -> P4              Scan
     """
 
-    # Extract rectangle points
+    # Access the 4 rectangle points
     p1: np.ndarray = points[0]
     p2: np.ndarray = points[1]
     p3: np.ndarray = points[2]
     p4: np.ndarray = points[3]
 
-    # Create paths
+    # Create paths for each side
     path_to_p1:     list = straight_path(isocenter, p1, increment, False)   # Non-Incremental
     path_p1_to_p2:  list = straight_path(p1, p2, increment, True)           # Incremental
     path_p2_to_p3:  list = straight_path(p2, p3, increment, False)          # Non-Incremental
@@ -82,14 +82,14 @@ def calculate_four_points_trig(isocenter: np.ndarray, length: float, width: floa
         X, Z -> Rectangle in XZ plane, rotation around Y
     '''
 
-    # Convert angle from degrees to radians
+    # Convert angle from degrees to radians for numpy
     angle_radians: float = convert_degrees_to_radians(angle)
 
-    # Isocenter-Referenced Shape
+    # Isocenter-Referenced Shape in rectangular fashion
     half_length: float = length / 2
     half_width: float = width / 2
 
-    # Define corners relative to the isocenter
+    # Define corners relative to the isocenter; based on which 2 axes robot will be moving in
     if axis_1 == "x" and axis_2 == "y":
         p1: np.ndarray = np.array([-half_length,  half_width, 0])
         p2: np.ndarray = np.array([ half_length,  half_width, 0])
