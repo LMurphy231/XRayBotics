@@ -28,6 +28,7 @@ import LightSensor as ls
 import communications as com
 from XRBPlotter import Plotter
 from utill import consts
+import settingshandler as settings
 
 if os.path.basename(sys.executable) == 'pythonw.exe':
     sys.stdout = open(os.devnull, 'w')
@@ -44,6 +45,7 @@ class TestPage:
 
         self.winfo_manager = self.frame.winfo_manager()
         self.vars:dict[str, tk.Variable] = {}
+        self._default_settings()
         self.build()
         self.hide()
    
@@ -80,6 +82,9 @@ class TestPage:
         tk.Button(header_frame, command=self.start, text='start').grid(row=0, column=21)
         return header_frame
 
+    def _default_settings(self):
+        pass
+    
     def _load_vars(self):
         for section in self.opts.sections():
             subsections = section.split('.')
@@ -181,16 +186,16 @@ class GravityTest(TestPage):
         light_sensor_frame = tk.LabelFrame(input_frame, text='Light Sensor Settings')
         light_sensor_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
         self.vars.setdefault('light sensor', {})
-        self.vars['light sensor']['Frequency']      = _quick_test_var(light_sensor_frame, 'Frequency'     , 5000, 0, 0)
-        self.vars['light sensor']['Sample Average'] = _quick_test_var(light_sensor_frame, 'Sample Average', 4   , 1, 0)
+        self.vars['light sensor']['frequency']      = _quick_test_var(light_sensor_frame, 'Frequency'     , 5000, 0, 0)
+        self.vars['light sensor']['sample_average'] = _quick_test_var(light_sensor_frame, 'Sample Average', 4   , 1, 0)
 
         path_frame = tk.LabelFrame(input_frame, text='Path Settings')
         path_frame.grid(row=2, column=0,  columnspan=2, sticky=tk.NSEW)
         self.vars.setdefault('robot', {})
         self.vars['robot'].setdefault('path', {})
-        self.vars['robot']['path']['Steps']  = _quick_test_var(path_frame, 'Steps' , 1   , 0, 0)
-        self.vars['robot']['path']['Length'] = _quick_test_var(path_frame, 'Length', 100 , 1, 0)
-        self.vars['robot']['path']['Width']  = _quick_test_var(path_frame, 'Width' , 100 , 2, 0)
+        self.vars['robot']['path']['step_length']  = _quick_test_var(path_frame, 'Step Length' , 1   , 0, 0)
+        self.vars['robot']['path']['length']       = _quick_test_var(path_frame, 'Length', 100 , 1, 0)
+        self.vars['robot']['path']['width']        = _quick_test_var(path_frame, 'Width' , 100 , 2, 0)
 
         self.vars.setdefault('tests', {})
         self.vars['tests'].setdefault('gravity', {})
@@ -198,8 +203,17 @@ class GravityTest(TestPage):
 
         return input_frame
     
-    def build(self):
-        return super().build()
+    def _default_settings(self):
+        section = 'tests.gravity.path'
+        settings.add_default(self.opts, section, 'step_length', 1.0  , display_name='Step length', units='mm' , description='Distance between data recordings.')
+        settings.add_default(self.opts, section, 'length'     , 100.0, display_name='Length'     , units='mm' , description='Length of rectangular path.')
+        settings.add_default(self.opts, section, 'height'     , 100.0, display_name='Height'     , units='mm' , description='Height of rectangular path.')
+        settings.add_default(self.opts, section, 'theta'      , 100.0, display_name='Theta'      , units='deg', description='Angle of overall path in relation to the Z axis.')
+
+        section = 'tests.gravity.variables'
+        settings.add_default(self.opts, section, 'threshold', 0.75, display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
+    
+        
 
 class MessageTerminal(logging.Handler):
     def __init__(self, text:tk.Text, level, handlers=[]):
@@ -282,11 +296,16 @@ class SettingsWindow:
 class OptionTree():
     def __init__(self, frame:tk.Frame, opts:configparser.ConfigParser):
         self.opts = opts
-        columns = ("Default", "Set Value")
-        self.tree = ttk.Treeview(frame, columns=columns)
+        self.columns = {'program_default': 'Default',
+                        'default'        : 'Set Value',
+                        'description'    : 'Description',
+                        }
+
+       # columns = ("Default", "Set Value")
+        self.tree = ttk.Treeview(frame, columns=tuple(self.columns.values()))
 
         self.tree.heading("#0", text="Option", anchor="w")
-        for column in columns:
+        for column in self.columns.values():
             self.tree.heading(column, text=column)
             
         self.tree.pack(fill="both", expand=True, padx=10, pady=10)
@@ -295,25 +314,53 @@ class OptionTree():
         self.tree.bind("<Double-1>", self.on_double_click)
         self._update()
 
+    def _format_option(self, obj:settings.ProgramOption):
+        values = []
+        for attr in self.columns.keys():
+            value = getattr(obj,attr)
+            values.append(str(value) if value is not None else '')
+        return values
+
+
     def _update(self):
         self.sections_ids = {(): ''}
         self.vars = {}
-        # Go through each section
-        for section_name in self.opts.sections():
-            sections = section_name.split('.')
-            section_key = set()
-            # Create a parent for each section
-            for section in sections:
-                prev_id = self.sections_ids[tuple(section_key)]
-                section_key.add(section)
-                if tuple(section_key) not in self.sections_ids:
-                    self.sections_ids[tuple(section_key)] = self.tree.insert(prev_id, tk.END, text=section.capitalize())
+        opt_dict = settings.get_opt_dict(self.opts)
 
-            # Create an entry for 
-            key = self.sections_ids[tuple(section_key)]
-            for option in self.opts.options(section_name):
-                index = self.tree.insert(key, tk.END, text=option, values=[self.opts.get(section_name, option),])
-                self.vars[index] = (section_name, option)
+        def add_section(opt_dict:dict[str, settings.ProgramOption], prev_sections):
+            prev_id = self.sections_ids[tuple(prev_sections)]
+            for name, obj in opt_dict.items():
+                if isinstance(obj, dict):
+                    self.sections_ids[tuple(prev_sections+[name,])] = self.tree.insert(prev_id, tk.END, text=name.capitalize())
+                    add_section(obj, prev_sections+[name,])
+                else:
+                    index = self.tree.insert(prev_id, tk.END, text=obj.display_unit_name, values=self._format_option(obj))
+                    self.vars[index] = ('.'.join(prev_sections), name)
+
+        prev_sections = []
+        add_section(opt_dict, prev_sections)
+        # Go through each section
+        #for section in settings.sections(self.opts):
+        #    print(section)
+        #    prev_sections = []
+        #    add_section(opt_dict, prev_sections)
+            
+            
+        #for section_name in self.opts.sections():
+        #    sections = section_name.split('.')
+        #    section_key = set()
+        #    # Create a parent for each section
+        #    for section in sections:
+        #        prev_id = self.sections_ids[tuple(section_key)]
+        #        section_key.add(section)
+        #        if tuple(section_key) not in self.sections_ids:
+        #            self.sections_ids[tuple(section_key)] = self.tree.insert(prev_id, tk.END, text=section.capitalize())
+#
+        #    # Create an entry for 
+        #    key = self.sections_ids[tuple(section_key)]
+        #    for option in self.opts.options(section_name):
+        #        index = self.tree.insert(key, tk.END, text=option, values=[self.opts.get(section_name, option),])
+        #        self.vars[index] = (section_name, option)
 
     def on_double_click(self, event):
         # Identify the exact region clicked

@@ -9,6 +9,7 @@ import numpy as np
 
 from Robot import RPC
 from LightSensor import SensorManager
+import settingshandler as settings
 
 
 class RobotCom(RPC):
@@ -28,12 +29,13 @@ class RobotCom(RPC):
         self.action_queue:queue.Queue[threading.Thread] = queue.Queue()
 
     def _default_options(self):
-        self.opts.setdefault('robot.move', {})
-        self.opts['robot.move'].setdefault('tool', str(0))
-        self.opts['robot.move'].setdefault('user', str(0))
-        self.opts['robot.move'].setdefault('vel' , str(10.0))
-        self.opts['robot.move'].setdefault('acc' , str(20.0))
-        self.opts['robot.move'].setdefault('ovl' , str(0))
+        # Default Variables
+        section = 'robot.move'
+        settings.add_default(self.opts, section, 'tool', 0   , display_name='Tool'           , units=None, description='Tool number')
+        settings.add_default(self.opts, section, 'user', 0   , display_name='User'           , units=None, description='Artifact number')
+        settings.add_default(self.opts, section, 'vel' , 10.0, display_name='Velocity'       , units='%%', description='Percentage of speed')
+        settings.add_default(self.opts, section, 'acc' , 20.0, display_name='Acceleration'   , units='%%', description='Percentage of acceleration')
+        settings.add_default(self.opts, section, 'ovl' , 0   , display_name='Velocity factor', units='%%', description='Velocity scaling factor')
 
     def _status_check(self, root=None):
         while True:
