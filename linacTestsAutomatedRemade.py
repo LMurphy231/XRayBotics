@@ -11,13 +11,14 @@ def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, l
     gravity_test_automated
     Perform the gravity test: Scan laser to find true z
     '''
-    # Return to "home" pos ---> isocenter
+    # Return to "home" pos ---> isocenter+
     est_isocenter = np.array([x, y, z])
     com._position_move(fr5, est_isocenter) # Start test as estimated isocenter ("origin"); by Sam
 
     # Define data to collect
     grav_test_light_data = []       # Light intensity values
     grav_test_position_data = []    # Position Vectors (x,y,z)
+    grav_test_scan_data = []        # Tuple of both light and position data
     
     # Define path to move in (rectangle)
     grav_test_axes = ("y", "z") # Define active axes
@@ -29,40 +30,11 @@ def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, l
     move.execute_path(path, grav_test_light_data,  grav_test_position_data)
     # end_data_recording()
 
+    # TODO: Process the Data
+    # grav_test_scan_data = processData()
 
-
-
-
-
-    # for direction_name, move_vec in path:
-        # start.move(path)
-            # scan light while moving
-            # append.light_data[]                   # Store light intensity data
-            # append.grav_test_position_data[]      # Store positional data (movement vectors)
-            # tuple = append.[(dx,dy,dz), light_intensity]  # TODO: Tuple array possibly
-        # end.move(path)
-    
-    # end_data_recording()
-    
-    # Process data (call needed DataProcessing.function() functions)
-        # center1 = get_center_1(tuple)                     # Returns: (x,y,z) and light_intensity
-        # center2 = get_center_2(tuple)                     # Returns: (x,y,z) and light_intensity
-        # offset = get_offset(grav_test_position_data[])    # Returns offset 
-
-    # Didn't find satisfactory light data
-        # if (light_data < threshold)
-            # path = paths.move_up_to_max_z(x,y,z, *args) # Move up to max z for a new path (different parameters)
-            # start_data_recording()
-                # start.move(path)
-                    # scan light while moving
-                    # append.light_data[]                   # Store light intensity data
-                    # append.grav_test_position_data[]      # Store positional data (movement vectors)
-                    # tuple = append.[(dx,dy,dz), light_intensity]  # TODO: Tuple array possibly
-                # end.move(path)
-            # end_data_recording()
-    
-    # Continue Here TODO
-
+    # Extra Logic if initial scan data unsatisfactory
+        # repeat above steps with different path and logic
 
     return
 
@@ -78,6 +50,7 @@ def collimator_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1
     # Define data to collect
     coll_test_light_data = []       # Light intensity values
     coll_test_position_data = []    # Position Vectors (x,y,z)
+    coll_test_scan_data = []        # Tuple of both light and position data
     
     # Define path to move in (rectangle)
     coll_test_axes = ("x", "y") # Define active axes
@@ -90,6 +63,7 @@ def collimator_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1
     # end_data_recording()
 
     # Process the Data
+    # coll_test_scan_data = processData()
 
 
 def gantry_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, length=100, width=100, angle=0, fr5=None):
@@ -104,6 +78,7 @@ def gantry_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, le
     # Define data to collect
     gantry_test_light_data = []       # Light intensity values
     gantry_test_position_data = []    # Position Vectors (x,y,z)
+    gantry_test_scan_data = []        # Tuple of both light and position data
     
     # Define path to move in (rectangle)
     gantry_test_axes = ("x", "y") # Define active axes
@@ -116,3 +91,4 @@ def gantry_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, le
     # end_data_recording()
 
     # Process the Data
+    # gantry_test_scan_data = processData()
