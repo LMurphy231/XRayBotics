@@ -9,7 +9,7 @@ import AutomatedTests.pathMovement as move
 def gravity_test_automated(fr5=None, x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, length=100, width=100, angle=0):
 
     # Return to "home" pos ---> isocenter
-    # move(home) # Whatever this may be # TODO Estimated isocenter inputted by Sam!!!
+    # move(home) # Whatever this may be # TODO: Estimated isocenter inputted by Sam!!!
 
     est_isocenter = np.array([0,0,0])
     com._position_move(fr5, est_isocenter) # Start test as estimated isocenter ("origin")
