@@ -4,7 +4,7 @@ except:
     from Robot import RPC
 
 try:
-    import GUI
+    import archive.GUI as GUI
     #from GUI import RobotCommunicator, LightSensor, TestData
 except:
     pass
