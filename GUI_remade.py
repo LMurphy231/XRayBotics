@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 import configparser
+import dataclasses
 import logging
 import os
 import sys
@@ -37,11 +38,12 @@ if os.path.basename(sys.executable) == 'pythonw.exe':
 INI = 'xrb.ini'
 
 class TestPage:
-    def __init__(self, name, root:tk.Frame, opts:configparser.ConfigParser=None):
+    def __init__(self, name, root:tk.Frame, opts:settings.OptionDict=None):
         self.name = name
         self.opts = opts
         self.frame = tk.Frame(root)
         self.frame.grid(row=0, column=0, sticky=tk.NSEW)
+        self.option_sections = []
 
         self.winfo_manager = self.frame.winfo_manager()
         self.vars:dict[str, tk.Variable] = {}
@@ -57,8 +59,8 @@ class TestPage:
         Default creates a frame that displays test name
         """
         header_frame = tk.Frame(self.frame)
-        tk.Label(header_frame, text=self.name).grid(row=0, column=0, sticky=tk.NSEW)
-
+        tk.Label(header_frame, text=self.name).grid(row=0, column=0)
+    
         return header_frame
 
     def _create_input_frame(self) -> tk.Frame:
@@ -66,7 +68,11 @@ class TestPage:
         
         Intended to be overridden in subclasses.
         """
-        return None
+        input_frame = tk.LabelFrame(self.frame)
+        settings_frame = tk.LabelFrame(input_frame)
+        settings_frame.grid(row=0, column=0, sticky=tk.NSEW)
+        settings.OptionTree(settings_frame, self.opts, self.option_sections)
+        return input_frame
 
     def _create_start_frame(self) -> tk.Frame:
         """Creates frame for starting buttons.
@@ -77,7 +83,7 @@ class TestPage:
         """
         header_frame = tk.Frame(self.frame)
         if self.opts is not None:
-            tk.Button(header_frame, command=lambda: _update_opts(self.vars, self.opts), text='Save settings').grid(row=0, column=0)
+            tk.Button(header_frame, command=lambda: self.opts.save(*self.option_sections), text='Save settings').grid(row=0, column=0)
             tk.Button(header_frame, command=self._load_vars, text='Load').grid(row=0, column=1)
         tk.Button(header_frame, command=self.start, text='start').grid(row=0, column=21)
         return header_frame
@@ -86,7 +92,7 @@ class TestPage:
         pass
     
     def _load_vars(self):
-        for section in self.opts.sections():
+        for section in self.opts.sections:
             subsections = section.split('.')
             for var in self.opts.options(section):
                 _update_var(self.vars, self.opts.get(section, var), subsections+[var,])
@@ -158,62 +164,78 @@ class SquareTest(TestPage):
                         ).start()
         
 class GravityTest(TestPage):
-    def __init__(self, name, root:tk.Frame, opts:configparser.ConfigParser):
+    def __init__(self, name, root:tk.Frame, opts:settings.OptionDict):
         self.root = root
         TestPage.__init__(self, name, self.root, opts)
 
-    def _create_input_frame(self):
-        input_frame = tk.LabelFrame(self.frame)
-
-        lianc_settings_frame = tk.LabelFrame(input_frame, text='LINAC Parameters')
-        lianc_settings_frame.grid(row=0, column=0,  columnspan=2, sticky=tk.NSEW)
-        self.vars.setdefault('linac', {})
-        jaw_frame = tk.LabelFrame(lianc_settings_frame, text='Jaws')
-        jaw_frame.grid(row=0, column=0,  columnspan=2, sticky=tk.NSEW)
-        self.vars['linac'].setdefault('jaws', {})
-        self.vars['linac']['jaws']['x1'] = _quick_test_var(jaw_frame, 'x1', 0.0, 0, 0)
-        self.vars['linac']['jaws']['y1'] = _quick_test_var(jaw_frame, 'y1', 0.0, 1, 0)
-        self.vars['linac']['jaws']['x2'] = _quick_test_var(jaw_frame, 'x2', 0.0, 0, 2)
-        self.vars['linac']['jaws']['y2'] = _quick_test_var(jaw_frame, 'y2', 0.0, 1, 2)
-
-        angle_frame = tk.LabelFrame(lianc_settings_frame, text='Set Angles')
-        angle_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
-        self.vars['linac'].setdefault('angles', {})
-        self.vars['linac']['angles']['collimator'] = _quick_test_var(angle_frame, 'Collimator Angle', 0.0, 0, 0)
-        self.vars['linac']['angles']['gantry']     = _quick_test_var(angle_frame, 'Gantry Angle'    , 0.0, 1, 0)
-        self.vars['linac']['angles']['couch']      = _quick_test_var(angle_frame, 'Couch Angle'     , 0.0, 2, 0)
-        
-        light_sensor_frame = tk.LabelFrame(input_frame, text='Light Sensor Settings')
-        light_sensor_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
-        self.vars.setdefault('light sensor', {})
-        self.vars['light sensor']['frequency']      = _quick_test_var(light_sensor_frame, 'Frequency'     , 5000, 0, 0)
-        self.vars['light sensor']['sample_average'] = _quick_test_var(light_sensor_frame, 'Sample Average', 4   , 1, 0)
-
-        path_frame = tk.LabelFrame(input_frame, text='Path Settings')
-        path_frame.grid(row=2, column=0,  columnspan=2, sticky=tk.NSEW)
-        self.vars.setdefault('robot', {})
-        self.vars['robot'].setdefault('path', {})
-        self.vars['robot']['path']['step_length']  = _quick_test_var(path_frame, 'Step Length' , 1   , 0, 0)
-        self.vars['robot']['path']['length']       = _quick_test_var(path_frame, 'Length', 100 , 1, 0)
-        self.vars['robot']['path']['width']        = _quick_test_var(path_frame, 'Width' , 100 , 2, 0)
-
-        self.vars.setdefault('tests', {})
-        self.vars['tests'].setdefault('gravity', {})
-        self.vars['tests']['gravity']['Threshold'] = _quick_test_var(input_frame, 'Threshold', 0.75, 3, 0)
-
-        return input_frame
+    #def _create_input_frame(self):
+    #    input_frame = tk.LabelFrame(self.frame)
+    #    settings_frame = tk.LabelFrame(input_frame)
+    #    settings_frame.grid(row=0, column=0, sticky=tk.NSEW)
+    #    settings.OptionTree(settings_frame, self.opts, ('robot.move', 'tests.gravity'))
+    #    return input_frame
+    #    lianc_settings_frame = tk.LabelFrame(input_frame, text='LINAC Parameters')
+    #    lianc_settings_frame.grid(row=0, column=0,  columnspan=2, sticky=tk.NSEW)
+    #    self.vars.setdefault('linac', {})
+    #    jaw_frame = tk.LabelFrame(lianc_settings_frame, text='Jaws')
+    #    jaw_frame.grid(row=0, column=0,  columnspan=2, sticky=tk.NSEW)
+    #    self.vars['linac'].setdefault('jaws', {})
+    #    self.vars['linac']['jaws']['x1'] = _quick_test_var(jaw_frame, 'x1', 0.0, 0, 0)
+    #    self.vars['linac']['jaws']['y1'] = _quick_test_var(jaw_frame, 'y1', 0.0, 1, 0)
+    #    self.vars['linac']['jaws']['x2'] = _quick_test_var(jaw_frame, 'x2', 0.0, 0, 2)
+    #    self.vars['linac']['jaws']['y2'] = _quick_test_var(jaw_frame, 'y2', 0.0, 1, 2)
+#
+    #    angle_frame = tk.LabelFrame(lianc_settings_frame, text='Set Angles')
+    #    angle_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
+    #    self.vars['linac'].setdefault('angles', {})
+    #    self.vars['linac']['angles']['collimator'] = _quick_test_var(angle_frame, 'Collimator Angle', 0.0, 0, 0)
+    #    self.vars['linac']['angles']['gantry']     = _quick_test_var(angle_frame, 'Gantry Angle'    , 0.0, 1, 0)
+    #    self.vars['linac']['angles']['couch']      = _quick_test_var(angle_frame, 'Couch Angle'     , 0.0, 2, 0)
+    #    
+    #    light_sensor_frame = tk.LabelFrame(input_frame, text='Light Sensor Settings')
+    #    light_sensor_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
+    #    self.vars.setdefault('light sensor', {})
+    #    self.vars['light sensor']['frequency']      = _quick_test_var(light_sensor_frame, 'Frequency'     , 5000, 0, 0)
+    #    self.vars['light sensor']['sample_average'] = _quick_test_var(light_sensor_frame, 'Sample Average', 4   , 1, 0)
+#
+    #    path_frame = tk.LabelFrame(input_frame, text='Path Settings')
+    #    path_frame.grid(row=2, column=0,  columnspan=2, sticky=tk.NSEW)
+    #    self.vars.setdefault('robot', {})
+    #    self.vars['robot'].setdefault('path', {})
+    #    self.vars['robot']['path']['step_length']  = _quick_test_var(path_frame, 'Step Length' , 1   , 0, 0)
+    #    self.vars['robot']['path']['length']       = _quick_test_var(path_frame, 'Length', 100 , 1, 0)
+    #    self.vars['robot']['path']['width']        = _quick_test_var(path_frame, 'Width' , 100 , 2, 0)
+#
+    #    self.vars.setdefault('tests', {})
+    #    self.vars['tests'].setdefault('gravity', {})
+    #    self.vars['tests']['gravity']['Threshold'] = _quick_test_var(input_frame, 'Threshold', 0.75, 3, 0)
+#
+    #    return input_frame
     
     def _default_settings(self):
+        section = 'linac.jaws'
+        self.opts.add_option(section, 'x1', 10.0  , tk.DoubleVar()   , display_name='X1', units='mm' , description='X1 length of light field at 100 cm')
+        self.opts.add_option(section, 'x2', 10.0  , tk.DoubleVar()   , display_name='X2', units='mm' , description='X2 length of light field at 100 cm')
+        self.opts.add_option(section, 'y1', 10.0  , tk.DoubleVar()   , display_name='Y1', units='mm' , description='Y1 length of light field at 100 cm')
+        self.opts.add_option(section, 'y2', 10.0  , tk.DoubleVar()   , display_name='Y2', units='mm' , description='Y2 length of light field at 100 cm')
+        
+        section = 'linac.angles'
+        self.opts.add_option(section, 'gantry'    , 0.0  , tk.DoubleVar()   , display_name='Gantry angle'    , units='deg' , description='Angle set for the Gantry')
+        self.opts.add_option(section, 'collimator', 0.0  , tk.DoubleVar()   , display_name='Collimator angle', units='deg' , description='Angle set for the collimator')
+        self.opts.add_option(section, 'Couch'     , 0.0  , tk.DoubleVar()   , display_name='Couch angle'     , units='deg' , description='Angle set for the Couch')
+
+
         section = 'tests.gravity.path'
-        settings.add_default(self.opts, section, 'step_length', 1.0  , display_name='Step length', units='mm' , description='Distance between data recordings.')
-        settings.add_default(self.opts, section, 'length'     , 100.0, display_name='Length'     , units='mm' , description='Length of rectangular path.')
-        settings.add_default(self.opts, section, 'height'     , 100.0, display_name='Height'     , units='mm' , description='Height of rectangular path.')
-        settings.add_default(self.opts, section, 'theta'      , 100.0, display_name='Theta'      , units='deg', description='Angle of overall path in relation to the Z axis.')
+        self.opts.add_option(section, 'step_length', 1.0  , tk.IntVar()   , display_name='Step length', units='mm' , description='Distance between data recordings.')
+        self.opts.add_option(section, 'length'     , 100.0, tk.DoubleVar(), display_name='Length'     , units='mm' , description='Length of rectangular path.')
+        self.opts.add_option(section, 'height'     , 100.0, tk.DoubleVar(), display_name='Height'     , units='mm' , description='Height of rectangular path.')
+        self.opts.add_option(section, 'theta'      , 100.0, tk.DoubleVar(), display_name='Theta'      , units='deg', description='Angle of overall path in relation to the Z axis.')
 
         section = 'tests.gravity.variables'
-        settings.add_default(self.opts, section, 'threshold', 0.75, display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
-    
-        
+        self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
+
+        self.option_sections.append('linac')
+        self.option_sections.append('tests.gravity')
 
 class MessageTerminal(logging.Handler):
     def __init__(self, text:tk.Text, level, handlers=[]):
@@ -239,7 +261,7 @@ class MessageTerminal(logging.Handler):
             self.handleError(record)
 
 class SettingsWindow:
-    def __init__(self, root, opts:configparser.ConfigParser):
+    def __init__(self, root, opts:settings.OptionDict):
         self.root = root
         self.opts = opts
         self.window = None
@@ -293,136 +315,17 @@ class SettingsWindow:
 
         tk.Button(self.window, text='Save', command=lambda: self.save(sections)).grid(row=1, column=0)
 
-class OptionTree():
-    def __init__(self, frame:tk.Frame, opts:configparser.ConfigParser):
-        self.opts = opts
-        self.columns = {'program_default': 'Default',
-                        'default'        : 'Set Value',
-                        'description'    : 'Description',
-                        }
-
-       # columns = ("Default", "Set Value")
-        self.tree = ttk.Treeview(frame, columns=tuple(self.columns.values()))
-
-        self.tree.heading("#0", text="Option", anchor="w")
-        for column in self.columns.values():
-            self.tree.heading(column, text=column)
-            
-        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Bind double-click event to trigger editing
-        self.tree.bind("<Double-1>", self.on_double_click)
-        self._update()
-
-    def _format_option(self, obj:settings.ProgramOption):
-        values = []
-        for attr in self.columns.keys():
-            value = getattr(obj,attr)
-            values.append(str(value) if value is not None else '')
-        return values
-
-
-    def _update(self):
-        self.sections_ids = {(): ''}
-        self.vars = {}
-        opt_dict = settings.get_opt_dict(self.opts)
-
-        def add_section(opt_dict:dict[str, settings.ProgramOption], prev_sections):
-            prev_id = self.sections_ids[tuple(prev_sections)]
-            for name, obj in opt_dict.items():
-                if isinstance(obj, dict):
-                    self.sections_ids[tuple(prev_sections+[name,])] = self.tree.insert(prev_id, tk.END, text=name.capitalize())
-                    add_section(obj, prev_sections+[name,])
-                else:
-                    index = self.tree.insert(prev_id, tk.END, text=obj.display_unit_name, values=self._format_option(obj))
-                    self.vars[index] = ('.'.join(prev_sections), name)
-
-        prev_sections = []
-        add_section(opt_dict, prev_sections)
-        # Go through each section
-        #for section in settings.sections(self.opts):
-        #    print(section)
-        #    prev_sections = []
-        #    add_section(opt_dict, prev_sections)
-            
-            
-        #for section_name in self.opts.sections():
-        #    sections = section_name.split('.')
-        #    section_key = set()
-        #    # Create a parent for each section
-        #    for section in sections:
-        #        prev_id = self.sections_ids[tuple(section_key)]
-        #        section_key.add(section)
-        #        if tuple(section_key) not in self.sections_ids:
-        #            self.sections_ids[tuple(section_key)] = self.tree.insert(prev_id, tk.END, text=section.capitalize())
-#
-        #    # Create an entry for 
-        #    key = self.sections_ids[tuple(section_key)]
-        #    for option in self.opts.options(section_name):
-        #        index = self.tree.insert(key, tk.END, text=option, values=[self.opts.get(section_name, option),])
-        #        self.vars[index] = (section_name, option)
-
-    def on_double_click(self, event):
-        # Identify the exact region clicked
-        region = self.tree.identify_region(event.x, event.y)
-        if region != "cell":
-            return
-
-        # Find the row ID and column name
-        row_id = self.tree.identify_row(event.y)
-        column = self.tree.identify_column(event.x)
-        
-        # Determine numerical column index (e.g., '#1' -> 0)
-        col_index = int(column.replace("#", "")) - 1
-        
-        # Get bounding box coordinates of the targeted cell
-        x, y, width, height = self.tree.bbox(row_id, column)
-
-        if col_index >= len(self.tree.item(row_id, "values")):
-                    return
-
-        # Create and overlay the temporary Entry widget
-        entry = ttk.Entry(self.tree)
-        entry.place(x=x, y=y, width=width, height=height)
-
-        
-        # Pre-populate entry with the current value
-        current_val = self.tree.item(row_id, "values")[col_index]
-        entry.insert(0, current_val)
-        entry.select_range(0, tk.END)
-        entry.focus()
-
-        # Inner function to save the new value
-        def save_edit(event_obj=None):
-            new_val = entry.get()
-
-            (section_name, option) = self.vars[row_id] 
-            self.opts[section_name][option] = str(new_val)
-
-            # Fetch all current values for this row
-            row_values = list(self.tree.item(row_id, "values"))
-            # Update the specific column value
-            row_values[col_index] = new_val
-            # Apply changes back to the tree row
-            self.tree.item(row_id, values=row_values)
-            
-            entry.destroy()
-
-        # Bind lifecycle events to the temporary widget
-        entry.bind("<Return>", save_edit)
-        entry.bind("<FocusOut>", lambda e: entry.destroy())
 
 class GUI:
     def __init__(self, name = 'XRayBotics'):
         self.window = tk.Tk()
+        self.window.geometry('1000x500')
         self.name = name
         self.window.title(name)
         self.settings_window = None
 
         # Load options
-        self.opts = configparser.ConfigParser()
-        if os.path.exists(INI):
-            self.opts.read(INI)
+        self.opts = settings.OptionDict(INI)
         self._default_options()
 
         self.robot = rc.RobotCom(self.opts)
@@ -436,17 +339,28 @@ class GUI:
         self.window.mainloop()
 
     def _build(self):
+        self.window.columnconfigure(0, weight=1)
+        self.window.rowconfigure(0, weight=1)
+        
         self.root = tk.Frame(self.window)
         self.root.grid(row=0, column=0, sticky=tk.NSEW)
+
+        self.root.rowconfigure(0, weight=1, minsize=400)
+        self.root.rowconfigure(1, weight=1, minsize=150)
+
+        self.root.columnconfigure(0, weight=0, minsize=450)
+        self.root.columnconfigure(1, weight=0, minsize=200)
+        self.root.columnconfigure(2, weight=1, minsize=200)
 
         test_setup_frame = tk.Frame(self.root)
         test_setup_frame.grid(row=0, column=0, sticky=tk.NSEW)
         self._create_test_setup(test_setup_frame)
 
-        robot_window_frame = tk.Frame(self.root)
+        robot_window_frame = tk.LabelFrame(self.root, text='Robot Controller')
         robot_window_frame.grid(row=0, column=1, sticky=tk.NSEW)
         self._create_robot_controller(robot_window_frame)
 
+        
         plotter_frame = tk.Frame(self.root)
         plotter_frame.grid(row=0, column=2, sticky=tk.NSEW)
         self._create_plotter_window(plotter_frame)
@@ -456,7 +370,7 @@ class GUI:
         self._create_text_window(text_window_frame)
 
         settings_frame = tk.Frame(self.root)
-        settings_frame.grid(row=1, column=1, sticky=tk.NSEW)
+        settings_frame.grid(row=1, column=1, columnspan=2, sticky=tk.NSEW)
         self._create_options_window(settings_frame)
 
     def _create_loggers(self):
@@ -490,7 +404,6 @@ class GUI:
         increment_move_frame.grid(row=1,column=0,sticky=tk.NSEW)
 
         for frame, vars, funct in ((coord_move_frame, ('X', 'Y', 'Z'), self.robot._position_move), (increment_move_frame, ('dx', 'dy', 'dz'), self.robot._incriment_move)):
-            
             for index, var_name in enumerate(vars):
                 tk.Label(frame, text=f'{var_name}:').grid(row=index, column=0,sticky=tk.NSEW)
                 var = tk.DoubleVar(value=0.0)
@@ -512,14 +425,14 @@ class GUI:
                         ).grid(row=3, column=2, sticky=tk.NSEW)
 
     def _create_options_window(self, frame:tk.Frame):
-        self.option_tree = OptionTree(frame, self.opts)
+        self.option_tree = settings.OptionTree(frame, self.opts, ('robot.move', 'tests.gravity'))
 
     def _default_options(self):
         return
 
     def _create_test_setup(self, frame:tk.Frame):
         self.test_frame = tk.Frame(frame)
-        self.test_frame.grid(row=1, column=1, sticky=tk.NSEW)
+        self.test_frame.grid(row=0, column=1, sticky=tk.NSEW)
         
         self.test_types:dict[str, TestPage] = {
             'Ladder' : SquareTest('SquareTest', self.test_frame, self.ls, self.robot),
@@ -528,16 +441,16 @@ class GUI:
         self.current_test:TestPage = None
 
         self.test_selection = tk.Listbox(frame, selectmode=tk.SINGLE, exportselection=False)
-        self.test_selection.grid(row=1, column=0, sticky=tk.NSEW)
+        self.test_selection.grid(row=0, column=0, sticky=tk.NSEW)
         self.test_selection.bind('<<ListboxSelect>>', self._change_test_page)
         for test in self.test_types:
             self.test_selection.insert(tk.END, test)
 
     def _create_text_window(self, frame:tk.Frame):
 
-        textbox_notebook = ttk.Notebook(frame)
+        textbox_notebook = ttk.Notebook(frame, width=450)
         textbox_notebook.grid(row=0, column=0, sticky=tk.NSEW)
-
+        textbox_notebook.columnconfigure(0, weight=1, minsize=100)
         debug_frame = tk.Frame(textbox_notebook)
         textbox_notebook.add(debug_frame, text='Messages')
 
@@ -586,7 +499,7 @@ def _update_var(vars:dict[str, tk.Variable], value, sections=[]):
     else:
         _update_var(vars[sections[0]], value, sections[1:])
 
-def _update_opts(vars:dict[str, dict[str, tk.Variable]], opts:configparser.ConfigParser, sub_sections=[]):
+def _update_opts(vars:dict[str, dict[str, tk.Variable]], opts:settings.OptionDict, sub_sections=[]):
     for section, item in vars.items():
         cur_section = sub_sections + [section,]
         section_name = '.'.join(cur_section[:-1])
@@ -594,12 +507,12 @@ def _update_opts(vars:dict[str, dict[str, tk.Variable]], opts:configparser.Confi
             _update_opts(item, opts, cur_section)
         elif isinstance(item, tk.Variable):
             print(f'Updating: ["{section_name}"]["{section}"] = {item.get()}')
-            opts.setdefault(section_name, {})
-            opts[section_name][section] = str(item.get())
+            opts.setdefault(section_name + '.default', {})
+            opts[section_name + '.default'][section] = str(item.get())
         else:
             print(f'Updating: ["{section_name}"] = {item}')
-            opts.setdefault(section_name, {})
-            opts[section_name][section] = str(item)
+            opts.setdefault(section_name + '.default', {})
+            opts[section_name + '.default'][section] = str(item)
 
     with open(INI, 'w') as f:
         opts.write(f)

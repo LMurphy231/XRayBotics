@@ -8,7 +8,7 @@ except:
     
 from labquest import LabQuest 
 try:
-    import GUI
+    import archive.GUI as GUI
     #from GUI import RobotCommunicator, LightSensor, TestData
 except:
     pass

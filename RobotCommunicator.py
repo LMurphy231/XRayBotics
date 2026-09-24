@@ -15,7 +15,7 @@ import settingshandler as settings
 class RobotCom(RPC):
     HOME = [0, -45, -133.25, -180, -90, 90]
 
-    def __init__(self, opts=configparser.ConfigParser(), ip="192.168.58.2", ):
+    def __init__(self, opts=settings.OptionDict(), ip="192.168.58.2", ):
         self.robot_logger = logging.getLogger('robot')
         self.logger = logging.getLogger('GUI logger')
         self.logger.info('Connecting to Farino FR5')
@@ -31,11 +31,11 @@ class RobotCom(RPC):
     def _default_options(self):
         # Default Variables
         section = 'robot.move'
-        settings.add_default(self.opts, section, 'tool', 0   , display_name='Tool'           , units=None, description='Tool number')
-        settings.add_default(self.opts, section, 'user', 0   , display_name='User'           , units=None, description='Artifact number')
-        settings.add_default(self.opts, section, 'vel' , 10.0, display_name='Velocity'       , units='%%', description='Percentage of speed')
-        settings.add_default(self.opts, section, 'acc' , 20.0, display_name='Acceleration'   , units='%%', description='Percentage of acceleration')
-        settings.add_default(self.opts, section, 'ovl' , 0   , display_name='Velocity factor', units='%%', description='Velocity scaling factor')
+        self.opts.add_option(section, 'tool', 0   , tk.IntVar()   , display_name='Tool'           , units=None, description='Tool number')
+        self.opts.add_option(section, 'user', 0   , tk.IntVar()   , display_name='User'           , units=None, description='Artifact number')
+        self.opts.add_option(section, 'vel' , 10.0, tk.DoubleVar(), display_name='Velocity'       , units='%', description='Percentage of speed')
+        self.opts.add_option(section, 'acc' , 20.0, tk.DoubleVar(), display_name='Acceleration'   , units='%', description='Percentage of acceleration')
+        self.opts.add_option(section, 'ovl' , 0   , tk.IntVar()   , display_name='Velocity factor', units='%', description='Velocity scaling factor')
 
     def _status_check(self, root=None):
         while True:
@@ -312,4 +312,6 @@ def _record_thread(thread:threading.Thread, lq:SensorManager, delay=0.001):
         _wait_on_thread(thread, delay)
     return time_data, light_data
 
+
+RobotCom()._incriment_move(0, 0, 0, 0, 0, 90)
 
