@@ -6,13 +6,12 @@ import LightSensor as lightSensor
 import AutomatedTests.pathMovement as move
 import AutomatedTests.pathsRemade as paths
 
-def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step_length=1, length=100, width=100, angle=0, fr5=None):
+def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold:float=0.75, step_length:int=1, length: float=100.0, width:float=100.0, angle:float=0.0, fr5=None):
     '''
     gravity_test_automated
-    Perform the gravity test: Scan laser to find true z
+    Perform the gravity test: Scan laser to find true 
+    step_length in mm
     '''
-    
-    # step_length in mm
     
     # Return to "home" pos ---> isocenter+
     est_isocenter = np.array([x, y, z])

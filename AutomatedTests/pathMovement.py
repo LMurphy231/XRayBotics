@@ -74,3 +74,5 @@ def store_data(light_data: list, pos_data: list, light_intensity: float, positio
 
     return
 
+def scan():
+    pass

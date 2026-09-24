@@ -182,18 +182,23 @@ def gravity_test_automated_simulation():
     # ============================================================
 
     # Randomly generate estimated isocenter
-    x: float = np.random.uniform(0, 500)
-    y: float = np.random.uniform(0, 500)
-    z: float = np.random.uniform(0, 500)
+    #x: float = np.random.uniform(-100, 100)
+    #y: float = np.random.uniform(-100, 100)
+    #z: float = np.random.uniform(-100, 100)
+    
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
 
     freq: int = 4500
     Navg: int = 4
     threshold: float = 0.75
 
-    step: int = 4
-    length: float = 100     # mm
+    step: int = 1
+    length: float = 50     # mm
     width: float = 50       # mm
-    angle: float = np.random.uniform(0, 180)        # Degrees
+    #angle: float = np.random.uniform(0, 180)        # Degrees
+    angle: float = 0.0
 
     fr5 = None
 
@@ -271,7 +276,7 @@ def gravity_test_automated_simulation():
         grav_test_axes[1]
     )
 
-    print("\nCalculated rectangle points:")
+    print("\nCalculated rectangle points (Matrix):")
 
     for i in range(len(rectangle_points)):
         print(f"  P{i + 1}: "

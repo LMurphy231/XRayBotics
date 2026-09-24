@@ -1,5 +1,6 @@
 import numpy as np
 #import RobotCommunicator as com
+#from LightSensor import SensorManager
 
 # (x,y,z): tuple ---> immutable: can't change
 # [x,y,z]: list ---> mutable: can change
@@ -26,7 +27,8 @@ def straight_path(p1: np.ndarray, p2: np.ndarray, step_length: float = 1.0, disc
     # Create moveset
     if discrete:
         # Find movement for each increment too
-        movement = displacement / (mag_displacement / step_length)    
+        movement = displacement / (mag_displacement / step_length)  
+        #movement = displacement / step_length  
         for i in range(step_length):         
             moves.append(movement)
         return moves  
@@ -209,6 +211,8 @@ def calculate_four_points_matrix(isocenter: np.ndarray, length: float, width: fl
     else:
         raise ValueError("Invalid axis combination. Use X/Y, Y/Z, or X/Z.")
 
+    # 3 points: origin, p1, p2
+    
     # Rotation matrix
     if axis_1 == "x" and axis_2 == "y":
         # Rotation around Z-axis
@@ -217,9 +221,18 @@ def calculate_four_points_matrix(isocenter: np.ndarray, length: float, width: fl
             [np.sin(angle_radians),  np.cos(angle_radians), 0],
             [0,                      0,                     1]
         ])
+        
+        rotate_z_matrix = lambda angle: np.array([
+                [np.cos(angle), -np.sin(angle), 0],
+                [np.sin(angle),  np.cos(angle), 0],
+                [0,                      0,                     1]
+            ])
+            
+        r = rotate_z_matrix(angle_radians) # Convert into radians first
 
     elif axis_1 == "y" and axis_2 == "z":
         # Rotation around X-axis
+        
         rotation_matrix: np.ndarray = np.array([
             [1, 0,                      0],
             [0, np.cos(angle_radians), -np.sin(angle_radians)],
