@@ -12,6 +12,9 @@ def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold:float=0.75, ste
     Perform the gravity test: Scan laser to find true 
     step_length in mm
     '''
+    # New input: laser location: which side? left/right or above/below?
+    # if left -> rotate 90 about current z0 (robot)
+    
     
     # Return to "home" pos ---> isocenter+
     est_isocenter = np.array([x, y, z])
@@ -31,7 +34,7 @@ def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold:float=0.75, ste
     # start_data_recording()
     move.execute_path(path, grav_test_light_data,  grav_test_position_data)
     # end_data_recording()
-
+    
     # TODO: Process the Data
     # grav_test_scan_data = processData()
 
@@ -55,7 +58,7 @@ def collimator_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1
     coll_test_scan_data = []        # Tuple of both light and position data
     
     # Define path to move in (rectangle)
-    coll_test_axes = ("x", "y") # Define active axes
+    coll_test_axes = ("y", "z") # Define active axes
     rectangle_points = paths.calculate_four_points_trig(est_isocenter, length, width,angle, coll_test_axes[0], coll_test_axes[1])
     path = paths.rectangle_path(est_isocenter, rectangle_points, step)
 
@@ -83,7 +86,7 @@ def gantry_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1, le
     gantry_test_scan_data = []        # Tuple of both light and position data
     
     # Define path to move in (rectangle)
-    gantry_test_axes = ("x", "y") # Define active axes
+    gantry_test_axes = ("y", "z") # Define active axes
     rectangle_points = paths.calculate_four_points_trig(est_isocenter, length, width,angle, gantry_test_axes[0], gantry_test_axes[1])
     path = paths.rectangle_path(est_isocenter, rectangle_points, step)
 

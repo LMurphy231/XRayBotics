@@ -267,7 +267,7 @@ def gravity_test_automated_simulation():
     print(f"Active axes: {grav_test_axes}")
 
     # Calculate four rectangle points
-    rectangle_points: list = paths.calculate_four_points_trig(
+    rectangle_points: list = paths.calculate_four_points_matrix(
         est_isocenter,
         length,
         width,

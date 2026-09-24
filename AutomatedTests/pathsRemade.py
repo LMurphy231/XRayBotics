@@ -5,7 +5,7 @@ import numpy as np
 # (x,y,z): tuple ---> immutable: can't change
 # [x,y,z]: list ---> mutable: can change
 
-def straight_path(p1: np.ndarray, p2: np.ndarray, step_length: float = 1.0, discrete: bool = False) -> list:
+def straight_path(p1: np.ndarray, p2: np.ndarray, step_length: int = 1.0, discrete: bool = False) -> list:
     """
     straight_path()
     Return a move list that stores the straight path
@@ -27,9 +27,10 @@ def straight_path(p1: np.ndarray, p2: np.ndarray, step_length: float = 1.0, disc
     # Create moveset
     if discrete:
         # Find movement for each increment too
-        movement = displacement / (mag_displacement / step_length)  
+        n_steps: int = int(mag_displacement // step_length)  
+        movement = displacement / n_steps
         #movement = displacement / step_length  
-        for i in range(step_length):         
+        for i in range(n_steps):         
             moves.append(movement)
         return moves  
     else:
@@ -211,8 +212,6 @@ def calculate_four_points_matrix(isocenter: np.ndarray, length: float, width: fl
     else:
         raise ValueError("Invalid axis combination. Use X/Y, Y/Z, or X/Z.")
 
-    # 3 points: origin, p1, p2
-    
     # Rotation matrix
     if axis_1 == "x" and axis_2 == "y":
         # Rotation around Z-axis
@@ -221,18 +220,9 @@ def calculate_four_points_matrix(isocenter: np.ndarray, length: float, width: fl
             [np.sin(angle_radians),  np.cos(angle_radians), 0],
             [0,                      0,                     1]
         ])
-        
-        rotate_z_matrix = lambda angle: np.array([
-                [np.cos(angle), -np.sin(angle), 0],
-                [np.sin(angle),  np.cos(angle), 0],
-                [0,                      0,                     1]
-            ])
-            
-        r = rotate_z_matrix(angle_radians) # Convert into radians first
 
     elif axis_1 == "y" and axis_2 == "z":
         # Rotation around X-axis
-        
         rotation_matrix: np.ndarray = np.array([
             [1, 0,                      0],
             [0, np.cos(angle_radians), -np.sin(angle_radians)],
@@ -271,3 +261,157 @@ def convert_degrees_to_radians(angle: float):
 def convert_radians_to_degrees(angle: float):
     degrees: float = angle * (180 / np.pi)
     return degrees
+
+def calculate_four_points_matrix(isocenter: np.ndarray, length: float, width: float,
+                                 angle: float, axis_1: str, axis_2: str):
+    '''
+    calculate_four_points_matrix
+    Find the "4 corners" of the rectangle given L, W, angle, and active axes
+    Center will be user-defined "isocenter" (origin)
+    Angle is entered in degrees and converted to radians
+
+    Valid axis combinations:
+        X, Y -> Rectangle in XY plane, rotation around Z
+        Y, Z -> Rectangle in YZ plane, rotation around X
+        X, Z -> Rectangle in XZ plane, rotation around Y
+    '''
+
+    # Convert angle from degrees to radians
+    angle_radians: float = convert_degrees_to_radians(angle)
+
+    # Isocenter-Referenced Shape
+    half_length: float = length / 2
+    half_width: float = width / 2
+
+    # Define corners relative to the isocenter
+    if axis_1 == "x" and axis_2 == "y":
+        p1: np.ndarray = np.array([-half_length,  half_width, 0])
+        p2: np.ndarray = np.array([ half_length,  half_width, 0])
+        p3: np.ndarray = np.array([ half_length, -half_width, 0])
+        p4: np.ndarray = np.array([-half_length, -half_width, 0])
+
+    elif axis_1 == "y" and axis_2 == "z":
+        p1: np.ndarray = np.array([0, -half_length,  half_width])
+        p2: np.ndarray = np.array([0,  half_length,  half_width])
+        p3: np.ndarray = np.array([0,  half_length, -half_width])
+        p4: np.ndarray = np.array([0, -half_length, -half_width])
+
+    elif axis_1 == "x" and axis_2 == "z":
+        p1: np.ndarray = np.array([-half_length, 0,  half_width])
+        p2: np.ndarray = np.array([ half_length, 0,  half_width])
+        p3: np.ndarray = np.array([ half_length, 0, -half_width])
+        p4: np.ndarray = np.array([-half_length, 0, -half_width])
+
+    else:
+        raise ValueError("Invalid axis combination. Use X/Y, Y/Z, or X/Z.")
+
+    # 3 points: origin, p1, p2
+    
+    # Rotation matrix
+    if axis_1 == "x" and axis_2 == "y":
+        # Rotation around Z-axis
+        rotation_matrix: np.ndarray = np.array([
+            [np.cos(angle_radians), -np.sin(angle_radians), 0],
+            [np.sin(angle_radians),  np.cos(angle_radians), 0],
+            [0,                      0,                     1]
+        ])
+        
+        
+        rotate_z_matrix = lambda angle: np.array([
+                [np.cos(angle), -np.sin(angle), 0],
+                [np.sin(angle),  np.cos(angle), 0],
+                [0,                      0,                     1]
+            ])
+            
+        r = rotate_z_matrix(angle_radians) # Convert into radians first
+        
+    elif axis_1 == "y" and axis_2 == "z":
+        # Rotation around X-axis
+        
+        rotation_matrix: np.ndarray = np.array([
+            [1, 0,                      0],
+            [0, np.cos(angle_radians), -np.sin(angle_radians)],
+            [0, np.sin(angle_radians),  np.cos(angle_radians)]
+        ])
+
+    else:
+        # Rotation around Y-axis
+        rotation_matrix: np.ndarray = np.array([
+            [ np.cos(angle_radians), 0, np.sin(angle_radians)],
+            [0,                      1, 0],
+            [-np.sin(angle_radians), 0, np.cos(angle_radians)]
+        ])
+
+    # Rotate points around the isocenter
+    p1 = rotation_matrix @ p1
+    p2 = rotation_matrix @ p2
+    p3 = rotation_matrix @ p3
+    p4 = rotation_matrix @ p4
+
+    # Move points from isocenter-reference to robot/world coordinates
+    p1 = p1 + isocenter
+    p2 = p2 + isocenter
+    p3 = p3 + isocenter
+    p4 = p4 + isocenter
+
+    # Store points in a list
+    points: list = [p1, p2, p3, p4]
+
+    return points
+
+def calculate_four_points_(isocenter: np.ndarray, length: float, width: float, axis_1: str, axis_2: str):
+    '''
+    calculate_four_points_matrix
+    Find the "4 corners" of the rectangle given L, W, angle, and active axes
+    Center will be user-defined "isocenter" (origin)
+    Angle is entered in degrees and converted to radians
+
+    Valid axis combinations:
+        X, Y -> Rectangle in XY plane, rotation around Z
+        Y, Z -> Rectangle in YZ plane, rotation around X
+        X, Z -> Rectangle in XZ plane, rotation around Y
+    '''
+
+    # Isocenter-Referenced Shape
+    half_length: float = length / 2
+    half_width: float = width / 2
+
+    # delete the conditions on axis
+    # Define corners relative to the isocenter
+    if axis_1 == "x" and axis_2 == "y":
+        p1: np.ndarray = np.array([-half_length,  half_width, 0])
+        p2: np.ndarray = np.array([ half_length,  half_width, 0])
+        p3: np.ndarray = np.array([ half_length, -half_width, 0])
+        p4: np.ndarray = np.array([-half_length, -half_width, 0])
+
+    elif axis_1 == "y" and axis_2 == "z":
+        p1: np.ndarray = np.array([0, -half_length,  half_width])
+        p2: np.ndarray = np.array([0,  half_length,  half_width])
+        p3: np.ndarray = np.array([0,  half_length, -half_width])
+        p4: np.ndarray = np.array([0, -half_length, -half_width])
+
+    elif axis_1 == "x" and axis_2 == "z":
+        p1: np.ndarray = np.array([-half_length, 0,  half_width])
+        p2: np.ndarray = np.array([ half_length, 0,  half_width])
+        p3: np.ndarray = np.array([ half_length, 0, -half_width])
+        p4: np.ndarray = np.array([-half_length, 0, -half_width])
+
+    else:
+        raise ValueError("Invalid axis combination. Use X/Y, Y/Z, or X/Z.")
+
+    # Move points from isocenter-reference to robot/world coordinates
+    p1 = p1 + isocenter
+    p2 = p2 + isocenter
+    p3 = p3 + isocenter
+    p4 = p4 + isocenter
+
+    # Store points in a list
+    points: list = [p1, p2, p3, p4]
+
+    return points
+
+def rotate_points():
+    pass
+
+# 1. Carry objects's frame/axis while it rotates
+# 2. Leave behind the objects' frame and use that reference instead
