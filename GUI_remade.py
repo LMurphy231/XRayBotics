@@ -27,9 +27,12 @@ import numpy as np
 import RobotCommunicator as rc
 import LightSensor as ls
 import communications as com
+import XRBPlotter as plt
 from XRBPlotter import Plotter
 from utill import consts
 import settingshandler as settings
+
+from AutomatedTests import pathsRemade as pr
 
 if os.path.basename(sys.executable) == 'pythonw.exe':
     sys.stdout = open(os.devnull, 'w')
@@ -44,6 +47,7 @@ class TestPage:
         self.frame = tk.Frame(root)
         self.frame.grid(row=0, column=0, sticky=tk.NSEW)
         self.option_sections = []
+        self.traces = []
 
         self.winfo_manager = self.frame.winfo_manager()
         self.vars:dict[str, tk.Variable] = {}
@@ -64,12 +68,12 @@ class TestPage:
         return header_frame
 
     def _create_input_frame(self) -> tk.Frame:
-        """Creates frame for user inputs.
+        """Creates frame for user inputs.ssddw
         
         Intended to be overridden in subclasses.
         """
-        input_frame = tk.LabelFrame(self.frame)
-        settings_frame = tk.LabelFrame(input_frame)
+        input_frame = tk.Frame(self.frame)
+        settings_frame = tk.Frame(input_frame)
         settings_frame.grid(row=0, column=0, sticky=tk.NSEW)
         settings.OptionTree(settings_frame, self.opts, self.option_sections)
         return input_frame
@@ -85,8 +89,17 @@ class TestPage:
         if self.opts is not None:
             tk.Button(header_frame, command=lambda: self.opts.save(*self.option_sections), text='Save settings').grid(row=0, column=0)
             tk.Button(header_frame, command=self._load_vars, text='Load').grid(row=0, column=1)
-        tk.Button(header_frame, command=self.start, text='start').grid(row=0, column=21)
+        tk.Button(header_frame, command=self.start, text='start').grid(row=0, column=2)
         return header_frame
+
+    def _create_test_demo_frame(self) -> tk.Frame:
+        """Creates frame for test demo plotter.
+        
+        Intended to be overridden in subclasses.
+
+        Default None
+        """
+        return None
 
     def _default_settings(self):
         pass
@@ -114,15 +127,21 @@ class TestPage:
         if self.start_frame is not None:
             self.start_frame.grid(row=2, column=0, sticky=tk.NSEW)
 
+        self.test_demo_frame = self._create_test_demo_frame()
+        if self.test_demo_frame is not None:
+            self.test_demo_frame.grid(row=1, column=1, sticky=tk.NSEW)
+
     def hide(self):
         self._update_winfo()
         getattr(self.frame, f'{self.winfo_manager}_forget')()
+        self._toggle_traces(False)
 
     def show(self):
         """Re-apply pack, place, or grid function to frame with last saved
         winfo data.
         """
         getattr(self.frame, self.winfo_manager)(self.current_winfo)
+        self._toggle_traces(True)
 
     def start(self):
         """Default start command, has no function.
@@ -130,6 +149,27 @@ class TestPage:
         Intended to be overridden in subclasses.
         """
         return
+
+    def _toggle_traces(self, enable=False):
+        for i, (var, add_trace, trace_type, trace_id) in enumerate(self.traces):
+
+            if enable:
+                # trace already exists
+                if trace_id is not None:
+                    continue
+                trace_id = add_trace()
+            else:
+                # trace already disabled
+                if trace_id is None:
+                    continue
+                var.trace_remove(trace_type, trace_id)
+                trace_id = None
+                
+            self.traces[i] = (var, add_trace, trace_type, trace_id) 
+
+
+            
+
     
 class SquareTest(TestPage):
     def __init__(self, name, root:tk.Frame, sensor:ls.SensorManager, robot:rc.RobotCom):
@@ -167,50 +207,6 @@ class GravityTest(TestPage):
     def __init__(self, name, root:tk.Frame, opts:settings.OptionDict):
         self.root = root
         TestPage.__init__(self, name, self.root, opts)
-
-    #def _create_input_frame(self):
-    #    input_frame = tk.LabelFrame(self.frame)
-    #    settings_frame = tk.LabelFrame(input_frame)
-    #    settings_frame.grid(row=0, column=0, sticky=tk.NSEW)
-    #    settings.OptionTree(settings_frame, self.opts, ('robot.move', 'tests.gravity'))
-    #    return input_frame
-    #    lianc_settings_frame = tk.LabelFrame(input_frame, text='LINAC Parameters')
-    #    lianc_settings_frame.grid(row=0, column=0,  columnspan=2, sticky=tk.NSEW)
-    #    self.vars.setdefault('linac', {})
-    #    jaw_frame = tk.LabelFrame(lianc_settings_frame, text='Jaws')
-    #    jaw_frame.grid(row=0, column=0,  columnspan=2, sticky=tk.NSEW)
-    #    self.vars['linac'].setdefault('jaws', {})
-    #    self.vars['linac']['jaws']['x1'] = _quick_test_var(jaw_frame, 'x1', 0.0, 0, 0)
-    #    self.vars['linac']['jaws']['y1'] = _quick_test_var(jaw_frame, 'y1', 0.0, 1, 0)
-    #    self.vars['linac']['jaws']['x2'] = _quick_test_var(jaw_frame, 'x2', 0.0, 0, 2)
-    #    self.vars['linac']['jaws']['y2'] = _quick_test_var(jaw_frame, 'y2', 0.0, 1, 2)
-#
-    #    angle_frame = tk.LabelFrame(lianc_settings_frame, text='Set Angles')
-    #    angle_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
-    #    self.vars['linac'].setdefault('angles', {})
-    #    self.vars['linac']['angles']['collimator'] = _quick_test_var(angle_frame, 'Collimator Angle', 0.0, 0, 0)
-    #    self.vars['linac']['angles']['gantry']     = _quick_test_var(angle_frame, 'Gantry Angle'    , 0.0, 1, 0)
-    #    self.vars['linac']['angles']['couch']      = _quick_test_var(angle_frame, 'Couch Angle'     , 0.0, 2, 0)
-    #    
-    #    light_sensor_frame = tk.LabelFrame(input_frame, text='Light Sensor Settings')
-    #    light_sensor_frame.grid(row=1, column=0,  columnspan=2, sticky=tk.NSEW)
-    #    self.vars.setdefault('light sensor', {})
-    #    self.vars['light sensor']['frequency']      = _quick_test_var(light_sensor_frame, 'Frequency'     , 5000, 0, 0)
-    #    self.vars['light sensor']['sample_average'] = _quick_test_var(light_sensor_frame, 'Sample Average', 4   , 1, 0)
-#
-    #    path_frame = tk.LabelFrame(input_frame, text='Path Settings')
-    #    path_frame.grid(row=2, column=0,  columnspan=2, sticky=tk.NSEW)
-    #    self.vars.setdefault('robot', {})
-    #    self.vars['robot'].setdefault('path', {})
-    #    self.vars['robot']['path']['step_length']  = _quick_test_var(path_frame, 'Step Length' , 1   , 0, 0)
-    #    self.vars['robot']['path']['length']       = _quick_test_var(path_frame, 'Length', 100 , 1, 0)
-    #    self.vars['robot']['path']['width']        = _quick_test_var(path_frame, 'Width' , 100 , 2, 0)
-#
-    #    self.vars.setdefault('tests', {})
-    #    self.vars['tests'].setdefault('gravity', {})
-    #    self.vars['tests']['gravity']['Threshold'] = _quick_test_var(input_frame, 'Threshold', 0.75, 3, 0)
-#
-    #    return input_frame
     
     def _default_settings(self):
         section = 'linac.jaws'
@@ -237,6 +233,90 @@ class GravityTest(TestPage):
         self.option_sections.append('linac')
         self.option_sections.append('tests.gravity')
 
+    def _create_test_demo_frame(self) -> tk.Frame:
+        test_demo_frame = tk.Frame(self.frame)
+        plotter_frame = tk.Frame(test_demo_frame)
+        plotter_frame.grid(row=0, column=0)
+        self.plotter = plt.Plotter(plotter_frame, projection='3d')
+
+        paramter_frame = tk.LabelFrame(test_demo_frame, text='Parameters', labelanchor=tk.N)
+        paramter_frame.grid(row=1, column=0)
+
+        section = 'linac.jaws'
+        jaw_frame = tk.Frame(paramter_frame)
+        jaw_frame.grid(row=0, column=0) 
+        for i, option_name in enumerate(self.opts.options(section)):
+            option = self.opts.get(section, option_name)
+            
+            tk.Label(jaw_frame, text=f'{option.display_name}:').grid(row=i, column=0)
+            tk.Label(jaw_frame, textvariable=option.var).grid(row=i, column=1)
+            self.traces.append((option.var, lambda option=option: option.var.trace_add('write', lambda *args: self._plot_field()), 'write', None))
+
+
+
+        angle_frame = tk.Frame(paramter_frame)
+        angle_frame.grid(row=0, column=1) 
+
+        section = 'linac.angles'
+        for i, option_name in enumerate(self.opts.options(section)):
+
+            option = self.opts.get(section, option_name)
+            
+            tk.Label(angle_frame, text=f'{option.display_name}:').grid(row=i, column=0)
+            tk.Label(angle_frame, textvariable=option.var).grid(row=i, column=1)
+            self.traces.append((option.var, lambda option=option: option.var.trace_add('write', lambda *args: self._plot_field()), 'write', None))
+        
+        return test_demo_frame
+
+    def _plot_field(self):
+
+        #try:
+            section = 'linac.jaws'
+            x1 = self.opts.get(section, 'x1').var.get()
+            x2 = self.opts.get(section, 'x2').var.get()
+            y1 = self.opts.get(section, 'y1').var.get()
+            y2 = self.opts.get(section, 'y2').var.get()
+
+            gantry_angle = self.opts.get('linac.angles', 'gantry').var.get()
+            collimator_angle = self.opts.get('linac.angles', 'collimator').var.get()
+            isocenter = np.array([0.,0.,0.])
+            points = pr.calculate_four_points_matrix(isocenter, x1+x2+15, y1+y2+15, gantry_angle, 'y','z')
+
+            self.plotter.clear()
+
+            #self._plot_light_field(x1, x2, y1, y2, isocenter[2], gantry_angle, collimator_angle)
+            print(points)
+            self.plotter.plot_shape(self._dummy_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle))
+            
+            
+
+            self.plotter.scatter(*isocenter)
+
+            prev_point = points[0]
+            self.plotter.scatter(*prev_point)
+            for point in points[1:]:
+                self.plotter.scatter(*point)
+                self.plotter.plot(*zip(prev_point, point))
+                prev_point = point
+
+            self.plotter._update()
+        #except:
+        #    pass
+
+    def _dummy_light_field(self, x1, x2, y1, y2, gantry_angle, collimator_angle, origin=np.array([0,0,0])):
+
+        rotation_matrix = plt.rotate(plt.Rx(np.deg2rad(gantry_angle)), plt.Rz(np.deg2rad(collimator_angle)))
+        p1 = plt.rotate_point(np.array([-x1, -y1, 0.0]), rotation_matrix) + origin
+        p2 = plt.rotate_point(np.array([x2, -y1, 0.0]) , rotation_matrix) + origin
+        p3 = plt.rotate_point(np.array([x2, y2, 0.0])  , rotation_matrix) + origin
+        p4 = plt.rotate_point(np.array([-x1, y2, 0.0]) , rotation_matrix) + origin
+        return [p1, p2, p3, p4]
+        self.plotter.plot_shape([p1, p2, p3, p4])
+
+
+
+
+    
 class MessageTerminal(logging.Handler):
     def __init__(self, text:tk.Text, level, handlers=[]):
         self.text = text

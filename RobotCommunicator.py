@@ -313,5 +313,5 @@ def _record_thread(thread:threading.Thread, lq:SensorManager, delay=0.001):
     return time_data, light_data
 
 
-RobotCom()._incriment_move(0, 0, 0, 0, 0, 90)
+
 

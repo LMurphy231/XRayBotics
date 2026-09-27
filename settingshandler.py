@@ -6,38 +6,6 @@ import typing
 import tkinter as tk
 from tkinter import ttk
 
-
-@dataclasses.dataclass
-class ProgramOption:
-    _root          : configparser.ConfigParser
-    section        : str
-    name           : str
-    default        : typing.Any
-    program_default: typing.Any
-    value          : typing.Any = None
-    display_name   : str = None
-    units          : str = None
-    description    : str = None
-
-    def set(self, default=None, display_name=None, units=None, description=None):
-        if default     : self.default      = str(default)
-        if display_name: self.display_name = str(display_name)
-        if units       : self.units        = str(units)
-        if description : self.description  = str(description)
-
-        self._root[f'{self.section}.user_default'][self.name] = self.default
-        self._root[self.section][self.name]                   = self.display_name
-        self._root[f'{self.section}.units'][self.name]        = self.units
-        self._root[f'{self.section}.description'][self.name]  = self.description
-
-    @property
-    def units_str(self):
-        return f'[{self.units}]' if self.units else ''
-
-    @property
-    def display_unit_name(self):
-        return f'{self.display_name} {self.units_str}'.strip() 
-
 @dataclasses.dataclass
 class Option:
     _root          : configparser.ConfigParser
@@ -152,6 +120,7 @@ class TreeColumn:
     name        : str
     display_name: str
     minsize     : int  = 25
+    initial_size: int  = 25
     state       : bool = False
 
 
@@ -159,9 +128,10 @@ class OptionTree:
     def __init__(self, frame:tk.Frame, opts:OptionDict, sections=None, show='tree headings'):
         self.opts = opts
         self.columns = {obj.name: obj for obj in (
-                TreeColumn('default'        , 'Default'    , minsize=50, state=False),
-                TreeColumn('value'          , 'Set Value'  , minsize=150, state=True),
-                TreeColumn('description'    , 'Description', minsize=350, state=False),
+                TreeColumn('default'        , 'Default'    , minsize=50, initial_size= 50 , state=False),
+                TreeColumn('value'          , 'Set Value'  , minsize=50, initial_size= 150, state=True),
+                TreeColumn('description'    , 'Description', minsize=50, initial_size= 350, state=False),
+                TreeColumn('save'           , '☐'           , minsize=50, initial_size= 50 , state=False),
             )
         }
         self.sections = sections if not sections or isinstance(sections, (tuple, list)) else (sections,)
@@ -172,7 +142,7 @@ class OptionTree:
         self.tree.column("#0", minwidth=200)
         for i, obj in enumerate(self.columns.values()):
             self.tree.heading(obj.name, text=obj.display_name)
-            self.tree.column(i, width=obj.minsize, minwidth=obj.minsize)
+            self.tree.column(i, width=obj.initial_size, minwidth=obj.minsize)
             
         self.tree.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -192,9 +162,11 @@ class OptionTree:
             return [[]]
         return section_keys
     
-    def _format_option(self, obj:ProgramOption):
+    def _format_option(self, obj:Option):
         values = []
         for attr in self.columns.keys():
+            if not hasattr(obj, attr):
+                continue
             value = getattr(obj, attr)
             values.append(str(value) if value is not None else '')
         return values
@@ -205,7 +177,7 @@ class OptionTree:
             self.tree.item(row_id, values=self._format_option(obj))
 
     def _build(self):
-        def add_section(opt_dict:dict[str, ProgramOption], prev_sections, base_sections=[], prev_id=''):
+        def add_section(opt_dict:dict[str, Option], prev_sections, base_sections=[], prev_id=''):
             if tuple(prev_sections) not in self.sections_ids:
                 section = prev_sections[-1]
                 self.sections_ids[tuple(prev_sections)] = self.tree.insert('', tk.END, text=section.capitalize())
@@ -252,8 +224,8 @@ class OptionTree:
 
         if row_id not in self.vars:
             return
-        (section_name, option) = self.vars[row_id]
-        option = self.opts.get(section_name, option)
+        (section_name, option_name) = self.vars[row_id]
+        option = self.opts.get(section_name, option_name)
         
         # Determine numerical column index (e.g., '#1' -> 0)
         col_index = int(column.replace("#", "")) - 1
@@ -276,30 +248,56 @@ class OptionTree:
         # Pre-populate entry with the current value
         #current_val = self.tree.item(row_id, "values")[col_index]
         #entry.insert(0, current_val)
+        entry.icursor(tk.END)
         entry.select_range(0, tk.END)
         entry.focus()
 
         # Inner function to save the new value
-        def save_edit(event_obj=None):
+        def save_edit(entry, event_obj=None):
             new_val = entry.get()
-            (section_name, option) = self.vars[row_id]
+            (section_name, option_name) = self.vars[row_id]
 
-            option = self.opts.get(section_name, option)
-            option.set(new_val)
+            _option = self.opts.get(section_name, option_name)
+            _option.set(new_val)
 
             # Fetch all current values for this row
             row_values = list(self.tree.item(row_id, "values"))
             # Update the specific column value
-            row_values[col_index] = option.value
+            row_values[col_index] = _option.value
             # Apply changes back to the tree row
             self.tree.item(row_id, values=row_values)
             
             entry.destroy()
+            self.tree.unbind("<MouseWheel>")
             _update_trees()
 
+        def reposition(entry):
+            position = entry.index(tk.INSERT)
+            entry.destroy()
+
+            entry = ttk.Entry(self.tree, textvariable=option.var)
+
+            if self.tree.bbox(row_id, column):
+                x, y, width, height = self.tree.bbox(row_id, column)
+                entry.place(x=x, y=y, width=width, height=height)
+                entry.focus()
+            entry.icursor(position)
+
+            self.tree.bind("<MouseWheel>", lambda *args: self.tree.after('idle', reposition, entry))
+            entry.bind("<Return>", lambda e: save_edit(entry))
+            entry.bind("<FocusOut>", lambda e: _on_focus_out(entry))
+
+        def _on_focus_out(entry):
+            row_values = list(self.tree.item(row_id, "values"))
+            # Update the specific column value
+            option.set(row_values[col_index]) 
+            entry.destroy()
+            self.tree.unbind("<MouseWheel>")
+
+        self.tree.bind("<MouseWheel>", lambda *args: self.tree.after('idle', reposition, entry))
         # Bind lifecycle events to the temporary widget
-        entry.bind("<Return>", save_edit)
-        entry.bind("<FocusOut>", lambda e: entry.destroy())
+        entry.bind("<Return>", lambda e: save_edit(entry))
+        entry.bind("<FocusOut>", lambda e: _on_focus_out(entry))
     
     def save(self):
         self.opts.save(self.sections)
