@@ -410,7 +410,49 @@ def calculate_four_points_(isocenter: np.ndarray, length: float, width: float, a
 
     return points
 
+
+
+
+def Rx(angle: float) -> np.ndarray[float]: 
+    # type: (float) -> int
+    return np.array([
+        [1, 0            ,   0           ],
+        [0, np.cos(angle), -np.sin(angle)],
+        [0, np.sin(angle),  np.cos(angle)],
+        ])
+
+def Ry(angle: float):
+    return np.arry([
+        [np.cos(angle)  ,   0 , np.sin(angle)],
+        [0              ,   1 , 0          ],
+        [-np.sin(angle) ,   0 , np.cos(angle)],
+        ])
+
+def Rz(angle: float):
+    return np.array([
+        [np.cos(angle), -np.sin(angle), 0],
+        [np.sin(angle),  np.cos(angle), 0],
+        [0          ,  0          , 1],
+        ])
+    
+    
+    
+    
+    
+
 def rotate_points():
+    
+Ry = lambda angle: np.array([
+    
+Rx = lambda angle: np.array([
+    [1, 0            ,   0           ],
+    [0, np.cos(angle), -np.sin(angle)],
+    [0, np.sin(angle),  np.cos(angle)],
+    ])
+    
+    
+    
+    
     pass
 
 # 1. Carry objects's frame/axis while it rotates

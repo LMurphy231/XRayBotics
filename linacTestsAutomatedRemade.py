@@ -28,6 +28,7 @@ def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold:float=0.75, ste
     # Define path to move in (rectangle)
     grav_test_axes = ("y", "z") # Define active axes
     rectangle_points = paths.calculate_four_points_trig(est_isocenter, length, width,angle, grav_test_axes[0], grav_test_axes[1])
+    # rotate_points()
     path = paths.rectangle_path(est_isocenter,rectangle_points, step_length)
 
     # Move the robot and scan in the defined path
