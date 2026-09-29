@@ -15,9 +15,8 @@ def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold:float=0.75, ste
     # New input: laser location: which side? left/right or above/below?
     # if left -> rotate 90 about current z0 (robot)
     
-    
     # Return to "home" pos ---> isocenter+
-    est_isocenter = np.array([x, y, z])
+    est_isocenter: np.ndarray = np.array([x, y, z])
     com._position_move(fr5, est_isocenter) # Start test as estimated isocenter ("origin"); by Sam
 
     # Define data to collect
@@ -27,13 +26,16 @@ def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold:float=0.75, ste
     
     # Define path to move in (rectangle)
     grav_test_axes = ("y", "z") # Define active axes
-    rectangle_points = paths.calculate_four_points_trig(est_isocenter, length, width,angle, grav_test_axes[0], grav_test_axes[1])
-    # rotate_points()
-    path = paths.rectangle_path(est_isocenter,rectangle_points, step_length)
+    rectangle_points = paths.calculate_four_points(est_isocenter, length, width, grav_test_axes[0], grav_test_axes[1])
+    
+    if angle:
+        rectangle_points = paths.rotate_points(rectangle_points, angle) # Rotate if needed
+
+    path: list = paths.rectangle_path(est_isocenter, rectangle_points) # Create path with points
 
     # Move the robot and scan in the defined path
     # start_data_recording()
-    move.execute_path(path, grav_test_light_data,  grav_test_position_data)
+    move.execute_path(est_isocenter, path, grav_test_light_data,  grav_test_position_data)
     # end_data_recording()
     
     # TODO: Process the Data
@@ -61,7 +63,8 @@ def collimator_test_automated(x, y, z, freq=4500, Navg=4, threshold=0.75, step=1
     # Define path to move in (rectangle)
     coll_test_axes = ("y", "z") # Define active axes
     rectangle_points = paths.calculate_four_points_trig(est_isocenter, length, width,angle, coll_test_axes[0], coll_test_axes[1])
-    path = paths.rectangle_path(est_isocenter, rectangle_points, step)
+    rotated_points = paths.rotate_points(rectangle_points)
+    path = paths.rectangle_path(est_isocenter, rotated_points, step)
 
     # Move the robot and scan in the defined path
     # start_data_recording()

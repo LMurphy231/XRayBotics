@@ -495,10 +495,171 @@ def gravity_test_automated_simulation():
     print("====================================")
 
 
+
+
+
+
+
+
+
+
+def path_functions_simulation(isocenter: np.ndarray, length: float, width: float,
+                              angle: float, axis_1: str, axis_2: str):
+    """
+    path_functions_simulation()
+    Test calculate_four_points_(), rotate_points(), and rectangle_path().
+    """
+
+    # ============================================================
+    # TEST PARAMETERS
+    # ============================================================
+
+    print("\n============================================================")
+    print("              PATH FUNCTIONS SIMULATION")
+    print("============================================================")
+
+    print("\nTest Parameters:")
+    print(f"  Isocenter: {isocenter}")
+    print(f"  Length:    {length}")
+    print(f"  Width:     {width}")
+    print(f"  Angle:     {angle} degrees")
+    print(f"  Axes:      {axis_1.upper()}, {axis_2.upper()}")
+
+
+    # ============================================================
+    # CALCULATE FOUR POINTS
+    # ============================================================
+
+    print("\n============================================================")
+    print("              calculate_four_points_()")
+    print("============================================================")
+
+    points: list = paths.calculate_four_points_(
+        isocenter,
+        length,
+        width,
+        axis_1,
+        axis_2
+    )
+
+    print("\nCalculated Points:")
+
+    for i in range(len(points)):
+        print(f"  P{i + 1}: {points[i]}")
+
+
+    # ============================================================
+    # ROTATE POINTS
+    # ============================================================
+
+    print("\n============================================================")
+    print("                 rotate_points()")
+    print("============================================================")
+
+    rotated_points: list = paths.rotate_points(
+        points,
+        angle
+    )
+
+    print("\nRotated Points:")
+
+    if rotated_points is None:
+
+        print("  rotate_points() has not been implemented.")
+
+    else:
+
+        for i in range(len(rotated_points)):
+            print(f"  P{i + 1}: {rotated_points[i]}")
+
+
+    # ============================================================
+    # CREATE RECTANGLE PATH
+    # ============================================================
+
+    print("\n============================================================")
+    print("                 rectangle_path()")
+    print("============================================================")
+
+    # Use rotated points if rotation is implemented
+    if rotated_points is not None:
+        path_points: list = rotated_points
+    else:
+        path_points: list = points
+
+    rectangle_paths: list = paths.rectangle_path(
+        isocenter,
+        path_points
+    )
+
+    print("\nRectangle Paths:")
+
+    for i in range(len(rectangle_paths)):
+
+        movement_path: list = rectangle_paths[i][0]
+        scan: bool = rectangle_paths[i][1]
+
+        print(f"\nPath {i + 1}")
+
+        if i == 0:
+            start_point: np.ndarray = isocenter
+            end_point: np.ndarray = path_points[0]
+            print("  Path: Isocenter -> P1")
+
+        elif i == 1:
+            start_point: np.ndarray = path_points[0]
+            end_point: np.ndarray = path_points[1]
+            print("  Path: P1 -> P2")
+
+        elif i == 2:
+            start_point: np.ndarray = path_points[1]
+            end_point: np.ndarray = path_points[2]
+            print("  Path: P2 -> P3")
+
+        elif i == 3:
+            start_point: np.ndarray = path_points[2]
+            end_point: np.ndarray = path_points[3]
+            print("  Path: P3 -> P4")
+
+        print(f"  Start: {start_point}")
+        print(f"  End:   {end_point}")
+        print(f"  Scan:  {scan}")
+
+        for j in range(len(movement_path)):
+            print(f"  Movement {j + 1}: {movement_path[j]}")
+
+
+    print("\n============================================================")
+    print("              END PATH FUNCTIONS SIMULATION")
+    print("============================================================")
+
+
+
+
+
+
 # SELF-SIMULATION ONLY; FOR MARC'S SUBSYSTEM MEETING AND DOCUMENTATION
 def main():
 
-    gravity_test_automated_simulation()
+    isocenter: np.ndarray = np.array([0, 0, 0])
+    length: float = 10.0
+    width: float = 10.0
+    angle: float = 0.0
+
+    axis_1: str = "x"
+    axis_2: str = "y"
+
+    path_functions_simulation(isocenter, length, width, angle, axis_1, axis_2)
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
