@@ -52,21 +52,17 @@ def rectangle_path(isocenter: np.ndarray, points: list):
 
     # Store paths with scan information; True/False for Scanning
     rectangle_paths: list[tuple[list[np.ndarray], bool]]= [
-        (path_to_p1, False),
-        (path_p1_to_p2, True),
-        (path_p2_to_p3, False),
-        (path_p3_to_p4, True)
+        (path_to_p1, False, isocenter),
+        (path_p1_to_p2, True, p1),
+        (path_p2_to_p3, False, p2),
+        (path_p3_to_p4, True, p3)
     ]
 
     return rectangle_paths
 
-
-
-
-
-def calculate_four_points_(isocenter: np.ndarray, length: float, width: float, axis_1: str, axis_2: str):
+def calculate_four_points_rectangle(isocenter: np.ndarray, length: float, width: float, axis_1: str, axis_2: str):
     '''
-    calculate_four_points_matrix
+    calculate_four_points_rectangle
     Find the "4 corners" of the rectangle given L, W, angle, and active axes
     Center will be user-defined "isocenter" (origin)
     
@@ -86,10 +82,10 @@ def calculate_four_points_(isocenter: np.ndarray, length: float, width: float, a
     # delete the conditions on axis
     # Define corners relative to the isocenter
     if axis_1 == "x" and axis_2 == "y":
-        p1: np.ndarray = np.array([-half_length,  half_width, 0])
-        p2: np.ndarray = np.array([ half_length,  half_width, 0])
-        p3: np.ndarray = np.array([ half_length, -half_width, 0])
-        p4: np.ndarray = np.array([-half_length, -half_width, 0])
+        p1: np.ndarray = np.array([-half_length,  half_width, 0]) # Top-left corner
+        p2: np.ndarray = np.array([ half_length,  half_width, 0]) # Top-right corner
+        p3: np.ndarray = np.array([ half_length, -half_width, 0]) # Bottom-right corner
+        p4: np.ndarray = np.array([-half_length, -half_width, 0]) # Bottom-left corner
 
     elif axis_1 == "y" and axis_2 == "z":
         p1: np.ndarray = np.array([0, -half_length,  half_width])
@@ -117,14 +113,66 @@ def calculate_four_points_(isocenter: np.ndarray, length: float, width: float, a
     
     return points
 
+def rotate_points(points: list, angle: float, axis_1: str, axis_2: str):
+    '''
+    Rotate list of points
+    Plane XY ---> Rotate about Z ---> Rz
+    Plane XZ ---> Rotate about Y ---> Ry
+    Plane YZ ---> Rotate about X ---> Rx
+    
+    Angle given in degrees ---> must convert to radians
+    
+    def rotate_points(points: list, angle: float, test: str):
+    
+    multiple rotations: input is 1 rotation matrix, list of points
+    fcn (matrix, points: list)
+    '''
+    
+    angle_radians = np.deg2rad(angle) # Convert from degrees to radians; ASSUMES + = CCW
+    
+    # Determine which axis to rotate about
+    if axis_1 == "x" and axis_2 == "y":
+        rotation_matrix: np.ndarray = Rz(angle_radians) # Rotate about z-axis
+    elif axis_1 == "x" and axis_2 == "z":
+        rotation_matrix: np.ndarray = Ry(angle_radians) # Rotate about y-axis
+    elif axis_1 == "y" and axis_2 == "z":
+        rotation_matrix: np.ndarray = Rx(angle_radians) # Rotate about x-axis
+    else:
+        raise ValueError("Invalid plane axes.")
+
+    rotated_points: list = []
+
+    for point in points:
+        rotated_point: np.ndarray = rotation_matrix @ point # Rotate the points
+        rotated_points.append(rotated_point)
+
+    return rotated_points
+
+
+
+def collimator_test_rotation_matix(col_angle, gan_angle):
+    # start in YZ
+    # rotate about y
+    return rotation_matricies(Ry(np.deg2rad(-90)), )
 
 
 
 
+def gantry_test_rotation_matix(gantry_angle, gan_angle):
+    # start in YZ
+    # rotate about y
+    return rotation_matricies(Rx(np.deg2rad(-90)), )
 
-def rotate_points(points: list, angle: float=0.0):
-    angle_radians = np.deg2rad(angle) # Convert from degrees to radians
-    pass
+
+
+def rotation_matricies(matrix1, *rotation_matricies):
+    for matrix2 in rotation_matricies:
+        matrix1 = np.matmul(matrix1, matrix2)
+    return matrix1
+
+def rotate_point(point:np.ndarray, rotation_matrix:np.ndarray):
+    return rotation_matrix @ point
+
 
 
 
@@ -137,7 +185,7 @@ def Rx(angle: float) -> np.ndarray[float]:
         ])
 
 def Ry(angle: float):
-    return np.arry([
+    return np.array([
         [np.cos(angle)  ,   0 , np.sin(angle)],
         [0              ,   1 , 0          ],
         [-np.sin(angle) ,   0 , np.cos(angle)],

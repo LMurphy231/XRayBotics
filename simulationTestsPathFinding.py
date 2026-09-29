@@ -4,94 +4,89 @@ import numpy as np
 import AutomatedTests.pathsRemade as paths
 
 
+def format_position(position: np.ndarray) -> str:
+    """
+    format_position()
+    Format a position for display.
+
+    Values that are effectively zero are displayed as 0.
+    """
+
+    position: np.ndarray = position.copy()
+
+    # Replace values extremely close to zero with exactly zero
+    position[np.isclose(position, 0.0)] = 0.0
+
+    return np.array2string(position, precision=3)
+
 def straight_path_simulation():
 
     # Define starting and ending positions
     p1: np.ndarray = np.array([10, 20, 30])
     p2: np.ndarray = np.array([20, 40, 60])
 
-    increment: int = 5 # Define number of movements
-
     # ============================================================
-    # CREATE PATHS
+    # CREATE PATH
     # ============================================================
 
-    # Create straight-path moveset (incremental)
-    increment_path: list = paths.straight_path(p1, p2, increment, True)
-
-    # Create straight-path moveset (non-incremental)
-    direct_path: list = paths.straight_path(p1, p2, increment, False)
+    path: list = paths.straight_path(p1, p2)
 
     # ============================================================
     # GENERAL INFORMATION
     # ============================================================
-    
+
     print("\n========== STRAIGHT PATH SIMULATION ==========")
 
-    print(f"Start position:  {p1}")
-    print(f"Target position: {p2}")
-    print(f"Displacement:    {p2 - p1}")
-    print(f"Increments:      {increment}")
+    print(f"Start position:  {format_position(p1)}")
+    print(f"Target position: {format_position(p2)}")
+    print(f"Displacement:    {format_position(p2 - p1)}")
 
     # ============================================================
-    # INCREMENTAL PATH
+    # PATH
     # ============================================================
-    
-    print("\n========== INCREMENTAL PATH ==========")
 
-    print(f"Number of moves: {len(increment_path)}")
+    print("\n========== STRAIGHT PATH ==========")
+
+    print(f"Number of moves: {len(path)}")
 
     current_position: np.ndarray = p1.copy()
 
-    for i in range(len(increment_path)):
+    for i in range(len(path)):
 
-        movement: np.ndarray = increment_path[i]
-
-        new_position: np.ndarray = current_position + movement
-
-        print(f"\nMove {i + 1}")
-        print(f"  Movement: {np.array2string(movement, precision=3)}")
-        print(f"  From:     {np.array2string(current_position, precision=3)}")
-        print(f"  To:       {np.array2string(new_position, precision=3)}")
-
-        current_position = new_position
-
-    print("\nFinal position:")
-    print(f"  Expected: {np.array2string(p2, precision=3)}")
-    print(f"  Actual:   {np.array2string(current_position, precision=3)}")
-
-    if np.allclose(current_position, p2):
-        print("  Result:   SUCCESS")
-    else:
-        print("  Result:   ERROR")
-
-
-    # ============================================================
-    # NON-INCREMENTAL PATH
-    # ============================================================
-
-    print("\n========== NON-INCREMENTAL PATH ==========")
-
-    print(f"Number of moves: {len(direct_path)}")
-
-    current_position = p1.copy()
-
-    for i in range(len(direct_path)):
-
-        movement: np.ndarray = direct_path[i]
+        movement: np.ndarray = path[i]
 
         new_position: np.ndarray = current_position + movement
 
         print(f"\nMove {i + 1}")
-        print(f"  Movement: {np.array2string(movement, precision=3)}")
-        print(f"  From:     {np.array2string(current_position, precision=3)}")
-        print(f"  To:       {np.array2string(new_position, precision=3)}")
+
+        print(
+            f"  Movement: "
+            f"{format_position(movement)}"
+        )
+
+        print(
+            f"  From:     "
+            f"{format_position(current_position)}"
+        )
+
+        print(
+            f"  To:       "
+            f"{format_position(new_position)}"
+        )
 
         current_position = new_position
 
     print("\nFinal position:")
-    print(f"  Expected: {np.array2string(p2, precision=3)}")
-    print(f"  Actual:   {np.array2string(current_position, precision=3)}")
+
+    print(
+        f"  Expected: "
+        f"{format_position(p2)}"
+    )
+
+    print(
+        f"  Actual:   "
+        f"{format_position(current_position)}"
+    )
 
     if np.allclose(current_position, p2):
         print("  Result:   SUCCESS")
@@ -100,37 +95,20 @@ def straight_path_simulation():
 
     print("\n============================================")
 
-
-
 # NOT ACTUAL IMPLEMENTATION - that's for Alan
 # MOCK STRUCTURE PSEUDOCODE TO HELP WITH WRITING THE TEST LOGIC
 class DataProcessing:
-
+    
     def calculate_mean(data: list):
-        '''
-        calculate_mean
-        Calculate the mean of a list of numerical data.
-        '''
         mean: float = np.mean(data)
-
         return mean
 
     def find_max(data: list):
-        '''
-        find_max
-        Find the maximum value in a list of numerical data.
-        '''
         maximum: float = np.max(data)
-
         return maximum
 
     def find_min(data: list):
-        '''
-        find_min
-        Find the minimum value in a list of numerical data.
-        '''
         minimum: float = np.min(data)
-
         return minimum
 
     def get_center_1(data: list):
@@ -170,126 +148,228 @@ class DataProcessing:
         # Placeholder processing
         return
 
+
 def gravity_test_automated_simulation():
+    """
+    gravity_test_automated_simulation()
+    Simulate the automated gravity test.
+    """
 
-    print("\n")
-    print("============================================================")
-    print("           GRAVITY TEST AUTOMATED SIMULATION")
+    print("\n============================================================")
+    print("              GRAVITY TEST SIMULATION")
     print("============================================================")
 
     # ============================================================
-    # INITIALIZE TEST PARAMETERS
+    # TEST PARAMETERS
     # ============================================================
 
-    # Randomly generate estimated isocenter
-    #x: float = np.random.uniform(-100, 100)
-    #y: float = np.random.uniform(-100, 100)
-    #z: float = np.random.uniform(-100, 100)
-    
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
+    est_isocenter: np.ndarray = np.array([0.0, 0.0, 0.0])
+    length: float = 5.0
+    width: float = 5.0
+    angle: float = 45.0
 
-    freq: int = 4500
-    Navg: int = 4
-    threshold: float = 0.75
-
-    step: int = 1
-    length: float = 50     # mm
-    width: float = 50       # mm
-    #angle: float = np.random.uniform(0, 180)        # Degrees
-    angle: float = 0.0
-
-    fr5 = None
+    # Gravity test is performed in the YZ plane
+    grav_test_axes: tuple = ("y", "z")
 
     print("\n========== TEST PARAMETERS ==========")
-
-    print(f"Estimated X:        {x:.3f}")
-    print(f"Estimated Y:        {y:.3f}")
-    print(f"Estimated Z:        {z:.3f}")
-
-    print(f"Frequency:          {freq:.3f}")
-    print(f"Number of averages: {Navg:.3f}")
-    print(f"Threshold:          {threshold:.3f}")
-
-    print(f"Step:               {step:.3f}")
-    print(f"Length:             {length:.3f}")
-    print(f"Width:              {width:.3f}")
-    print(f"Angle:              {angle:.3f}")
-
+    print(
+        f"Isocenter: "
+        f"{format_position(est_isocenter)}"
+    )
+    print(f"Length:    {length:.3f}")
+    print(f"Width:     {width:.3f}")
+    print(f"Angle:     {angle:.3f} degrees")
+    print(
+        f"Axes:      "
+        f"{grav_test_axes[0].upper()}, "
+        f"{grav_test_axes[1].upper()}"
+    )
     print("=====================================")
 
     # ============================================================
-    # RETURN TO ESTIMATED ISOCENTER
+    # CALCULATE FOUR POINTS
     # ============================================================
 
-    est_isocenter: np.ndarray = np.array([x, y, z])
+    print("\n========== CALCULATE FOUR POINTS ==========")
 
-    print("\n========== MOVE TO ISOCENTER ==========")
+    rectangle_points: list = paths.calculate_four_points_rectangle(est_isocenter, length, width, grav_test_axes[0], grav_test_axes[1])
 
-    print(f"Estimated isocenter: "
-          f"{np.array2string(est_isocenter, precision=3)}")
+    for i in range(len(rectangle_points)):
+        print(
+            f"P{i + 1}: "
+            f"{format_position(rectangle_points[i])}"
+        )
 
-    # Real implementation:
-    # com._position_move(fr5, est_isocenter)
-
-    print(f"Robot moved to isocenter: "
-          f"{np.array2string(est_isocenter, precision=3)}")
-
-    print("SIMULATION: Robot would move to estimated isocenter.")
-
-    print("========================================")
+    print("===========================================")
 
     # ============================================================
-    # DEFINE DATA TO COLLECT
+    # ROTATE POINTS
     # ============================================================
 
-    grav_test_light_data: list = []
-    grav_test_position_data: list = []
-    grav_test_scan_data: list = []
+    print("\n========== ROTATE POINTS ==========")
 
-    print("\n========== INITIALIZE DATA ==========")
+    # Determine rotation axis
+    if grav_test_axes[0] == "x" and grav_test_axes[1] == "y":
+        rotation_axis: str = "z"
 
-    print(f"Light data:     {grav_test_light_data}")
-    print(f"Position data:  {grav_test_position_data}")
+    elif grav_test_axes[0] == "x" and grav_test_axes[1] == "z":
+        rotation_axis: str = "y"
 
-    print("=====================================")
+    elif grav_test_axes[0] == "y" and grav_test_axes[1] == "z":
+        rotation_axis: str = "x"
+
+    else:
+        raise ValueError("Invalid plane axes.")
+
+    print(f"Rotation angle: {angle:.3f} degrees")
+    print(f"Rotation axis:  {rotation_axis.upper()}")
+
+    if angle != 0.0:
+
+        rectangle_points = paths.rotate_points(
+            rectangle_points,
+            angle,
+            grav_test_axes[0],
+            grav_test_axes[1]
+        )
+
+    for i in range(len(rectangle_points)):
+
+        print(
+            f"P{i + 1}: "
+            f"{format_position(rectangle_points[i])}"
+        )
+
+    print("===================================")
 
     # ============================================================
-    # DEFINE PATH TO MOVE IN
+    # CREATE RECTANGLE PATH
     # ============================================================
 
     print("\n========== CREATE RECTANGLE PATH ==========")
 
-    # Define active axes
-    grav_test_axes: tuple = ("y", "z")
+    rectangle_paths: list = paths.rectangle_path(est_isocenter, rectangle_points)
 
-    print(f"Active axes: {grav_test_axes}")
+    print("===========================================")
 
-    # Calculate four rectangle points
-    rectangle_points: list = paths.calculate_four_points_matrix(
-        est_isocenter,
+    # ============================================================
+    # EXECUTE GRAVITY TEST
+    # ============================================================
+
+    print("\n========== EXECUTE GRAVITY TEST ==========")
+
+    scan_data: list = movement_functions_simulation(rectangle_paths, step_length=1.0)
+
+    print("==========================================")
+
+    return scan_data
+
+def path_functions_simulation(isocenter: np.ndarray, length: float, width: float,
+                              angle: float, axis_1: str, axis_2: str):
+    """
+    path_functions_simulation()
+    Test calculate_four_points_rectangle(), rotate_points(), and rectangle_path().
+    """
+
+    print("\n============================================================")
+    print("              PATH FUNCTIONS SIMULATION")
+    print("============================================================")
+
+    # ============================================================
+    # TEST PARAMETERS
+    # ============================================================
+
+    print("\n========== TEST PARAMETERS ==========")
+
+    print(
+        f"Isocenter: "
+        f"{format_position(isocenter)}"
+    )
+
+    print(f"Length:    {length:.3f}")
+    print(f"Width:     {width:.3f}")
+    print(f"Angle:     {angle:.3f} degrees")
+    print(f"Axes:      {axis_1.upper()}, {axis_2.upper()}")
+
+    print("=====================================")
+
+    # ============================================================
+    # CALCULATE FOUR POINTS
+    # ============================================================
+
+    print("\n========== CALCULATE FOUR POINTS ==========")
+
+    points: list = paths.calculate_four_points_rectangle(
+        isocenter,
         length,
         width,
-        angle,
-        grav_test_axes[0],
-        grav_test_axes[1]
+        axis_1,
+        axis_2
     )
 
-    print("\nCalculated rectangle points (Matrix):")
+    for i in range(len(points)):
 
-    for i in range(len(rectangle_points)):
-        print(f"  P{i + 1}: "
-              f"{np.array2string(rectangle_points[i], precision=3)}")
+        print(
+            f"P{i + 1}: "
+            f"{format_position(points[i])}"
+        )
 
-    # Create rectangle path
-    path: list = paths.rectangle_path(
-        est_isocenter,
-        rectangle_points,
-        step
+    print("===========================================")
+
+    # ============================================================
+    # ROTATE POINTS
+    # ============================================================
+
+    print("\n========== ROTATE POINTS ==========")
+
+    # Determine rotation axis
+    if axis_1 == "x" and axis_2 == "y":
+        rotation_axis: str = "z"
+
+    elif axis_1 == "x" and axis_2 == "z":
+        rotation_axis: str = "y"
+
+    elif axis_1 == "y" and axis_2 == "z":
+        rotation_axis: str = "x"
+
+    else:
+        raise ValueError("Invalid plane axes.")
+
+    print(f"Rotation angle: {angle:.3f} degrees")
+    print(f"Rotation axis:  {rotation_axis.upper()}")
+
+    if angle != 0.0:
+
+        path_points: list = paths.rotate_points(
+            points,
+            angle,
+            axis_1,
+            axis_2
+        )
+
+    else:
+
+        path_points: list = points
+
+    for i in range(len(path_points)):
+
+        print(
+            f"P{i + 1}: "
+            f"{format_position(path_points[i])}"
+        )
+
+    print("===================================")
+
+    # ============================================================
+    # CREATE RECTANGLE PATH
+    # ============================================================
+
+    print("\n========== CREATE RECTANGLE PATH ==========")
+
+    rectangle_paths: list = paths.rectangle_path(
+        isocenter,
+        path_points
     )
-
-    print("\nRectangle path created.")
 
     print("===========================================")
 
@@ -299,121 +379,219 @@ def gravity_test_automated_simulation():
 
     print("\n========== PATH INFORMATION ==========")
 
-    for i in range(len(path)):
+    for i in range(len(rectangle_paths)):
 
-        movement_path: list = path[i][0]
-        scan: bool = path[i][1]
+        movement_path: list = rectangle_paths[i][0]
+        scan: bool = rectangle_paths[i][1]
+        start_position: np.ndarray = rectangle_paths[i][2]
 
         print(f"\nPath {i + 1}")
 
         if i == 0:
-            print("  From: Isocenter -> P1")
-        elif i == 1:
-            print("  From: P1 -> P2")
-        elif i == 2:
-            print("  From: P2 -> P3")
-        elif i == 3:
-            print("  From: P3 -> P4")
+            print("  Path: Isocenter -> P1")
 
-        print(f"  Scan:      {scan}")
+        elif i == 1:
+            print("  Path: P1 -> P2")
+
+        elif i == 2:
+            print("  Path: P2 -> P3")
+
+        elif i == 3:
+            print("  Path: P3 -> P4")
+
+        print(
+            f"  Start: "
+            f"{format_position(start_position)}"
+        )
+
+        print(f"  Scan:  {scan}")
         print(f"  Num moves: {len(movement_path)}")
 
         for j in range(len(movement_path)):
-            print(f"    Move {j + 1}: "
-                  f"{np.array2string(movement_path[j], precision=3)}")
 
-    print("=====================================")
+            print(
+                f"    Movement {j + 1}: "
+                f"{format_position(movement_path[j])}"
+            )
+
+    print("\n=====================================")
+
+    return rectangle_paths
+
+def movement_functions_simulation(rectangle_paths: list,
+                                  step_length: float = 1.0):
+    """
+    movement_functions_simulation()
+    Test movement functions using an already-created rectangle path.
+
+    Robot movement and light sensor readings are simulated.
+    """
+
+    print("\n============================================================")
+    print("             MOVEMENT FUNCTIONS SIMULATION")
+    print("============================================================")
 
     # ============================================================
-    # MOVE THE ROBOT AND SCAN
+    # TEST PARAMETERS
+    # ============================================================
+
+    print("\n========== MOVEMENT TEST PARAMETERS ==========")
+
+    print(f"Step length: {step_length:.3f}")
+
+    print("==============================================")
+
+    # ============================================================
+    # INITIALIZE DATA
+    # ============================================================
+
+    scan_data: list = []
+
+    current_position: np.ndarray = (
+        rectangle_paths[0][2].copy()
+    )
+
+    print("\n========== INITIAL POSITION ==========")
+
+    print(
+        f"Robot position: "
+        f"{format_position(current_position)}"
+    )
+
+    print("======================================")
+
+    # ============================================================
+    # EXECUTE PATH
     # ============================================================
 
     print("\n========== EXECUTE PATH ==========")
 
-    print("Beginning path execution...")
+    for i in range(len(rectangle_paths)):
 
-    # Current robot position starts at the estimated isocenter
-    current_position: np.ndarray = est_isocenter.copy()
-
-    # Real implementation:
-    # start_data_recording()
-    # move.execute_path(path, grav_test_light_data, grav_test_position_data)
-    # end_data_recording()
-
-    # Simulation of execute_path()
-    for i in range(len(path)):
-
-        movement_path: list = path[i][0]
-        scan: bool = path[i][1]
+        movement_path: list = rectangle_paths[i][0]
+        scan: bool = rectangle_paths[i][1]
+        start_position: np.ndarray = rectangle_paths[i][2]
 
         print(f"\n--- Executing Path {i + 1} ---")
+
+        print(
+            f"Start position: "
+            f"{format_position(start_position)}"
+        )
+
+        print(f"Scan: {scan}")
+
+        # --------------------------------------------------------
+        # MOVE + SCAN
+        # --------------------------------------------------------
 
         if scan:
 
             print("Action: MOVE + SCAN")
 
-            for j in range(len(movement_path)):
+            current_position = start_position.copy()
 
-                movement: np.ndarray = movement_path[j]
+            for displacement in movement_path:
 
-                # Simulate incremental robot movement
-                new_position: np.ndarray = current_position + movement
-
-                print(f"\n  Move {j + 1}")
-                print(f"    Movement: "
-                      f"{np.array2string(movement, precision=3)}")
-                print(f"    From:     "
-                      f"{np.array2string(current_position, precision=3)}")
-                print(f"    To:       "
-                      f"{np.array2string(new_position, precision=3)}")
-
-                # Update current robot position
-                current_position = new_position
-
-                # ====================================================
-                # SIMULATE LIGHT SENSOR
-                # ====================================================
-
-                light_intensity: float = np.random.uniform(0, 1)
-
-                print(f"    Light:    {light_intensity:.3f}")
-
-                # Store light intensity
-                grav_test_light_data.append(light_intensity)
-
-                # Store ABSOLUTE robot position
-                grav_test_position_data.append(current_position.copy())
-
-                # Store position + light intensity together
-                scan_data: tuple = (
-                    current_position.copy(),
-                    light_intensity
+                mag_displacement: float = np.linalg.norm(
+                    displacement
                 )
 
-                grav_test_scan_data.append(scan_data)
-                print("    Data stored.")
+                if mag_displacement == 0:
+                    continue
+
+                n_steps: int = int(
+                    np.ceil(mag_displacement / step_length)
+                )
+
+                movement: np.ndarray = (
+                    displacement / n_steps
+                )
+
+                for j in range(n_steps):
+
+                    previous_position: np.ndarray = (
+                        current_position.copy()
+                    )
+
+                    # Simulate robot movement
+                    current_position = (
+                        current_position + movement
+                    )
+
+                    print(f"\n  Step {j + 1}/{n_steps}")
+
+                    print(
+                        f"    Movement: "
+                        f"{format_position(movement)}"
+                    )
+
+                    print(
+                        f"    From:     "
+                        f"{format_position(previous_position)}"
+                    )
+
+                    print(
+                        f"    To:       "
+                        f"{format_position(current_position)}"
+                    )
+
+                    # Simulate light sensor
+                    light_intensity: float = np.random.uniform(
+                        0.0,
+                        1.0
+                    )
+
+                    print(
+                        f"    Light:    "
+                        f"{light_intensity:.3f}"
+                    )
+
+                    # Store position + light
+                    scan_result: tuple = (
+                        current_position.copy(),
+                        light_intensity
+                    )
+
+                    scan_data.append(scan_result)
+
+                    print("    Data stored.")
+
+        # --------------------------------------------------------
+        # MOVE ONLY
+        # --------------------------------------------------------
 
         else:
 
             print("Action: MOVE ONLY")
 
-            for j in range(len(movement_path)):
+            for displacement in movement_path:
 
-                movement: np.ndarray = movement_path[j]
+                previous_position: np.ndarray = (
+                    current_position.copy()
+                )
 
-                # Simulate incremental robot movement
-                new_position: np.ndarray = current_position + movement
+                # Simulate robot movement
+                current_position = (
+                    current_position + displacement
+                )
 
-                print(f"\n  Move {j + 1}")
-                print(f"    Movement: "
-                      f"{np.array2string(movement, precision=3)}")
-                print(f"    From:     "
-                      f"{np.array2string(current_position, precision=3)}")
-                print(f"    To:       "
-                      f"{np.array2string(new_position, precision=3)}")
+                print("\n  Move")
 
-                # Update current robot position
-                current_position = new_position
+                print(
+                    f"    Movement: "
+                    f"{format_position(displacement)}"
+                )
+
+                print(
+                    f"    From:     "
+                    f"{format_position(previous_position)}"
+                )
+
+                print(
+                    f"    To:       "
+                    f"{format_position(current_position)}"
+                )
 
     print("\nPath execution complete.")
 
@@ -425,235 +603,78 @@ def gravity_test_automated_simulation():
 
     print("\n========== COLLECTED DATA ==========")
 
-    print(f"Number of scans: {len(grav_test_light_data)}")
+    print(f"Number of scans: {len(scan_data)}")
 
-    print("\nLight data:")
+    for i in range(len(scan_data)):
 
-    for i in range(len(grav_test_light_data)):
-        print(f"  Scan {i + 1}: "
-              f"{grav_test_light_data[i]:.3f}")
+        position: np.ndarray = scan_data[i][0]
+        light_intensity: float = scan_data[i][1]
 
-    print("\nPosition data:")
+        print(f"\n  Scan {i + 1}")
 
-    for i in range(len(grav_test_position_data)):
-        print(f"  Scan {i + 1}: "
-              f"{np.array2string(grav_test_position_data[i], precision=3)}")
+        print(
+            f"    Position: "
+            f"{format_position(position)}"
+        )
 
-    print("====================================")
-
-    # ============================================================
-    # DATA PROCESSING
-    # ============================================================
-
-    print("\n========== DATA PROCESSING ==========")
-
-    # ------------------------------------------------------------
-    # Process light intensity data
-    # ------------------------------------------------------------
-
-    mean_light: float = DataProcessing.calculate_mean(
-        grav_test_light_data
-    )
-
-    max_light: float = DataProcessing.find_max(
-        grav_test_light_data
-    )
-
-    min_light: float = DataProcessing.find_min(
-        grav_test_light_data
-    )
-
-    print(f"Mean light intensity: {mean_light:.3f}")
-    print(f"Maximum light intensity: {max_light:.3f}")
-    print(f"Minimum light intensity: {min_light:.3f}")
-
-
-    # ------------------------------------------------------------
-    # Process scan data
-    # ------------------------------------------------------------
-
-    print("\nScan data:")
-
-    for i in range(len(grav_test_scan_data)):
-
-        position: np.ndarray = grav_test_scan_data[i][0]
-        light_intensity: float = grav_test_scan_data[i][1]
-
-        print(f"  Scan {i + 1}")
-        print(f"    Position: {np.array2string(position, precision=3)}")
-        print(f"    Light:   {light_intensity:.3f}")
-
-
-    # ------------------------------------------------------------
-    # Future data processing
-    # ------------------------------------------------------------
-
-    # center1 = DataProcessing.get_center_1(grav_test_scan_data)
-    # center2 = DataProcessing.get_center_2(grav_test_scan_data)
-    # offset = DataProcessing.get_offset(grav_test_scan_data)
+        print(
+            f"    Light:    "
+            f"{light_intensity:.3f}"
+        )
 
     print("====================================")
 
-
-
-
-
-
-
-
-
-
-def path_functions_simulation(isocenter: np.ndarray, length: float, width: float,
-                              angle: float, axis_1: str, axis_2: str):
-    """
-    path_functions_simulation()
-    Test calculate_four_points_(), rotate_points(), and rectangle_path().
-    """
-
     # ============================================================
-    # TEST PARAMETERS
+    # FINAL POSITION
     # ============================================================
 
-    print("\n============================================================")
-    print("              PATH FUNCTIONS SIMULATION")
-    print("============================================================")
+    print("\n========== FINAL POSITION ==========")
 
-    print("\nTest Parameters:")
-    print(f"  Isocenter: {isocenter}")
-    print(f"  Length:    {length}")
-    print(f"  Width:     {width}")
-    print(f"  Angle:     {angle} degrees")
-    print(f"  Axes:      {axis_1.upper()}, {axis_2.upper()}")
-
-
-    # ============================================================
-    # CALCULATE FOUR POINTS
-    # ============================================================
-
-    print("\n============================================================")
-    print("              calculate_four_points_()")
-    print("============================================================")
-
-    points: list = paths.calculate_four_points_(
-        isocenter,
-        length,
-        width,
-        axis_1,
-        axis_2
+    print(
+        f"Final robot position: "
+        f"{format_position(current_position)}"
     )
 
-    print("\nCalculated Points:")
+    print("====================================")
 
-    for i in range(len(points)):
-        print(f"  P{i + 1}: {points[i]}")
-
-
-    # ============================================================
-    # ROTATE POINTS
-    # ============================================================
-
-    print("\n============================================================")
-    print("                 rotate_points()")
-    print("============================================================")
-
-    rotated_points: list = paths.rotate_points(
-        points,
-        angle
-    )
-
-    print("\nRotated Points:")
-
-    if rotated_points is None:
-
-        print("  rotate_points() has not been implemented.")
-
-    else:
-
-        for i in range(len(rotated_points)):
-            print(f"  P{i + 1}: {rotated_points[i]}")
-
-
-    # ============================================================
-    # CREATE RECTANGLE PATH
-    # ============================================================
-
-    print("\n============================================================")
-    print("                 rectangle_path()")
-    print("============================================================")
-
-    # Use rotated points if rotation is implemented
-    if rotated_points is not None:
-        path_points: list = rotated_points
-    else:
-        path_points: list = points
-
-    rectangle_paths: list = paths.rectangle_path(
-        isocenter,
-        path_points
-    )
-
-    print("\nRectangle Paths:")
-
-    for i in range(len(rectangle_paths)):
-
-        movement_path: list = rectangle_paths[i][0]
-        scan: bool = rectangle_paths[i][1]
-
-        print(f"\nPath {i + 1}")
-
-        if i == 0:
-            start_point: np.ndarray = isocenter
-            end_point: np.ndarray = path_points[0]
-            print("  Path: Isocenter -> P1")
-
-        elif i == 1:
-            start_point: np.ndarray = path_points[0]
-            end_point: np.ndarray = path_points[1]
-            print("  Path: P1 -> P2")
-
-        elif i == 2:
-            start_point: np.ndarray = path_points[1]
-            end_point: np.ndarray = path_points[2]
-            print("  Path: P2 -> P3")
-
-        elif i == 3:
-            start_point: np.ndarray = path_points[2]
-            end_point: np.ndarray = path_points[3]
-            print("  Path: P3 -> P4")
-
-        print(f"  Start: {start_point}")
-        print(f"  End:   {end_point}")
-        print(f"  Scan:  {scan}")
-
-        for j in range(len(movement_path)):
-            print(f"  Movement {j + 1}: {movement_path[j]}")
-
-
-    print("\n============================================================")
-    print("              END PATH FUNCTIONS SIMULATION")
-    print("============================================================")
-
-
-
-
+    return scan_data
 
 
 # SELF-SIMULATION ONLY; FOR MARC'S SUBSYSTEM MEETING AND DOCUMENTATION
 def main():
 
-    isocenter: np.ndarray = np.array([0, 0, 0])
-    length: float = 10.0
-    width: float = 10.0
-    angle: float = 0.0
+    # ============================================================
+    # PATH + MOVEMENT SIMULATION
+    # ============================================================
+
+    isocenter: np.ndarray = np.array([0.0, 0.0, 0.0])
+
+    length: float = 5.0
+    width: float = 5.0
+    angle: float = 90.0
 
     axis_1: str = "x"
     axis_2: str = "y"
 
-    path_functions_simulation(isocenter, length, width, angle, axis_1, axis_2)
+    step_length: float = 1.0
+
+    # Create and display path
+    path: list = path_functions_simulation(isocenter, length, width ,angle, axis_1, axis_2)
+
+    # Execute path and simulate scanning
+    scan_data: list = movement_functions_simulation(path, step_length)
+
+    # ============================================================
+    # GRAVITY TEST SIMULATION
+    # ============================================================
+
+    # Uncomment to run gravity test simulation
+    #gravity_test_scan_data: list = gravity_test_automated_simulation()
 
 
 if __name__ == "__main__":
     main()
+    
 
 
 
@@ -662,8 +683,7 @@ if __name__ == "__main__":
 
 
 
-if __name__ == "__main__":
-    main()
+
 
 
 

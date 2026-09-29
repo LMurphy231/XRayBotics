@@ -4,7 +4,7 @@ import numpy as np
 import labquest as lq
 
 # TODO: Complete functions
-def absolute_move_path(isocenter: np.ndarray, path: list):
+def absolute_move_path(path: list):
     """
     absolute move_path()
     Generic: perform each movement in a moveset
@@ -18,18 +18,20 @@ def absolute_move_path(isocenter: np.ndarray, path: list):
         # Pass in the destination point
         
         # Robot's/GUI move function here
-        #fr5._position_move(dx, dy, dz)     # Absolute Position
+        #fr5._position_move(x, y, z)     # Absolute Position
         
     return
 
-def increment_move_and_scan(isocenter: np.ndarray, path: list, light_data: list, pos_data: list, step_length: float = 1.0):
+def increment_move_and_scan(path: list, start_position: np.ndarray, scan_data: list, step_length: float = 1.0, avg_sample: int=5):
     """
     move_and_path
     Move ---> scan AFTER the movement
     """
-    
+
     light_intensity: float  # Store light values
-    position: np.ndarray     # Store position values
+    current_position: np.ndarray     # Store position values
+    
+    current_position = start_position.copy()
     
     # Find moveset to increment
     for displacement in path:
@@ -50,21 +52,18 @@ def increment_move_and_scan(isocenter: np.ndarray, path: list, light_data: list,
             dy: float = movement[1]     # Extract dy from moveset for that move
             dz: float = movement[2]     # Extract dz from moveset for that move
             
-            # Robot's/GUI move function here
-            #fr5._incriment_move(dx, dy, dz)        # Vector Movement
+            #fr5._incriment_move(dx, dy, dz) # Vector Movement; robot gui funciton
 
             # Scan after movement
-            # t, ld = lq.read(avg_sample)
-            # light_intensity = scan() # Return an int (or similar)
+            _, light_intensity = lq.read(avg_sample) # Return an int (or similar)
 
-            # Store scan data: light intensity & corresponding position (absolute)
-            #position = np.array([dx, dy, dz])
+            # Update current absolute position
+            current_position = current_position + movement
             
-            store_data(light_data, pos_data, light_intensity, position) # Append data 
+            # Store scan data: corresponding position (absolute) & light intensity 
+            store_data(scan_data, current_position, light_intensity) # Append data 
 
-    return
-
-def execute_path(isocenter: np.ndarray, path: list, light_data: list, pos_data: list, step_length: float = 1.0):
+def execute_path(path: list, scan_data: list, step_length: float = 1.0):
     """
     execute_path()
     Execute each path in a rectangle (path).
@@ -72,25 +71,24 @@ def execute_path(isocenter: np.ndarray, path: list, light_data: list, pos_data: 
     Wrapper function to choose if scanning after move or not
     """
 
-    for move, scan in path:
+    for move, scan, start_pos in path:
         
         if scan:
-            increment_move_and_scan(isocenter, move, light_data, pos_data, step_length) # Scan if True
+            increment_move_and_scan(move, start_pos, scan_data, step_length) # Scan if True
 
         else:
-            absolute_move_path(isocenter, move) # Move without scanning
+            absolute_move_path(move) # Move without scanning
 
     return
 
-def store_data(light_data: list, pos_data: list, light_intensity: float, position: np.ndarray):
+def store_data(scan_data: list, position: np.ndarray, light_intensity: float):
     '''
     store_data
     Create list of detected light values with corresponding position
     '''
+    scan_result: tuple = (position.copy(), light_intensity)
+    scan_data.append(scan_result)
     
-    light_data.append(light_intensity)
-    pos_data.append(position)
-
     return
 
 def scan():
