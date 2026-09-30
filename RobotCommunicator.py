@@ -13,20 +13,29 @@ import settingshandler as settings
 
 
 class RobotCom(RPC):
-    HOME = [0, -45, -133.25, -180, -90, 90]
+    HOME = [0, -45, -135, -180, -90, 90]
 
-    def __init__(self, opts=settings.OptionDict(), ip="192.168.58.2", ):
+    def __init__(self, opts=settings.OptionDict(), ip="192.168.58.2", root:tk.Toplevel=None):
         self.robot_logger = logging.getLogger('robot')
         self.logger = logging.getLogger('GUI logger')
         self.logger.info('Connecting to Farino FR5')
         self._move_lock = threading.Lock()
-        
+        self.cur_tool = 0
+        self.error_label = self.user_input_window = None
         self.opts = opts
         self._default_options()
 
         threading.Thread(target=RPC.__init__, args=(self, ip), daemon=True).start()
+        threading.Thread(target=self._status_check, args=(root,), daemon=True).start()
         self.move_thread = threading.Thread(target=lambda:None)
-        self.action_queue:queue.Queue[threading.Thread] = queue.Queue()
+        self.action_queue:queue.Queue[tuple[object, threading.Event]] = queue.Queue()
+        threading.Thread(target=self._queue_runner, name='robot movement queue',daemon=True).start()
+        
+    def _queue_runner(self):
+        while True:
+            funct, event = self.action_queue.get()
+            print(f'Result: {funct()}')
+            event.set()
 
     def _default_options(self):
         # Default Variables
@@ -91,43 +100,47 @@ class RobotCom(RPC):
         
         acc: Acceleration - default: 100.0
         '''
-        print( dx, dy, dz, drx, dry, drz, ref, vel, acc, in_thread)
         self.logger.debug(f'Queing Incrimental Movement ({dx}, {dy}, {dz})')
-        funct = lambda: self.MoveL(
-                    desc_pos=self.GetActualTCPPose(0)[1],
-                    tool=0,
-                    user=0,
-                    joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    vel=10.0,
-                    acc=20.0,
-                    ovl=100.0,
-                    blendR=-1.0,
-                    blendMode=0,
-                    exaxis_pos=[0.0, 0.0, 0.0, 0.0],
-                    search=0,
-                    offset_flag=2,
-                    offset_pos=[dz, dy, dx, drx, dry, drz],
-                    oacc=20.0,
-                    velAccParamMode=0,
-                    )
-        if in_thread:
-            thread = threading.Thread(
-                target = funct, 
-                daemon=True,
-                )
-            self.action_queue.put(thread)
-            return thread
-        funct()
+        print(f'Queing Incrimental Movement ({dx}, {dy}, {dz})')
+        print(f'Current Position: {self.GetActualTCPPose(0)[1]}')
+        next_pos = self.GetActualTCPPose(0)[1] + np.array([dx, dy, dz, drx, dry, drz])
+        joint_angles = self._invk(*next_pos, self.cur_tool)
+        return self._joint_move(joint_angles, in_thread)
+        #funct = lambda: self.MoveL(
+        #            desc_pos=self.GetActualTCPPose(0)[1],
+        #            tool=0,
+        #            user=0,
+        #            joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        #            vel=10.0,
+        #            acc=20.0,
+        #            ovl=100.0,
+        #            blendR=-1.0,
+        #            blendMode=0,
+        #            exaxis_pos=[0.0, 0.0, 0.0, 0.0],
+        #            search=0,
+        #            offset_flag=2,
+        #            offset_pos=[dz, dy, dx, drx, dry, drz],
+        #            oacc=20.0,
+        #            velAccParamMode=0,
+        #            )
+        #if in_thread:
+        #    event = threading.Event()
+        #    self.action_queue.put((funct, event))
+        #    return event
+        print(funct())
 
-    def _position_move(self, x, y, z, ref=4, vel=20.0, acc=100.0, in_thread=False):
+    def _position_move(self, x, y, z, rx=0.0, ry=0.0, rz=0.0, ref=4, vel=20.0, acc=100.0, in_thread=False):
         pos = self.GetActualTCPPose(0)
         if isinstance(pos, int):
             desc_pos = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         else:
             desc_pos = pos[1]
         #desc_pos = [1]
-        dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,0,0,0] 
-        tool=0
+        next_pos = np.array([x, y, z, rx, ry, rz])
+        joint_angles = self._invk(*next_pos, self.cur_tool)
+        return self._joint_move(joint_angles, in_thread)
+        dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,desc_pos[3]-rx,desc_pos[4]-ry,desc_pos[5]-rz] 
+        tool=self.cur_tool
         user=0
         vel=10.0
         acc=20.0
@@ -143,12 +156,9 @@ class RobotCom(RPC):
         self.logger.debug(f'Queueing Movement to ({x}, {y}, {z})')
         funct = lambda: self.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode)
         if in_thread:
-            thread = threading.Thread(
-                    target = funct,
-                    daemon=True,
-                    )
-            self.action_queue.put(thread)
-            return thread
+            event = threading.Event()
+            self.action_queue.put((funct, event))
+            return event
         funct()
 
     def _joint_move(self, joint_pos, in_thread=False):
@@ -165,11 +175,9 @@ class RobotCom(RPC):
         self.logger.debug(f'Queing joint movement to {tuple(joint_pos)}')
         funct = lambda: self.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos)
         if in_thread:
-            thread = threading.Thread(
-                    target= funct,
-                    daemon= True,
-                )
-            return thread
+            event = threading.Event()
+            self.action_queue.put((funct, event))
+            return event
         
         funct()
 
@@ -225,7 +233,16 @@ class RobotCom(RPC):
         if ierr:
             print(f'ERROR: {ierr}')
         return join_pos
-    
+
+    def set_isocenter(self, x, y, z, rx, ry, rz):
+        self.isocenter = np.array([x,y,z,rx,ry,rz])
+        self.robot_logger.info(f'Setting Isocenter to {self.isocenter}')
+        print(f'Setting Isocenter to {self.isocenter}')
+        self.cur_tool = 2
+        self.SetToolCoord(1, self.isocenter, 0, 0, self.cur_tool, 1)
+        print(f'Done Setting Isocenter to {self.isocenter}')
+
+
     def _update_connection(self):
         self.logger.debug(f'Attempting to reconnect to Farino FR5')
         while True:

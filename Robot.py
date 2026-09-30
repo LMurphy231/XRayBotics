@@ -1164,6 +1164,7 @@ class RPC():
             time.sleep(0.1)
         if self.GetSafetyCode() != 0:
             return self.GetSafetyCode()
+        
         desc_pos = list(map(float, desc_pos))
         tool = int(tool)
         user = int(user)
@@ -1237,7 +1238,6 @@ class RPC():
             error = self.robot.JointOverSpeedProtectEnd()
             if error!=0:
                 return error
-
         return error1
 
     """   

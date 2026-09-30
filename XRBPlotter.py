@@ -101,10 +101,13 @@ class Plotter:
 
         self.ax.minorticks_on()
         self.ax.grid(True)
+        self.x_label = self.y_label = self.z_label = ''
+
         self.zmin = self.zmax = self._user_zmin = self._user_zmax = 0
         canvas_widget = self.canvas.get_tk_widget()
         canvas_widget.grid(row=0, column=0, sticky=tk.NSEW)
         self.clear()
+        self.label_axis('X (mm)', 'Y (mm)', 'Z (mm)')
         self._set_axis_limit(-500, 500, -500, 500, -500, 500)
         self.canvas.draw()
 
@@ -141,7 +144,22 @@ class Plotter:
             self._user_zmin = self.ax.get_zlim()[0]
             self._user_zmax = self.ax.get_zlim()[1]
         self.ax.clear()
+        self.label_axis()
         
+    def label_axis(self, xlabel=None, ylabel=None, zlabel=None):
+        if xlabel is not None:
+            self.x_label = xlabel
+            
+        if ylabel is not None:
+            self.y_label = ylabel
+        
+        self.ax.set_xlabel(self.x_label)
+        self.ax.set_ylabel(self.y_label)
+
+        if self._projection == '3d':
+            if zlabel is not None:
+                self.z_label = zlabel
+            self.ax.set_zlabel(self.z_label)
 
     def plot_robot(self, angles, color='red'):
         plotter.clear()
