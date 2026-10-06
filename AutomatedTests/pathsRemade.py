@@ -113,6 +113,7 @@ def calculate_four_points_rectangle(isocenter: np.ndarray, length: float, width:
     
     return points
 
+
 def rotate_points(points: list, angle: float, axis_1: str, axis_2: str):
     '''
     Rotate list of points
@@ -149,7 +150,6 @@ def rotate_points(points: list, angle: float, axis_1: str, axis_2: str):
     return rotated_points
 
 
-
 def collimator_test_rotation_matix(col_angle, gan_angle):
     # start in YZ
     # rotate about y
@@ -166,7 +166,7 @@ def rotation_matricies(matrix1, *rotation_matricies):
         matrix1 = np.matmul(matrix1, matrix2)
     return matrix1
 
-def rotate_point(point:np.ndarray, rotation_matrix:np.ndarray):
+def rotate_point(point: np.ndarray, rotation_matrix: np.ndarray):
     return rotation_matrix @ point
 
 

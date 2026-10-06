@@ -55,7 +55,7 @@ def increment_move_and_scan(path: list, start_position: np.ndarray, scan_data: l
             #fr5._incriment_move(dx, dy, dz) # Vector Movement; robot gui funciton
 
             # Scan after movement
-            _, light_intensity = lq.read(avg_sample) # Return an int (or similar)
+            light_intensity = light_scan(light_intensity, avg_sample) # Scan after movement
 
             # Update current absolute position
             current_position = current_position + movement
@@ -91,6 +91,10 @@ def store_data(scan_data: list, position: np.ndarray, light_intensity: float):
     
     return
 
-def scan():
-    pass
+def light_scan(light_intensity: float, avg_sample: int = 5):
+    
+    _, light_intensity = lq.read(avg_sample) # Return an int (or similar)
+
+    return light_intensity
+    
     
