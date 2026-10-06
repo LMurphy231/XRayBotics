@@ -155,14 +155,10 @@ def collimator_test_rotation_matix(col_angle, gan_angle):
     # rotate about y
     return rotation_matricies(Ry(np.deg2rad(-90)), )
 
-
-
-
 def gantry_test_rotation_matix(gantry_angle, gan_angle):
     # start in YZ
     # rotate about y
     return rotation_matricies(Rx(np.deg2rad(-90)), )
-
 
 
 def rotation_matricies(matrix1, *rotation_matricies):
@@ -172,8 +168,6 @@ def rotation_matricies(matrix1, *rotation_matricies):
 
 def rotate_point(point:np.ndarray, rotation_matrix:np.ndarray):
     return rotation_matrix @ point
-
-
 
 
 def Rx(angle: float) -> np.ndarray[float]: 
