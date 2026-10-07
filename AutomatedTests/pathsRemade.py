@@ -150,12 +150,12 @@ def rotate_points(points: list, angle: float, axis_1: str, axis_2: str):
     return rotated_points
 
 
-def collimator_test_rotation_matix(col_angle, gan_angle):
+def collimator_test_rotation_matrix(col_angle, gan_angle):
     # start in YZ
     # rotate about y
     return rotation_matricies(Ry(np.deg2rad(-90)), )
 
-def gantry_test_rotation_matix(gantry_angle, gan_angle):
+def gantry_test_rotation_matrix(gantry_angle, gan_angle):
     # start in YZ
     # rotate about y
     return rotation_matricies(Rx(np.deg2rad(-90)), )
