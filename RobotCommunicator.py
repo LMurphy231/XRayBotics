@@ -14,6 +14,14 @@ import settingshandler as settings
 
 class RobotCom(RPC):
     HOME = [0, -45, -135, -180, -90, 90]
+    AXIS_LIMIT = [
+        (-175, 175),
+        (-265, 85),
+        (-160, 160),
+        (-264, 85), 
+        (-175, 175),
+        (-175, 175),
+    ]
 
     def __init__(self, opts=settings.OptionDict(), ip="192.168.58.2", root:tk.Toplevel=None):
         self.robot_logger = logging.getLogger('robot')
@@ -26,7 +34,7 @@ class RobotCom(RPC):
         self._default_options()
 
         threading.Thread(target=RPC.__init__, args=(self, ip), daemon=True).start()
-        threading.Thread(target=self._status_check, args=(root,), daemon=True).start()
+        #threading.Thread(target=self._status_check, args=(root,), daemon=True).start()
         self.move_thread = threading.Thread(target=lambda:None)
         self.action_queue:queue.Queue[tuple[object, threading.Event]] = queue.Queue()
         threading.Thread(target=self._queue_runner, name='robot movement queue',daemon=True).start()
@@ -102,31 +110,31 @@ class RobotCom(RPC):
         '''
         self.logger.debug(f'Queing Incrimental Movement ({dx}, {dy}, {dz})')
         print(f'Queing Incrimental Movement ({dx}, {dy}, {dz})')
-        print(f'Current Position: {self.GetActualTCPPose(0)[1]}')
-        next_pos = self.GetActualTCPPose(0)[1] + np.array([dx, dy, dz, drx, dry, drz])
-        joint_angles = self._invk(*next_pos, self.cur_tool)
-        return self._joint_move(joint_angles, in_thread)
-        #funct = lambda: self.MoveL(
-        #            desc_pos=self.GetActualTCPPose(0)[1],
-        #            tool=0,
-        #            user=0,
-        #            joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-        #            vel=10.0,
-        #            acc=20.0,
-        #            ovl=100.0,
-        #            blendR=-1.0,
-        #            blendMode=0,
-        #            exaxis_pos=[0.0, 0.0, 0.0, 0.0],
-        #            search=0,
-        #            offset_flag=2,
-        #            offset_pos=[dz, dy, dx, drx, dry, drz],
-        #            oacc=20.0,
-        #            velAccParamMode=0,
-        #            )
-        #if in_thread:
-        #    event = threading.Event()
-        #    self.action_queue.put((funct, event))
-        #    return event
+        print(f'Current Position: {self.GetActualTCPPose(0)}')
+        #next_pos = self.GetActualTCPPose(0)[1] + np.array([dx, dy, dz, drx, dry, drz])
+        #joint_angles = self._invk(*next_pos, self.cur_tool)
+        #return self._joint_move(joint_angles, in_thread)
+        funct = lambda: self.MoveL(
+                    desc_pos=self.GetActualTCPPose(0)[1],
+                    tool=0,
+                    user=0,
+                    joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    vel=10.0,
+                    acc=20.0,
+                    ovl=100.0,
+                    blendR=-1.0,
+                    blendMode=0,
+                    exaxis_pos=[0.0, 0.0, 0.0, 0.0],
+                    search=0,
+                    offset_flag=2,
+                    offset_pos=[dz, dy, dx, drx, dry, drz],
+                    oacc=20.0,
+                    velAccParamMode=0,
+                    )
+        if in_thread:
+            event = threading.Event()
+            self.action_queue.put((funct, event))
+            return event
         print(funct())
 
     def _position_move(self, x, y, z, rx=0.0, ry=0.0, rz=0.0, ref=4, vel=20.0, acc=100.0, in_thread=False):
@@ -136,9 +144,9 @@ class RobotCom(RPC):
         else:
             desc_pos = pos[1]
         #desc_pos = [1]
-        next_pos = np.array([x, y, z, rx, ry, rz])
-        joint_angles = self._invk(*next_pos, self.cur_tool)
-        return self._joint_move(joint_angles, in_thread)
+        #next_pos = np.array([x, y, z, rx, ry, rz])
+        #joint_angles = self._invk(*next_pos, self.cur_tool)
+        #return self._joint_move(joint_angles, in_thread)
         dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,desc_pos[3]-rx,desc_pos[4]-ry,desc_pos[5]-rz] 
         tool=self.cur_tool
         user=0
