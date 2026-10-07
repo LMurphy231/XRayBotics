@@ -66,7 +66,6 @@ class SensorManager:
         self.command_queue.put(_CLOSE)
         self.process.join()
     
-
 @contextmanager
 def open_labquest():
     try:
