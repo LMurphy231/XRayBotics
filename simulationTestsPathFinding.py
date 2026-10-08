@@ -669,7 +669,7 @@ def main():
     # ============================================================
 
     # Uncomment to run gravity test simulation
-    #gravity_test_scan_data: list = gravity_test_automated_simulation()
+    gravity_test_scan_data: list = gravity_test_automated_simulation()
 
 
 if __name__ == "__main__":

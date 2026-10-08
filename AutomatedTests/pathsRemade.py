@@ -150,6 +150,11 @@ def rotate_points(points: list, angle: float, axis_1: str, axis_2: str):
     return rotated_points
 
 
+def gavrity_test_rotation_matrix(grav_angle: float = 90):
+    # Rotate about x-axis to point photo-diode in y-direction
+    return rotation_matricies(Rx(np.deg2rad(grav_angle)), )
+
+
 def collimator_test_rotation_matrix(col_angle, gan_angle):
     # start in YZ
     # rotate about y
