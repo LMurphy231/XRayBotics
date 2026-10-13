@@ -6,15 +6,25 @@ import LightSensor as lightSensor
 import AutomatedTests.pathMovement as move
 import AutomatedTests.pathsRemade as paths
 
-def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold:float=0.75, step_length:int=1, length: float=100.0, width:float=100.0, angle:float=0.0, fr5=None):
+def gravity_test_automated(x, y, z, fr5=com.RobotCom, Navg=4, 
+                           step_length:int=1, length: float=100.0, width:float=100.0, 
+                           side: str ="left"):
     '''
     gravity_test_automated
     Perform the gravity test: Scan laser to find true 
     step_length in mm
     '''
-    # New input: laser location: which side? left/right or above/below?
-    # if left -> rotate 90 about current z0 (robot)
     
+    # ============================================================
+    # INITIALIZATION STATE: ROTATE ROBOT TO CORRECT SIDE, RETURN TO ISOCENTER, INITIALIZE DATA COLLECTION
+    # ============================================================
+    
+    # Rotate the robot to the correct side to scan lase (left or right side)
+    if side == "left":
+        com._rotate(fr5, axis = "z", angle = 90)   # if left -> rotate 90 about current z0 (robot)
+    elif side == "right":
+        com._rotate(fr5, axis = "z", angle = -90)   # if right -> rotate -90 about current z0 (robot)
+                
     # Return to "home" pos ---> isocenter+
     est_isocenter: np.ndarray = np.array([x, y, z])
     com._position_move(fr5, est_isocenter) # Start test at estimated isocenter ("origin")
@@ -24,18 +34,27 @@ def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold:float=0.75, ste
     grav_test_pos_data: list = []    # Position Vectors (x,y,z)
     grav_test_light_data: list = []  # Light intensity values
             
-    # Define path to move in (rectangle)
-    grav_test_axes = ("y", "z") # Define active axes
-    rectangle_points: list = paths.calculate_four_points_rectangle(est_isocenter, length, width, grav_test_axes[0], grav_test_axes[1])
-    
-    if angle != 0.0:
-        rectangle_points = paths.rotate_points(rectangle_points, angle, grav_test_axes[0], grav_test_axes[1]) # Rotate if needed
+    # ============================================================       
+    # END INITIALIZATION STATE: ROTATE ROBOT TO CORRECT SIDE, RETURN TO ISOCENTER, INITIALIZE DATA COLLECTION        
+    # ============================================================        
+            
+            
+            
+    # ============================================================        
+    # PROCEDURE 1: MOVE IN XZ ----> GET ANGLE ABOUT (WRT) Y AXIS
+    # ===========================================================
 
-    path: list = paths.rectangle_path(est_isocenter, rectangle_points) # Create path with points
+    # Define path to move in (rectangle)
+    grav_rectangle_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width) # Calculate rectangle points in basis plane: XZ
+    
+    # CURRENT ASSUMPTION: NO OTHER PLANE ROTATION NEEDED BEFORE SCANNING
+        # Otherwise, would need to rotate rectangle points about axis to point photo-diode laser direction
+    
+    path: list = paths.rectangle_path(est_isocenter, grav_rectangle_points) # Create path with points
 
     # Move the robot and scan in the defined path
     # start_data_recording()
-    move.execute_path(path, grav_test_scan_data, step_length)
+    move.execute_path(path, grav_test_scan_data, step_length) # Move and scan in path according
     # end_data_recording()
     
     # Return to "home" pos ---> isocenter
@@ -49,7 +68,64 @@ def gravity_test_automated(x, y, z, freq=4500, Navg=4, threshold:float=0.75, ste
         grav_test_pos_data.append(position)
         grav_test_light_data.append(light_intensity)
     
-    #DataProcessing(grav_test_position_data, grav_test_light_data)
+   
+    # Alan returns: offset for angle needed to adjust about Y
+        #DataProcessing(grav_test_position_data, grav_test_light_data)
+    
+    dry: float # STORE: ANGLE BETWEEN Y (TRUE) AND Z (ROBOT)
+
+    # TODO:
+    
+    # ============================================================        
+    # END PROCEDURE 1: MOVE IN XZ ----> GET ANGLE ABOUT (WRT) Y AXIS
+    # ===========================================================
+        
+    
+    
+    # ============================================================
+    # PROCEDURE 2: MOVE IN YZ ----> ANGLE ABOUT (WRT) X AXIS
+    # ============================================================
+    
+    gen_rot_matrix = paths.get_rotation_matrix("z", grav_rectangle_points, 90, 0) # Rotate about x-axis to point photo-diode in y-direction
+    grav_rotated_points: list = paths.rotate_points_basis_plane(grav_rectangle_points, gen_rot_matrix) # Rotate points in basis plane
+    rotated_path: list = paths.rectangle_path(est_isocenter, grav_rotated_points) # Create rotated path with rotated points
+    
+    # Move the robot and scan in the defined path
+    # start_data_recording()
+    move.execute_path(rotated_path, grav_test_scan_data, step_length) # Move and scan in rotated path accordingly
+    # end_data_recording()
+    
+    # Return to "home" pos ---> isocenter
+    com._position_move(fr5, est_isocenter) # End test at estimated isocenter ("origin")
+    
+    # Process scan data
+    for scan_result in grav_test_scan_data:
+        position: np.ndarray = scan_result[0]
+        light_intensity: float = scan_result[1]
+
+        grav_test_pos_data.append(position)
+        grav_test_light_data.append(light_intensity)
+
+    # Alan returns: offset for angle needed to adjust about Y
+        #DataProcessing(grav_test_position_data, grav_test_light_data)
+    
+    drx: float # STORE: ANGLE BETWEEN X (TRUE) AND Z (ROBOT)
+
+    # ============================================================        
+    # END PROCEDURE 2: MOVE IN YZ ----> ANGLE ABOUT (WRT) X AXIS
+    # ===========================================================
+
+
+
+    # ============================================================        
+    # FINALIZATION: RETURN ANGLE OFFSETS FOR BOTH AXES (X AND Y) TO ADJUST ROBOT ROTATION
+    # ===========================================================
+
+    # GOAL: ALIGN ROBOT Z AXIS WITH TRUE Z AXIS (GRAVITY)
+    offset: list = [np.ndarray([drx, dry])] # Return offset for both axes (X and Y) to adjust robot rotation
+    # Create rotation matrix to adjust robot rotation about X and Y axes
+    
+   # Inform which test offset was from: gravity
 
     return
 
