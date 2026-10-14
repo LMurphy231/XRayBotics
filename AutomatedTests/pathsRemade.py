@@ -302,7 +302,7 @@ def rotation_matrix(points: list, angle: float):
         Create a rotation matrix for a given angle and apply it to a list of points
     '''
     
-    angle-radians = np.deg2rad(angle) # Convert from degrees to radians; ASSUMES + = CCW
+    angle_radians = np.deg2rad(angle) # Convert from degrees to radians; ASSUMES + = CCW
     
     rotation_matrix = Ry(np.deg2rad(angle))
     return rotate_points_basis_plane(points, rotation_matrix)

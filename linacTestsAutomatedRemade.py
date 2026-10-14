@@ -79,32 +79,22 @@ def gravity_test_automated(x, y, z, fr5=com.RobotCom, Navg=4,
     # ============================================================        
     # END PROCEDURE 1: MOVE IN XZ ----> GET ANGLE ABOUT (WRT) Y AXIS
     # ===========================================================
-        
+       
     
     
     # ============================================================
     # PROCEDURE 2: MOVE IN YZ ----> ANGLE ABOUT (WRT) X AXIS
     # ============================================================
     
-    gen_rot_matrix = paths.get_rotation_matrix("z", grav_rectangle_points, 90, 0) # Rotate about x-axis to point photo-diode in y-direction
-    grav_rotated_points: list = paths.rotate_points_basis_plane(grav_rectangle_points, gen_rot_matrix) # Rotate points in basis plane
-    rotated_path: list = paths.rectangle_path(est_isocenter, grav_rotated_points) # Create rotated path with rotated points
-    
-    # Move the robot and scan in the defined path
-    # start_data_recording()
-    move.execute_path(rotated_path, grav_test_scan_data, step_length) # Move and scan in rotated path accordingly
-    # end_data_recording()
-    
-    # Return to "home" pos ---> isocenter
-    com._position_move(fr5, est_isocenter) # End test at estimated isocenter ("origin")
-    
-    # Process scan data
-    for scan_result in grav_test_scan_data:
-        position: np.ndarray = scan_result[0]
-        light_intensity: float = scan_result[1]
-
-        grav_test_pos_data.append(position)
-        grav_test_light_data.append(light_intensity)
+     # Rotate the robot to the correct side to scan lase (left or right side)
+    if side == "left":
+        rot_angle = 90 # Degrees; if left -> rotate 90 about current z0 (robot)
+        #com._rotate(fr5, axis = "z", angle = 90)
+    elif side == "right":
+        rot_angle =  - 90 # Degrees; if right -> rotate -90 about current z0 (robot)
+        #com._rotate(fr5, axis = "z", angle = -90)   
+        
+    # Add offsets depedning on which new side laser is located
 
     # Alan returns: offset for angle needed to adjust about Y
         #DataProcessing(grav_test_position_data, grav_test_light_data)
@@ -115,7 +105,9 @@ def gravity_test_automated(x, y, z, fr5=com.RobotCom, Navg=4,
     # END PROCEDURE 2: MOVE IN YZ ----> ANGLE ABOUT (WRT) X AXIS
     # ===========================================================
 
-
+    # global value in robot.com to store offsets for both axes (X, Y, and Z) to adjust robot rotation
+    
+    # REPEAT IF NEEDED IF NOT WITHIN 0.1 DEGREES
 
     # ============================================================        
     # FINALIZATION: RETURN ANGLE OFFSETS FOR BOTH AXES (X AND Y) TO ADJUST ROBOT ROTATION
@@ -177,7 +169,7 @@ def collimator_test_automated(x, y, z, freq=4500, Navg=4,threshold: float = 0.75
     return
 
 
-def gantry_test_automated(x, y, z, freq=4500, Navg=4,threshold: float = 0.75, step_length: int = 1, 
+def gantry_test_automated(x, y, z, freq=4500, Navg=4,threshold: float = 0.75, step_length: int = 1,
                           length: float = 100.0,width: float = 100.0,angle: float = 0.0,fr5=None):
     '''
     gantry_test_automated
@@ -225,3 +217,26 @@ def gantry_test_automated(x, y, z, freq=4500, Navg=4,threshold: float = 0.75, st
     # DataProcessing(gantry_test_pos_data, gantry_test_light_data)
 
     return
+
+'''
+ offset_angle = 0 # Degrees
+    gen_rot_matrix = paths.get_rotation_matrix("z", grav_rectangle_points, rot_angle, offset_angle) # Rotate about x-axis to point photo-diode in y-direction
+    grav_rotated_points: list = paths.rotate_points_basis_plane(grav_rectangle_points, gen_rot_matrix) # Rotate points in basis plane
+    rotated_path: list = paths.rectangle_path(est_isocenter, grav_rotated_points) # Create rotated path with rotated points
+    
+    # Move the robot and scan in the defined path
+    # start_data_recording()
+    move.execute_path(rotated_path, grav_test_scan_data, step_length) # Move and scan in rotated path accordingly
+    # end_data_recording()
+    
+    # Return to "home" pos ---> isocenter
+    com._position_move(fr5, est_isocenter) # End test at estimated isocenter ("origin")
+    
+    # Process scan data
+    for scan_result in grav_test_scan_data:
+        position: np.ndarray = scan_result[0]
+        light_intensity: float = scan_result[1]
+
+        grav_test_pos_data.append(position)
+        grav_test_light_data.append(light_intensity)
+'''
