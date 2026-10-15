@@ -1,10 +1,10 @@
 import numpy as np
-#import RobotCommunicator as com
+import RobotCommunicator as RC
 
 import labquest as lq
 
 # TODO: Complete functions
-def absolute_move_path(path: list):
+def absolute_move_path(fr5: RC.RobotCom, path: list):
     """
     absolute move_path()
     Generic: perform each movement in a moveset
@@ -19,10 +19,11 @@ def absolute_move_path(path: list):
         
         # Robot's/GUI move function here
         #fr5._position_move(x, y, z)     # Absolute Position
+        fr5._position_move(*np.array([x, y, z]))     # Absolute Position
         
     return
 
-def increment_move_and_scan(path: list, start_position: np.ndarray, scan_data: list, step_length: float = 1.0, avg_sample: int=5):
+def increment_move_and_scan(fr5: RC.RobotCom, path: list, start_position: np.ndarray, scan_data: list, Navg: int, step_length: float = 1.0):
     """
     move_and_path
     Move ---> scan AFTER the movement
@@ -53,9 +54,10 @@ def increment_move_and_scan(path: list, start_position: np.ndarray, scan_data: l
             dz: float = movement[2]     # Extract dz from moveset for that move
             
             #fr5._incriment_move(dx, dy, dz) # Vector Movement; robot gui funciton
+            fr5._increment_move(*np.array([dx, dy, dz])) # Vector Movement; robot gui funciton
 
             # Scan after movement
-            light_intensity = light_scan(light_intensity, avg_sample) # Scan after movement
+            light_intensity = light_scan(light_intensity, Navg) # Scan after movement
 
             # Update current absolute position
             current_position = current_position + movement
@@ -63,7 +65,7 @@ def increment_move_and_scan(path: list, start_position: np.ndarray, scan_data: l
             # Store scan data: corresponding position (absolute) & light intensity 
             store_data(scan_data, current_position, light_intensity)
 
-def execute_path(path: list, scan_data: list, step_length: float = 1.0):
+def execute_path(fr5: RC.RobotCom, path: list, scan_data: list, Navg: int, step_length: float = 1.0):
     """
     execute_path()
     Execute each path in a rectangle (path).
@@ -74,10 +76,10 @@ def execute_path(path: list, scan_data: list, step_length: float = 1.0):
     for move, scan, start_pos in path:
         
         if scan:
-            increment_move_and_scan(move, start_pos, scan_data, step_length) # Scan if True
+            increment_move_and_scan(fr5, move, start_pos, scan_data, Navg, step_length) # Scan if True
 
         else:
-            absolute_move_path(move) # Move without scanning
+            absolute_move_path(fr5, move) # Move without scanning
 
     return
 

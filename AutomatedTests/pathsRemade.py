@@ -7,6 +7,8 @@ from XRBPlotter import Rx, Ry, Rz
 # (x,y,z): tuple ---> immutable: can't change
 # [x,y,z]: list ---> mutable: can change
 
+# ===================== MOTION PLANNING FUNCTIONS: POINTS, PATHS, ROTATIONS =====================
+
 def straight_path(p1: np.ndarray, p2: np.ndarray) -> list:
     """
     straight_path()
@@ -73,17 +75,17 @@ def basis_plane_calculate_four_points(isocenter: np.ndarray, length: float, widt
         If isoceneter = (0,0,0) -> pointsa are both abs pos and displacement
         If isoceneter != (0,0,0) -> points are only abs pos
         
-        ASSUMES: Rectangle in XZ plane (basis)
+        ASSUMES: Rectangle in XY plane (basis)
     '''
     
     # Isocenter-Referenced Shape
     half_length: float = length / 2
     half_width: float = width / 2
     
-    p1: np.ndarray = np.array([-half_length, 0,  half_width]) # Top-left corner     (-x, 0, +z)
-    p2: np.ndarray = np.array([ half_length, 0,  half_width]) # Top-right corner    (+x, 0, +z)
-    p3: np.ndarray = np.array([ half_length, 0, -half_width]) # Bottom-right corner (+x, 0, -z)
-    p4: np.ndarray = np.array([-half_length, 0, -half_width]) # Bottom-left corner  (-x, 0, -z)
+    p1: np.ndarray = np.array([-half_length,  half_width, 0]) # Top-left corner     (-x, +y, 0)
+    p2: np.ndarray = np.array([ half_length,  half_width, 0]) # Top-right corner    (+x, +y, 0)
+    p3: np.ndarray = np.array([ half_length, -half_width, 0]) # Bottom-right corner (+x, -y, 0)
+    p4: np.ndarray = np.array([-half_length, -half_width, 0]) # Bottom-left corner  (-x, -y, 0)
     
     # Move points from isocenter-reference to robot/world coordinates
     p1 = p1 + isocenter
@@ -95,10 +97,10 @@ def basis_plane_calculate_four_points(isocenter: np.ndarray, length: float, widt
     
     return points
 
-def rotate_points_basis_plane(points: list, rotation_matrix: np.ndarray):
+def rotate_basis_plane_points(points: list, rotation_matrix: np.ndarray):
     '''
-    rotate_points_basis_plane(points: list, rotation_matrix: np.ndarray):
-        Rotate list of points using rotation matrix
+    rotate_basis_plane_points(points: list, rotation_matrix: np.ndarray):
+        Rotate list of points of basis plane using rotation matrix
     '''
 
     rotated_point: np.ndarray # Extract the rotated point from the rotation matrix
@@ -129,6 +131,9 @@ def rotation_matricies(matrix1: np.ndarray, rotation_matricies: list[np.ndarray]
     for matrix in rotation_matricies:
         new_matrix = np.matmul(matrix1, matrix)
     return new_matrix
+   
+ # =================================================================================  
+
    
 # ===================== ROTATION MATRICES FOR EACH LINAC TEST ==========================
 
