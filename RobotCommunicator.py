@@ -14,6 +14,7 @@ import settingshandler as settings
 
 class RobotCom(RPC):
     HOME = [0, -45, -135, -90, 90, 0]
+    TOOL_RBASE = [0, 180, 90]
     AXIS_LIMIT = [
         (-175, 175),
         (-265, 85),
@@ -35,6 +36,7 @@ class RobotCom(RPC):
         self._stop_event = threading.Event()
         self._monitor_threads: set[threading.Thread] = set()
         self.cur_tool = 0
+        self.isocenter_set = False
         self.offsets:list[tuple[str, np.ndarray[float, float]]] = []
         self._disable_move_widgets: list[tk.BaseWidget] = []
         
@@ -46,12 +48,12 @@ class RobotCom(RPC):
         self.action_queue:queue.Queue[tuple[object, threading.Event]] = queue.Queue()
         threading.Thread(target=self._queue_runner, name='robot movement queue',daemon=True).start()
 
-    def offset_add(self, reason, drx=0.0, dry=0.0, drz=0.0):
-        self.offsets.append((reason, np.array([drx, dry, drz]))) 
+    def offset_add(self, reason, x=0.0, y=0.0, z=0.0, drx=0.0, dry=0.0, drz=0.0):
+        self.offsets.append((reason, np.array([x, y, z, drx, dry, drz]))) 
 
     @property
     def offset(self):
-        cur_offset = np.array([0.0, 0.0, 0.0])
+        cur_offset = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         for reason, offset in self.offsets:
             cur_offset += offset
         return cur_offset 
@@ -155,9 +157,10 @@ class RobotCom(RPC):
         #next_pos = self.GetActualTCPPose(0)[1] + np.array([dx, dy, dz, drx, dry, drz])
         #joint_angles = self._invk(*next_pos, self.cur_tool)
         #return self._joint_move(joint_angles, in_thread)
+        
         funct = lambda: self.MoveL(
-                    desc_pos=self.GetActualTCPPose(0)[1],
-                    tool=0,
+                    desc_pos=self.GetActualTCPPose(1)[1],
+                    tool=self.cur_tool,
                     user=0,
                     joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     vel=10.0,
@@ -180,11 +183,7 @@ class RobotCom(RPC):
 
     def _position_move(self, x, y, z, rx=0.0, ry=0.0, rz=0.0, ref=4, vel=20.0, acc=100.0, in_thread=False):
         self._check_stop_interrupt()
-        pos = self.GetActualTCPPose(0)
-        if isinstance(pos, int):
-            desc_pos = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        else:
-            desc_pos = pos[1]
+        desc_pos = self.isocenter if self.isocenter_set else self.GetActualTCPPose(1)[1]
         #desc_pos = [1]
         #next_pos = np.array([x, y, z, rx, ry, rz])
         #joint_angles = self._invk(*next_pos, self.cur_tool)
@@ -213,7 +212,7 @@ class RobotCom(RPC):
 
     def _joint_move(self, joint_pos, in_thread=False):
         self._check_stop_interrupt()
-        tool=0
+        tool=self.cur_tool
         user=0
         desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0]
         vel = 20.0
@@ -286,10 +285,13 @@ class RobotCom(RPC):
         return join_pos
 
     def set_isocenter(self, x, y, z, rx, ry, rz):
-        self.isocenter = np.array([x,y,z,rx,ry,rz])
+        self.isocenter_set = True
+        self.isocenter = np.array([x,y,z,*self.TOOL_RBASE])
         self.robot_logger.info(f'Setting Isocenter to {self.isocenter}')
         self.cur_tool = 2
-        self.SetToolList(self.cur_tool, self.isocenter, 0, 0, 0)
+        #self.SetToolCoord(self.cur_tool, self.isocenter, 0, 0, 0, 0)
+        #self.SetToolList(self.cur_tool, self.isocenter, 0, 0, 0)
+        #self.SetWObjCoord(0, self.isocenter, 0)
         self.robot_logger.info(f'Done Setting Isocenter to {self.isocenter}')
         self.robot_logger.info(f'{self.GetTCPOffset(0)}')
 
