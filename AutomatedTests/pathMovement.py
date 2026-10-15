@@ -8,7 +8,7 @@ def absolute_move_path(path: list):
     """
     absolute move_path()
     Generic: perform each movement in a moveset
-    Helper Function: making move compatible with a defined path
+    HELPER FUNCTION: making move compatible with a defined path
     """
     for position in path:
         x: float = position[0]     # Extract x from moveset for that move
@@ -61,14 +61,14 @@ def increment_move_and_scan(path: list, start_position: np.ndarray, scan_data: l
             current_position = current_position + movement
             
             # Store scan data: corresponding position (absolute) & light intensity 
-            store_data(scan_data, current_position, light_intensity) # Append data 
+            store_data(scan_data, current_position, light_intensity)
 
 def execute_path(path: list, scan_data: list, step_length: float = 1.0):
     """
     execute_path()
     Execute each path in a rectangle (path).
     Determines whether to move only or move and scan.
-    Wrapper function to choose if scanning after move or not
+    WRAPPER FUNCTION: choose if scanning after (incremental) move or not
     """
 
     for move, scan, start_pos in path:
@@ -96,5 +96,4 @@ def light_scan(light_intensity: float, avg_sample: int = 5):
     _, light_intensity = lq.read(avg_sample) # Return an int (or similar)
 
     return light_intensity
-    
     
