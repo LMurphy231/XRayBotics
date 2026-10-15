@@ -35,14 +35,14 @@ def _create_styles(root):
     #style.theme_use("clam")
     style.configure('Warning.TButton', bordercolor="#FF0000", lightcolor='red', background="white",)
     style.configure('Default.TButton', background="white",)
-    print(style.element_names())
 
 INI = 'xrb.ini'
 
 class TestPage:
-    def __init__(self, name, root:tk.Frame, opts:settings.OptionDict=None, description=''):
+    def __init__(self, name, root:tk.Frame, robot:rc.RobotCom=None, opts:settings.OptionDict=None, description=''):
         self.name = name
         self.opts = opts
+        self.robot = robot
 
         self.description = inspect.cleandoc(description)
         root.rowconfigure(0, weight=1)
@@ -87,7 +87,7 @@ class TestPage:
         input_frame = tk.Frame(self.frame)
         settings_frame = tk.Frame(input_frame)
         settings_frame.grid(row=0, column=0, sticky=tk.NSEW)
-        settings.OptionTree(settings_frame, self.opts, self.option_sections)
+        self.option_tree = settings.OptionTree(settings_frame, self.opts, self.option_sections)
         return input_frame
 
     def _create_start_frame(self) -> tk.Frame:
@@ -99,10 +99,15 @@ class TestPage:
         """
         header_frame = tk.Frame(self.frame)
         if self.opts is not None:
-            tk.Button(header_frame, command=lambda: self.opts.save(*self.option_sections), text='Save to Default', ).grid(row=0, column=0)
-            tk.Button(header_frame, command=self._load_vars, text='Load Default', ).grid(row=0, column=1)
-        tk.Button(header_frame, command=self.start, text='Start test', ).grid(row=0, column=2)
-        tk.Button(header_frame, command=self.start, text='Stop test',).grid(row=0, column=3)
+            tk.Button(header_frame, command=self.option_tree.save, text='Save to Default', ).grid(row=0, column=0)
+            tk.Button(header_frame, command=self.option_tree.load, text='Load Default', ).grid(row=0, column=1)
+        
+        start_button = tk.Button(header_frame, command=self.start, text='Start test', )
+        start_button.grid(row=0, column=2)
+        if self.robot is not None:
+            self.robot._disable_move_widgets.append(start_button)
+            
+        tk.Button(header_frame, command=self.robot.interrupt_threads, text='Stop test',).grid(row=0, column=3)
         return header_frame
 
     def _create_test_demo_frame(self) -> tk.Frame:
@@ -187,12 +192,11 @@ class TestPage:
             self.traces[i] = (var, add_trace, trace_type, trace_id) 
 
 class SquareTest(TestPage):
-    def __init__(self, name, root:tk.Frame, sensor:ls.SensorManager, robot:rc.RobotCom):
+    def __init__(self, name, root:tk.Frame, robot:rc.RobotCom, sensor:ls.SensorManager):
         self.root = root
         
-        self.robot = robot
         self.sensor = sensor
-        TestPage.__init__(self, name, self.root)
+        TestPage.__init__(self, name, self.root, robot)
 
     def _create_input_frame(self):
         
@@ -219,7 +223,7 @@ class SquareTest(TestPage):
                         ).start()
         
 class GravityTest(TestPage):
-    def __init__(self, name, root:tk.Frame, opts:settings.OptionDict):
+    def __init__(self, name, root:tk.Frame, robot:rc.RobotCom, opts:settings.OptionDict):
         self.root = root
         description = """
         Description
@@ -233,7 +237,7 @@ class GravityTest(TestPage):
         Press start.
         """
         
-        TestPage.__init__(self, name, self.root, opts, description=description)
+        TestPage.__init__(self, name, self.root, robot, opts, description=description)
     
     def _default_settings(self):
 
@@ -307,7 +311,7 @@ class GravityTest(TestPage):
         #    pass
 
 class CollimatorTest(TestPage):
-    def __init__(self, name, root:tk.Frame, opts:settings.OptionDict):
+    def __init__(self, name, root:tk.Frame, robot:rc.RobotCom, opts:settings.OptionDict):
         self.root = root
         description = """
         Description
@@ -319,7 +323,7 @@ class CollimatorTest(TestPage):
 
         Press start.
         """
-        TestPage.__init__(self, name, self.root, opts, description=description)
+        TestPage.__init__(self, name, self.root, robot, opts, description=description)
     
     def _default_settings(self):
         section = 'linac.jaws'
@@ -454,62 +458,6 @@ class MessageTerminal(logging.Handler):
         except Exception:
             self.handleError(record)
 
-class SettingsWindow:
-    def __init__(self, root, opts:settings.OptionDict):
-        self.root = root
-        self.opts = opts
-        self.window = None
-        self.section_frame = None
-
-    def save(self, sections):
-        for section in sections:
-            for option in self.vars[section]:
-                self.opts[section][option] = str(self.vars[section][option].get())
-
-        with open(INI, 'w') as f:
-            self.opts.write(f)
-
-    def show(self, section='all'):
-        if self.window is None:
-            self.window = tk.Toplevel(self.root)
-        self.window.title(f'{section.capitalize()} Settings')
-        self.window.grab_set()
-        self.window.protocol("WM_DELETE_WINDOW", self._destroy_window) 
-
-        self._build_section(section)
-        
-    def _destroy_window(self):
-        self.section_frame = self.section_frame.grid_forget()
-        self.window        = self.window.destroy()
-
-    def _build_section(self, sections:str):
-        if isinstance(sections, str):
-            
-            if sections == 'all': # Add all sections to section list
-                sections = tuple(self.opts.sections())
-            else: # Only add selected section to section list
-                sections = (sections,)
-            
-        if self.section_frame:
-            self.section_frame.grid_forget()
-        self.section_frame = tk.Frame(self.window)
-        self.section_frame.grid(row=0, column=0, sticky=tk.NSEW)
-        self.vars = {}
-        i = 0
-        for section in sections:
-            assert section in self.opts.sections(), f'Section {section} not in current settings!'
-            tk.Label(self.section_frame, text=f'[{section}]').grid(row=i, column=0)
-            for j, option in enumerate(self.opts.options(section)):
-                tk.Label(self.section_frame, text=option.capitalize()).grid(row=i+j+1, column=0)
-                var = tk.StringVar(value=self.opts.get(section, option))
-                tk.Entry(self.section_frame, textvariable=var).grid(row=i+j+1, column=1, sticky=tk.NSEW)
-                self.vars.setdefault(section, {})
-                self.vars[section][option] = var
-            i += j + 1
-
-        tk.Button(self.window, text='Save', command=lambda: self.save(sections)).grid(row=1, column=0)
-
-
 class GUI:
     def __init__(self, name = 'XRayBotics'):
         self.window = tk.Tk()
@@ -532,6 +480,7 @@ class GUI:
 
         self.gui_logger.debug(f'Running Mainloop')
         self.window.mainloop()
+        self.ls.close()
 
     def _build(self):
         self.window.columnconfigure(0, weight=1)
@@ -569,7 +518,7 @@ class GUI:
         settings_frame = tk.Frame(self.root)
         #settings_frame.grid(row=1, column=1, columnspan=2, sticky=tk.NSEW)
         self._create_options_window(settings_frame)
-
+        
     def _create_loggers(self):
         self.gui_logger = logging.getLogger('GUI logger')
         self.gui_logger.setLevel(1)
@@ -647,7 +596,7 @@ class GUI:
                 else:
                     widget = tk.Frame(minor_frame)
                     tk.Label(widget, textvariable=var, width=5).grid(row=0, column=0,sticky=tk.EW)
-                    tk.Scale(widget, from_=0.0, to=100.0, orient=tk.HORIZONTAL, width=13, resolution=0.01, variable=var, showvalue=False).grid(row=0, column=1, sticky=tk.NSEW)
+                    tk.Scale(widget, from_=-100.0, to=100.0, orient=tk.HORIZONTAL, width=13, resolution=0.01, variable=var, showvalue=False).grid(row=0, column=1, sticky=tk.NSEW)
                 
                 widget.grid(row=index%3,column=1+2*(index//3),sticky=tk.NSEW)
                 minor_frame.columnconfigure(1+2*(index//3), minsize=75)
@@ -661,7 +610,8 @@ class GUI:
         bool_var = tk.BooleanVar(value=False)
         tk.Checkbutton(sub_frame, text='Use Slider', variable=bool_var, command=lambda *args, frames=minior_frames, var=bool_var: 
                         frames[0 if var.get() else 1].grid_forget() == 
-                        frames[1 if var.get() else 0].grid(row=0, column=0, sticky=tk.NSEW)
+                        frames[1 if var.get() else 0].grid(row=0, column=0, sticky=tk.NSEW) ==
+                        self.gui_logger.debug(f'Now showing {"Sliders" if var.get() else "Entry"} for Incremental Movement')
                         ).grid(row=1, column=0)
         minior_frames[1 if bool_var.get() else 0].grid(row=0, column=0, sticky=tk.NSEW)
 
@@ -703,7 +653,8 @@ class GUI:
         bool_var = tk.BooleanVar(value=False)
         tk.Checkbutton(sub_frame, text='Use Slider', variable=bool_var, command=lambda *args, frames=minior_frames, var=bool_var: 
                         frames[0 if var.get() else 1].grid_forget() == 
-                        frames[1 if var.get() else 0].grid(row=0, column=0, sticky=tk.NSEW)
+                        frames[1 if var.get() else 0].grid(row=0, column=0, sticky=tk.NSEW) ==
+                        self.gui_logger.debug(f'Now showing {"Sliders" if var.get() else "Entry"} for Joint Movement')
                         ).grid(row=1, column=0)
         minior_frames[1 if bool_var.get() else 0].grid(row=0, column=0, sticky=tk.NSEW)
 
@@ -720,6 +671,7 @@ class GUI:
 
         move_button = tk.Button(button_frame, text='Move')
         move_button.grid(row=0, column=0, sticky=tk.NSEW)
+        self.robot._disable_move_widgets.append(move_button)
 
         reset_var_button = tk.Button(button_frame, text='Reset Position')
         reset_var_button.grid(row=1, column=0, sticky=tk.NSEW)
@@ -727,8 +679,12 @@ class GUI:
         
 
         tk.Button(button_frame, text='Stop Robot'   , command = self.robot.stop).grid(row=0, column=1, sticky=tk.NSEW)
-        tk.Button(button_frame, text='Set Isocenter', command = lambda: self.robot.set_isocenter(*self.robot._get_tool_position())).grid(row=1, column=1, sticky=tk.NSEW)
-        tk.Button(button_frame, text='Home'         , command = lambda: self.robot.home()).grid(row=2, column=1, sticky=tk.NSEW)
+        isocenter_button = tk.Button(button_frame, text='Set Isocenter', command = lambda: self.robot.set_isocenter(*self.robot._get_tool_position()))
+        isocenter_button.grid(row=1, column=1, sticky=tk.NSEW)
+        home_button = tk.Button(button_frame, text='Home'         , command = lambda: self.robot.home())
+        home_button.grid(row=2, column=1, sticky=tk.NSEW)
+
+        self.robot._disable_move_widgets.extend([home_button, isocenter_button])
 
         def _change_functions(event:tk.Event):
             if event is None:
@@ -741,7 +697,6 @@ class GUI:
 
         move_type_notebook.bind('<<NotebookTabChanged>>', _change_functions)
 
-       
     def _create_options_window(self, frame:tk.Frame):
         self.option_tree = settings.OptionTree(frame, self.opts)
 
@@ -755,9 +710,9 @@ class GUI:
         frame.rowconfigure(1, weight=0)
         frame.columnconfigure(1, weight=1)
         self.test_types:dict[str, TestPage] = {
-            'Ladder'    : SquareTest('SquareTest'        , self.test_frame, self.ls, self.robot),
-            'Gravity'   : GravityTest('GravityTest'      , self.test_frame, self.opts),
-            'Collimator': CollimatorTest('CollimatorTest', self.test_frame, self.opts),
+            'Ladder'    : SquareTest('SquareTest'        , self.test_frame, self.robot, self.ls),
+            'Gravity'   : GravityTest('GravityTest'      , self.test_frame, self.robot, self.opts),
+            'Collimator': CollimatorTest('CollimatorTest', self.test_frame, self.robot, self.opts),
             
         }
         self.current_test:TestPage = None
@@ -778,7 +733,7 @@ class GUI:
         textbox_notebook.add(debug_frame, text='Messages')
 
 
-        textbox = tk.Text(debug_frame, state=tk.NORMAL)
+        textbox = scrolledtext.ScrolledText(debug_frame, state=tk.NORMAL)
         textbox.grid(row=0, column=0, sticky=tk.NSEW)
 
         message_handler = MessageTerminal(textbox, logging.INFO) 
@@ -788,7 +743,7 @@ class GUI:
         message_frame = tk.Frame(textbox_notebook)
         textbox_notebook.add(message_frame, text='Debug')
 
-        textbox2 = tk.Text(message_frame, state=tk.NORMAL)
+        textbox2 = scrolledtext.ScrolledText(message_frame, state=tk.NORMAL)
         textbox2.grid(row=0, column=0, sticky=tk.NSEW)
 
         self.debug_textbox = MessageTerminal(textbox2, logging.DEBUG) 
@@ -817,7 +772,7 @@ def _update_var(vars:dict[str, tk.Variable], value, sections=[]):
     if sections[0] not in vars:
         return
     if len(sections) == 1:
-        print(sections, vars[sections[0]])
+        #print(sections, vars[sections[0]])
         vars[sections[0]].set(value)
     else:
         _update_var(vars[sections[0]], value, sections[1:])
@@ -829,11 +784,11 @@ def _update_opts(vars:dict[str, dict[str, tk.Variable]], opts:settings.OptionDic
         if isinstance(item, dict):
             _update_opts(item, opts, cur_section)
         elif isinstance(item, tk.Variable):
-            print(f'Updating: ["{section_name}"]["{section}"] = {item.get()}')
+            #print(f'Updating: ["{section_name}"]["{section}"] = {item.get()}')
             opts.setdefault(section_name + '.default', {})
             opts[section_name + '.default'][section] = str(item.get())
         else:
-            print(f'Updating: ["{section_name}"] = {item}')
+            #print(f'Updating: ["{section_name}"] = {item}')
             opts.setdefault(section_name + '.default', {})
             opts[section_name + '.default'][section] = str(item)
 

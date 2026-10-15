@@ -71,8 +71,6 @@ def open_labquest():
     try:
         ls = lq.LabQuest()
         ls.open()
-        atexit.register(lambda: ls.close())
-        
         ls.select_sensors(ch1="lq_sensor")
         ls.start(period = 0.01)
         yield ls

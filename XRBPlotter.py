@@ -67,10 +67,10 @@ def transformation_matrix(DH:DenavitHartenbergParameter, set_angle=None):
     if set_angle is not None:
         DH.set_angle = set_angle
 
-    A = rotate(Rz(DH.set_angle),Rx(DH.alpha))
+    A = rotate(Rz(DH.theta+DH.set_angle),Rx(DH.alpha))
     B = np.array([[
-        DH.a*np.cos(DH.set_angle),
-        DH.a*np.sin(DH.set_angle),
+        DH.a*np.cos(DH.theta + DH.set_angle),
+        DH.a*np.sin(DH.theta + DH.set_angle),
         DH.d
         ]]).T
     C = np.array([[0,0,0]])
@@ -182,7 +182,6 @@ class Plotter:
 
     def plot_shape(self, points):
         points = [[tuple(point) for point in points],]
-        print(points)
         square = Poly3DCollection(points)
         self.ax.add_collection3d(square)
 
@@ -200,7 +199,8 @@ if __name__ == '__main__':
         vars.append(var)
         
         var.trace_add('write', lambda *args: plotter.plot_robot([var.get()*np.pi/180 if var.get() else 0.0 for var in vars]))
-        tk.Entry(entry_frame, textvariable=var).grid(row=i, column=0, sticky=tk.NSEW)
+        tk.Label(entry_frame, text=f'Joint {i}: ').grid(row=i, column=0, sticky=tk.E)
+        tk.Entry(entry_frame, textvariable=var).grid(row=i, column=1, sticky=tk.NSEW)
     tk.Button(entry_frame, text='plot', command=lambda: plotter.plot_robot([var.get()*np.pi/180 if var.get() else 0.0 for var in vars])).grid(row=6, column=0)
 
     plotter.plot_robot([var.get()*np.pi/180 for var in vars])

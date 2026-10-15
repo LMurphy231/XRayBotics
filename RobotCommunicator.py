@@ -13,7 +13,7 @@ import settingshandler as settings
 
 
 class RobotCom(RPC):
-    HOME = [0, -45, -135, -180, -90, 90]
+    HOME = [0, -45, -135, -90, 90, 0]
     AXIS_LIMIT = [
         (-175, 175),
         (-265, 85),
@@ -27,21 +27,61 @@ class RobotCom(RPC):
         self.robot_logger = logging.getLogger('robot')
         self.logger = logging.getLogger('GUI logger')
         self.logger.info('Connecting to Farino FR5')
-        self._move_lock = threading.Lock()
-        self.cur_tool = 0
+        
         self.error_label = self.user_input_window = None
         self.opts = opts
-        self._default_options()
 
+        self._move_lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._monitor_threads: set[threading.Thread] = set()
+        self.cur_tool = 0
+        self.offsets:list[tuple[str, np.ndarray[float, float]]] = []
+        self._disable_move_widgets: list[tk.BaseWidget] = []
+        
+        self._default_options()
+        
         threading.Thread(target=RPC.__init__, args=(self, ip), daemon=True).start()
         #threading.Thread(target=self._status_check, args=(root,), daemon=True).start()
         self.move_thread = threading.Thread(target=lambda:None)
         self.action_queue:queue.Queue[tuple[object, threading.Event]] = queue.Queue()
         threading.Thread(target=self._queue_runner, name='robot movement queue',daemon=True).start()
-        
+
+    def offset_add(self, reason, drx=0.0, dry=0.0, drz=0.0):
+        self.offsets.append((reason, np.array([drx, dry, drz]))) 
+
+    @property
+    def offset(self):
+        cur_offset = np.array([0.0, 0.0, 0.0])
+        for reason, offset in self.offsets:
+            cur_offset += offset
+        return cur_offset 
+
+    def set_widget_statuses(self, state:bool):
+        set_state = tk.NORMAL if state else tk.DISABLED
+        for widget in self._disable_move_widgets:
+            widget.configure(state=set_state)
+
+    def register_thread(self):
+        self._monitor_threads.add(threading.current_thread())
+
+    def interrupt_threads(self):
+        self._stop_event.set()
+        self.stop()
+        for thread in list(self._monitor_threads):
+            thread.join()
+            self._monitor_threads.remove(thread)
+        self._stop_event.clear()
+
+    def _check_stop_interrupt(self):
+        if self._stop_event.is_set():
+            
+            raise InterruptedError(f'{threading.current_thread().name} stopped from stopped event.')
+
     def _queue_runner(self):
         while True:
+            self.set_widget_statuses(True)
             funct, event = self.action_queue.get()
+            self.set_widget_statuses(False)
             print(f'Result: {funct()}')
             event.set()
 
@@ -94,7 +134,7 @@ class RobotCom(RPC):
         self.user_input_window = None
         self.error_label = None
     
-    def _incriment_move(self, dx, dy, dz, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=100.0, in_thread=False):
+    def _incriment_move(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=100.0, in_thread=False):
         '''
         Move Arm with incrimental movements. 
 
@@ -108,6 +148,7 @@ class RobotCom(RPC):
         
         acc: Acceleration - default: 100.0
         '''
+        self._check_stop_interrupt()
         self.logger.debug(f'Queing Incrimental Movement ({dx}, {dy}, {dz})')
         print(f'Queing Incrimental Movement ({dx}, {dy}, {dz})')
         print(f'Current Position: {self.GetActualTCPPose(0)}')
@@ -138,6 +179,7 @@ class RobotCom(RPC):
         print(funct())
 
     def _position_move(self, x, y, z, rx=0.0, ry=0.0, rz=0.0, ref=4, vel=20.0, acc=100.0, in_thread=False):
+        self._check_stop_interrupt()
         pos = self.GetActualTCPPose(0)
         if isinstance(pos, int):
             desc_pos = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -170,6 +212,7 @@ class RobotCom(RPC):
         funct()
 
     def _joint_move(self, joint_pos, in_thread=False):
+        self._check_stop_interrupt()
         tool=0
         user=0
         desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0]
@@ -245,10 +288,10 @@ class RobotCom(RPC):
     def set_isocenter(self, x, y, z, rx, ry, rz):
         self.isocenter = np.array([x,y,z,rx,ry,rz])
         self.robot_logger.info(f'Setting Isocenter to {self.isocenter}')
-        print(f'Setting Isocenter to {self.isocenter}')
         self.cur_tool = 2
-        self.SetToolCoord(1, self.isocenter, 0, 0, self.cur_tool, 1)
-        print(f'Done Setting Isocenter to {self.isocenter}')
+        self.SetToolList(self.cur_tool, self.isocenter, 0, 0, 0)
+        self.robot_logger.info(f'Done Setting Isocenter to {self.isocenter}')
+        self.robot_logger.info(f'{self.GetTCPOffset(0)}')
 
 
     def _update_connection(self):
@@ -262,9 +305,10 @@ class RobotCom(RPC):
             time.sleep(5)
 
     def stop(self):
-        print('stopping')
+        
         while not self.action_queue.empty():
             self.action_queue.get()
+        
         self.StopMove()
 
     def _test_square(self, lq:SensorManager, x1, y1, z, length, width, angle=0.0, step_length=0.001, avg_sample=5):

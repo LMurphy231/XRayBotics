@@ -115,6 +115,13 @@ class OptionDict(collections.UserDict):
             else:
                 yield '.'.join([section, sect]), obj
 
+    def print(self):
+        for section in self.sections:
+            #print(f'{section}:')
+            for option in self.options(section):
+                opt = self.get(section, option)
+                print(f'{opt.display_name}:{opt.units}:{opt.description}')
+
 @dataclasses.dataclass
 class TreeColumn:
     name        : str
@@ -300,8 +307,17 @@ class OptionTree:
         entry.bind("<FocusOut>", lambda e: _on_focus_out(entry))
     
     def save(self):
-        self.opts.save(self.sections)
-        
+        self.opts.save(*self.sections)
+
+    def load(self):
+        for section in self.sections:
+            for sect in self.opts.sections:
+                if not sect.startswith(section):
+                    continue
+                for option in self.opts.options(sect):
+                    self.opts.get(sect, option).load_user_default()
+        self._update()
+
 global active_trees
 active_trees: list[OptionTree] = []
 
@@ -318,3 +334,7 @@ if __name__ == '__main__':
     opts.add_option(section, 'user', 0   , tk.IntVar()   , display_name='User'    , description='Artifact number')
     opts.add_option(section, 'vel' , 10.0, tk.DoubleVar(), display_name='Velocity', units='%%', description='Percentage of speed')
     
+    for section in opts.sections:
+        print(section)
+        for option in opts.options(section):
+            print(option)
