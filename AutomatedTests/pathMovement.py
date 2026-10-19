@@ -29,9 +29,9 @@ def increment_move_and_scan(fr5: RC.RobotCom, path: list, start_position: np.nda
     Move ---> scan AFTER the movement
     """
 
-    light_intensity: float  # Store light values
-    current_position: np.ndarray     # Store position values
-    
+    light_intensity: float = 0.0  # Store light values
+    current_position: np.ndarray  # Store position values
+
     current_position = start_position.copy()
     
     # Find moveset to increment
@@ -57,7 +57,7 @@ def increment_move_and_scan(fr5: RC.RobotCom, path: list, start_position: np.nda
             fr5._increment_move(*np.array([dx, dy, dz])) # Vector Movement; robot gui funciton
 
             # Scan after movement
-            light_intensity = light_scan(light_intensity, Navg) # Scan after movement
+            light_intensity = light_scan(Navg) # Scan after movement
 
             # Update current absolute position
             current_position = current_position + movement
@@ -93,9 +93,10 @@ def store_data(scan_data: list, position: np.ndarray, light_intensity: float):
     
     return
 
-def light_scan(light_intensity: float, avg_sample: int = 5):
+def light_scan(Navg: int = 5):
     
-    _, light_intensity = lq.read(avg_sample) # Return an int (or similar)
+    light_intensity: float  # Store light values
+    _, light_intensity = lq.read(Navg) # Return an int (or similar)
 
     return light_intensity
     

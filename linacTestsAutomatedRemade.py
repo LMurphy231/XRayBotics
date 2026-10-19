@@ -7,7 +7,7 @@ import AutomatedTests.pathMovement as move
 import AutomatedTests.pathsRemade as paths
 
 def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side: str, 
-                           Navg: int = 4, step_length: int = 1, 
+                           Navg: int = 4, step_length: float = 1.0, 
                            length: float = 100.0, width:float = 100.0):
     '''
     gravity_test_automated
@@ -25,7 +25,7 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     '''
     
     # ============================================================
-    # INITIALIZATION STATE: ROTATE ROBOT TO CORRECT SIDE, RETURN TO ISOCENTER, INITIALIZE DATA COLLECTION
+    # START INITIALIZATION STATE: INITIALIZE DATA COLLECTION
     # ============================================================
     
     # Define variables and data to collect
@@ -38,6 +38,15 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     
     grav_plane_angle: int = 0               # Angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
     grav_rot_matrix: np.ndarray = np.eye(3) # Rotation matrix to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
+    grav_angle_offset: float = 0.0          # Offset angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
+
+    # ============================================================
+    # END INITIALIZATION STATE: INITIALIZE DATA COLLECTION
+    # ============================================================
+
+    # ============================================================
+    # START MOTION PLANNING STATE: ROTATE ROBOT TO CORRECT SIDE, RETURN TO ISOCENTER, DEFINE MOVEMENT PATH
+    # ============================================================
     
     # Return to "home" pos ---> isocenter+
     est_isocenter: np.ndarray = np.array([x, y, z])
@@ -60,21 +69,21 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     # Define new rectangle points and path for Gravity Test based on rotation of basis plane points          
     if grav_plane_angle != 0:
         # Rotate rectangle points about z-axis to point photo-diode in +/- y-direction
-        grav_rot_matrix = paths.get_rotation_matrix("z", basis_points, grav_plane_angle) 
-        grav_rectangle_points = paths.rotate_basis_plane_points(basis_points, grav_rot_matrix)
+        grav_rot_matrix = paths.get_rotation_matrix("z", grav_plane_angle, grav_angle_offset) # Rotate about z-axis to point photo-diode in +/- y-direction
+        grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
         grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points)       
     else:
         grav_rectangle_points = basis_points    # No rotation needed; laser already facing photodiode
         grav_path = basis_plane_path            # No rotation needed; laser already facing photodiode
               
-    # ============================================================       
-    # END INITIALIZATION STATE: ROTATE ROBOT TO CORRECT SIDE, RETURN TO ISOCENTER, INITIALIZE DATA COLLECTION        
-    # ============================================================        
-
+    # ============================================================
+    # END MOTION PLANNING STATE: ROTATE ROBOT TO CORRECT SIDE, RETURN TO ISOCENTER, DEFINE MOVEMENT PATH
+    # ============================================================
+    
             
             
     # ============================================================        
-    # PROCEDURE: MOVE IN XZ ----> GET ANGLE ABOUT (WRT) Y AXIS
+    # START CONTROL LOGIC: MOVE IN XZ ----> GET ANGLE ABOUT (WRT) Y AXIS
     # ===========================================================
 
     # Move the robot and scan in the defined path
@@ -103,7 +112,7 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     # TODO:
     
     # ============================================================        
-    # END PROCEDURE: MOVE IN XZ ----> GET ANGLE ABOUT (WRT) Y AXIS
+    # END CONTROL LOGIC: MOVE IN XZ ----> GET ANGLE ABOUT (WRT) Y AXIS
     # ===========================================================
        
        

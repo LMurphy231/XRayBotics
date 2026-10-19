@@ -1,6 +1,6 @@
 import numpy as np
 
-from XRBPlotter import Rx, Ry, Rz
+#from XRBPlotter import Rx, Ry, Rz
 #import RobotCommunicator as com
 #from LightSensor import SensorManager
 
@@ -9,11 +9,11 @@ from XRBPlotter import Rx, Ry, Rz
 
 # ===================== MOTION PLANNING FUNCTIONS: POINTS, PATHS, ROTATIONS =====================
 
-def straight_path(p1: np.ndarray, p2: np.ndarray) -> list:
+def straight_path_displacement(p1: np.ndarray, p2: np.ndarray) -> list:
     """
-    straight_path()
+    straight_path_displacement()
     Return a move list that stores the straight path
-    Returns Vector/displacement between 2 points, not absolute position
+    Returns displacement vector between 2 points, not absolute position
     ex:
         p1 = (1, 2, 3)
         p2 = (2, 4, 6)
@@ -30,7 +30,17 @@ def straight_path(p1: np.ndarray, p2: np.ndarray) -> list:
     # Create moveset:  one movement for entire path from p1 to p2 without increments
     movement.append(displacement)
     return movement
-    
+
+def straight_path_absolute(end_pos: np.ndarray):
+    """
+    Return the absolute destination position for a straight path.
+    """
+
+    abs_movement_path: list = []
+    abs_movement_path.append(end_pos.copy())
+
+    return abs_movement_path
+
 def rectangle_path(isocenter: np.ndarray, points: list):
     """
     rectangle_path()
@@ -50,13 +60,13 @@ def rectangle_path(isocenter: np.ndarray, points: list):
     p4: np.ndarray = points[3]
 
     # Create paths for each side; Decided internally
-    path_to_p1:     list = straight_path(isocenter, p1)     # Non-Incremental
-    path_p1_to_p2:  list = straight_path(p1, p2)            # Incremental
-    path_p2_to_p3:  list = straight_path(p2, p3)            # Non-Incremental
-    path_p3_to_p4:  list = straight_path(p3, p4)            # Incremental
+    path_to_p1:     list = straight_path_displacement(isocenter, p1)     # Non-Incremental
+    path_p1_to_p2:  list = straight_path_displacement(p1, p2)            # Incremental
+    path_p2_to_p3:  list = straight_path_displacement(p2, p3)            # Non-Incremental
+    path_p3_to_p4:  list = straight_path_displacement(p3, p4)            # Incremental
 
     # Store paths with scan information; True/False for Scanning
-    rectangle_paths: list[tuple[list[np.ndarray], bool]]= [
+    rectangle_paths: list[tuple[list[np.ndarray], bool, np.ndarray]]= [
         (path_to_p1, False, isocenter),
         (path_p1_to_p2, True, p1),
         (path_p2_to_p3, False, p2),
@@ -97,7 +107,7 @@ def basis_plane_calculate_four_points(isocenter: np.ndarray, length: float, widt
     
     return points
 
-def rotate_basis_plane_points(points: list, rotation_matrix: np.ndarray):
+def rotate_basis_plane_points(isocenter: np.ndarray, points: list, rotation_matrix: np.ndarray):
     '''
     rotate_basis_plane_points(points: list, rotation_matrix: np.ndarray):
         Rotate list of points of basis plane using rotation matrix
@@ -107,7 +117,9 @@ def rotate_basis_plane_points(points: list, rotation_matrix: np.ndarray):
     rotated_points: list = [] # Store rotated points
     
     for point in points:
-        rotated_point = rotate_point_with_matrix(point, rotation_matrix)    # Rotate the points
+        relative_point: np.ndarray = point - isocenter
+        rotated_point = rotate_point_with_matrix(relative_point, rotation_matrix)    # Rotate the points
+        rotated_point = rotated_point + isocenter
         rotated_points.append(rotated_point)                                # Add to list of newly rotated points 
 
     return rotated_points
@@ -126,7 +138,7 @@ def rotation_matricies(matrix1: np.ndarray, rotation_matricies: list[np.ndarray]
         Multiply multiple rotation matrices (list) together
     '''
     
-    new_matrix: np.ndarray # New matrix created by multiplying the rotation matrices together
+    new_matrix: np.ndarray = matrix1.copy() # New matrix created by multiplying the rotation matrices together
     
     for matrix in rotation_matricies:
         new_matrix = np.matmul(matrix1, matrix)
@@ -179,7 +191,7 @@ def Rz(angle: float):
 
 
 # ===================== HELPER FUNCTIONS ==========================================
-def get_rotation_matrix(axis: str, points: list, angle: float, offset: float):
+def get_rotation_matrix(axis: str, angle: float, offset: float):
     '''
     get_rotation_matrix_(points: list, angle: float)
         Create a rotation matrix for a given angle and apply it to a list of points
