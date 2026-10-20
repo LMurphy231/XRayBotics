@@ -106,7 +106,16 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
         #DataProcessing(grav_test_position_data, grav_test_light_data)
     
     dr_offset: float # STORE: ANGLE BETWEEN Y (TRUE) AND Z (ROBOT)
-    fr5.offset_add(dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)
+    # offset negative theta: CW
+    
+    if side == "left":
+        fr5.offset_add("Gravity", dry = dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)    
+    elif side == "right":
+        fr5.offset_add("Gravity", drx = dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)  
+    elif side == "front":
+        pass
+    
+    # ex: angle btwn X and Z axis which represents offset about Y
     
     # Use previouslycalculated offsets to adjust robot rotation about X and Y axes to align robot z-axis with true z-axis (gravity)
     # TODO:
