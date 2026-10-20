@@ -1,6 +1,7 @@
 
 import numpy as np
 import AutomatedTests.pathsRemade as paths
+import dataProcessingGravity as dp
 #from XRBPlotter import Rx, Ry, Rz
 
 def simulate_straight_path_displacement(
@@ -250,7 +251,15 @@ def simulate_gravity_test(
                 print(f"  Absolute destination: {current_position}")
 
     print(f"\nTotal simulated scans: {len(scan_data)}")
-    print("No physical robot or real sensor was used.")
+    #print("No physical robot or real sensor was used.")
+    
+    #dr_offset: float
+    #dr_offset = dp.calculate_gravity_angle(scan_data[0], scan_data[1])
+    #print(f"\nOffset Angle Calculated: {dr_offset}")
+    # Giving: 
+        # scan_data[0] = [(x1,y1,z1), (x2,y2,z3), ...] # List of np.ndarray
+        # scan_data[1] = [l1, l2, l3, ...] # List of floats
+    
 
 def main():
 
@@ -261,16 +270,16 @@ def main():
     p1: np.ndarray = np.array([10.0, 20.0, 30.0])
     p2: np.ndarray = np.array([20.0, 40.0, 60.0])
 
-    isocenter: np.ndarray = np.array([100.0, 200.0, 300.0])
-    length: float = 100.0
-    width: float = 50.0
+    isocenter: np.ndarray = np.array([0.0, 0.0, 0.0])
+    length: float = 10.0
+    width: float = 5.0
 
     axis: str = "z"
-    angle: float = 90.0
+    angle: float = 0.0
     offset: float = 0.0
 
     side: str = "front"
-    step_length: float = 4.0
+    step_length: float = 2.5
     Navg: int = 4
 
     # ============================================================
@@ -279,16 +288,16 @@ def main():
 
     #simulate_straight_path_displacement(p1, p2)
     #simulate_straight_path_absolute(p1, p2)
-    simulate_basis_plane(isocenter, length, width)
+    #simulate_basis_plane(isocenter, length, width)
 
-    points: list = paths.basis_plane_calculate_four_points(isocenter, length, width)
-    simulate_rectangle_path(isocenter, points)
-    simulate_rotate_basis_plane(isocenter, points, axis, angle, offset)
+    #points: list = paths.basis_plane_calculate_four_points(isocenter, length, width)
+    #simulate_rectangle_path(isocenter, points)
+    #simulate_rotate_basis_plane(isocenter, points, axis, angle, offset)
 
     # ============================================================
     # RUN FULL GRAVITY SIMULATION
     # ============================================================
-    #simulate_gravity_test(isocenter, side, length, width, step_length, Navg)
+    simulate_gravity_test(isocenter, side, length, width, step_length, Navg)
   
 
 

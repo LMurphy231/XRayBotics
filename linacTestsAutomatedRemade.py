@@ -5,9 +5,10 @@ import RobotCommunicator as RC
 import LightSensor as lightSensor
 import AutomatedTests.pathMovement as move
 import AutomatedTests.pathsRemade as paths
+import dataProcessingGravity as dp
 
 def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side: str, 
-                           Navg: int = 4, step_length: float = 1.0, 
+                           Navg: int = 4, step_length: float = 0.5, 
                            length: float = 100.0, width:float = 100.0):
     '''
     gravity_test_automated
@@ -33,12 +34,14 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     grav_path: list = [] # Path to move in (rectangle) for Gravity Test
     
     grav_test_scan_data: list = []   # Tuple of both position data & light: (position, light)
-    grav_test_pos_data: list = []    # Position Vectors (x,y,z)
+    grav_test_pos_data: list = []    # Position Vectors (x,y,z) as np.ndarray
     grav_test_light_data: list = []  # Light intensity values
     
     grav_plane_angle: int = 0               # Angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
     grav_rot_matrix: np.ndarray = np.eye(3) # Rotation matrix to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
     grav_angle_offset: float = 0.0          # Offset angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
+    grav_angle_offset: float                # Offset angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
+
 
     # ============================================================
     # END INITIALIZATION STATE: INITIALIZE DATA COLLECTION
@@ -58,11 +61,13 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
 
     # Rotate the robot to the correct side to ensure photodiode faces laser
     if side == "left":
-        RC._rotate(fr5, axis = "z", angle = 90)   # if left -> rotate 90 about current z0 (robot)
-        grav_plane_angle = 90 # Rotate rectangle points about z-axis to point photo-diode in +y-direction
+        RC._rotate(fr5, axis = "z", angle = 90)     # if left -> rotate 90 about current z0 (robot)
+        grav_plane_angle = 90                       # Rotate rectangle points about z-axis to point photo-diode in +y-direction
+        grav_angle_offset = fr5.offset[4]           # Left side finds angle about Y; get previous offset
     elif side == "right":
         RC._rotate(fr5, axis = "z", angle = -90)   # if right -> rotate -90 about current z0 (robot)
         grav_plane_angle = -90
+        grav_angle_offset = -fr5.offset[4]         # Left side finds angle about Y; get previous offset
     elif side == "front":
         grav_plane_angle = 0  # No rotation needed; laser already facing photodiode
               
@@ -104,8 +109,8 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     
     # Alan returns: offset for angle needed to adjust about Y
         #DataProcessing(grav_test_position_data, grav_test_light_data)
-    
-    dr_offset: float # STORE: ANGLE BETWEEN Y (TRUE) AND Z (ROBOT)
+    dr_offset: float
+    dr_offset, _ = dp.calculate_gravity_angle(grav_test_pos_data, grav_test_light_data) # STORE: ANGLE BETWEEN Y (TRUE) AND Z (ROBOT)
     # offset negative theta: CW
     
     if side == "left":
@@ -135,7 +140,6 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     # ===========================================================
 
     # GOAL: ALIGN ROBOT Z AXIS WITH TRUE Z AXIS (GRAVITY)
-    offset: list = [np.ndarray([drx, dry])] # Return offset for both axes (X and Y) to adjust robot rotation
     # Create rotation matrix to adjust robot rotation about X and Y axes
     
    # Inform which test offset was from: gravity
