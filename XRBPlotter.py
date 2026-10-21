@@ -67,10 +67,10 @@ def transformation_matrix(DH:DenavitHartenbergParameter, set_angle=None):
     if set_angle is not None:
         DH.set_angle = set_angle
 
-    A = rotate(Rz(DH.theta+DH.set_angle),Rx(DH.alpha))
+    A = rotate(Rz(DH.set_angle),Rx(DH.alpha))
     B = np.array([[
-        DH.a*np.cos(DH.theta + DH.set_angle),
-        DH.a*np.sin(DH.theta + DH.set_angle),
+        DH.a*np.cos(DH.set_angle),
+        DH.a*np.sin(DH.set_angle),
         DH.d
         ]]).T
     C = np.array([[0,0,0]])

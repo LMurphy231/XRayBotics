@@ -22,6 +22,7 @@ from XRBPlotter import Plotter
 import settingshandler as settings
 
 from AutomatedTests import pathsRemade as pr
+import linacTestsAutomatedRemade as LinacTests
 
 if os.path.basename(sys.executable) == 'pythonw.exe':
     sys.stdout = open(os.devnull, 'w')
@@ -102,7 +103,7 @@ class TestPage:
             tk.Button(header_frame, command=self.option_tree.save, text='Save to Default', ).grid(row=0, column=0)
             tk.Button(header_frame, command=self.option_tree.load, text='Load Default', ).grid(row=0, column=1)
         
-        start_button = tk.Button(header_frame, command=self.start, text='Start test', )
+        start_button = tk.Button(header_frame, command=lambda: threading.Thread(target=self.start, daemon=True).start(), text='Start test', )
         start_button.grid(row=0, column=2)
         if self.robot is not None:
             self.robot._disable_move_widgets.append(start_button)
@@ -285,30 +286,41 @@ class GravityTest(TestPage):
 
     def _plot_field(self):
 
-        #try:
+        try:
             section = 'tests.gravity.path'
             length = self.opts.get(section, 'length').var.get()
             height = self.opts.get(section, 'height').var.get()
             theta  = self.opts.get(section, 'theta').var.get()
+        except:
+            pass
 
-            isocenter = np.array([0.,0.,0.])
-            points = pr.calculate_four_points_rectangle(isocenter, length, height, 'y','z')
-            points = pr.rotate_points(points, theta, 'y', 'z')
-     
-            self.plotter.clear()
+        isocenter = np.array([0.,0.,0.])
+        points = pr.calculate_four_points_rectangle(isocenter, length, height, 'y','z')
+        points = pr.rotate_points(points, theta, 'y', 'z')
 
-            self.plotter.scatter(*isocenter)
+        self.plotter.clear()
 
-            prev_point = points[0]
-            self.plotter.scatter(*prev_point)
-            for point in points[1:]:
-                self.plotter.scatter(*point)
-                self.plotter.plot(*zip(prev_point, point))
-                prev_point = point
+        self.plotter.scatter(*isocenter)
 
-            self.plotter._update()
-        #except:
-        #    pass
+        prev_point = points[0]
+        self.plotter.scatter(*prev_point)
+        for point in points[1:]:
+            self.plotter.scatter(*point)
+            self.plotter.plot(*zip(prev_point, point))
+            prev_point = point
+
+        self.plotter._update()
+        
+    def start(self):
+        x = 0.0
+        y = 0.0
+        z = 0.0
+        side = 'left'
+        length = 100
+        width = 100
+        self.robot.register_thread()
+        step_length = 10
+        LinacTests.gravity_test_automated(self.robot, x, y, z, side, step_length=step_length, length=length, width=width)
 
 class CollimatorTest(TestPage):
     def __init__(self, name, root:tk.Frame, robot:rc.RobotCom, opts:settings.OptionDict):
@@ -388,16 +400,19 @@ class CollimatorTest(TestPage):
     def _plot_field(self):
 
         section = 'linac.jaws'
-        x1 = self.opts.get(section, 'x1').var.get()
-        x2 = self.opts.get(section, 'x2').var.get()
-        y1 = self.opts.get(section, 'y1').var.get()
-        y2 = self.opts.get(section, 'y2').var.get()
+        try:
+            x1 = self.opts.get(section, 'x1').var.get()
+            x2 = self.opts.get(section, 'x2').var.get()
+            y1 = self.opts.get(section, 'y1').var.get()
+            y2 = self.opts.get(section, 'y2').var.get()
 
-        section = 'tests.collimator.path'
-        umbra = self.opts.get(section, 'umbra').var.get()
+            section = 'tests.collimator.path'
+            umbra = self.opts.get(section, 'umbra').var.get()
 
-        gantry_angle = self.opts.get('linac.angles', 'gantry').var.get()
-        collimator_angle = self.opts.get('linac.angles', 'collimator').var.get()
+            gantry_angle = self.opts.get('linac.angles', 'gantry').var.get()
+            collimator_angle = self.opts.get('linac.angles', 'collimator').var.get()
+        except:
+            return
         isocenter = np.array([0.,0.,0.])
         points = pr.calculate_four_points_rectangle(isocenter, x1+x2+umbra, (y1+y2)*2/3, 'y','z')
 
@@ -679,9 +694,10 @@ class GUI:
         
 
         tk.Button(button_frame, text='Stop Robot'   , command = self.robot.stop).grid(row=0, column=1, sticky=tk.NSEW)
+        tk.Button(button_frame, text='Clear Error'  , command = lambda: print(self.robot.ResetAllError())).grid(row=4, column=1, sticky=tk.NSEW)
         isocenter_button = tk.Button(button_frame, text='Set Isocenter', command = lambda: self.robot.set_isocenter(*self.robot._get_tool_position()))
         isocenter_button.grid(row=1, column=1, sticky=tk.NSEW)
-        home_button = tk.Button(button_frame, text='Home'         , command = lambda: self.robot.home())
+        home_button = tk.Button(button_frame, text='Home'         , command = lambda: self.robot.move_to_home())
         home_button.grid(row=2, column=1, sticky=tk.NSEW)
 
         self.robot._disable_move_widgets.extend([home_button, isocenter_button])
