@@ -7,6 +7,25 @@ import AutomatedTests.pathMovement as move
 import AutomatedTests.pathsRemade as paths
 import dataProcessingGravity as dp
 
+import logging
+import GUI_remade as gui
+
+atl_logger = logging.getLogger('Automated Test Logic Results')
+atl_logger.setLevel(logging.INFO-1) # debug, info, warning, critical, error ---> low to high
+logging.INFO # 20 is level for info; above is recorded
+#atl_logger.propagate = False
+    
+'''
+atl_logger.debug('Debug message')                   # logging.DEBUG     ---> 10
+atl_logger.info('Application started')              # logging.INFO      ---> 20
+atl_logger.warning('Disk space running low')        # logging.WARNING   ---> 30
+atl_logger.error('Failed to connect to database')   # logging.ERROR     ---> 40
+atl_logger.critical('System shutting down')         # logging.CRITICAL  ---> 50
+'''
+
+
+exit()
+
 def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side: str, 
                            Navg: int = 4, step_length: float = 0.5, 
                            length: float = 100.0, width:float = 100.0):
@@ -15,21 +34,26 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     Perform the gravity test: Scan laser to find true z (gravity)
         Returns: offset for angle needed to adjust about an axis (X or Y) to align robot z-axis with true z-axis (gravity)
     step_length in mm
-    ASSUMPTION: CCW is positive rotation about axis (right hand rule)
+    ASSUMPTION: 
+        CCW is positive rotation about axis (right hand rule)
+        CW is negative rotation about axis (right hand rule)
     ASSUMPTION: Photodiode will face the LINAC gantry (+x) in default pose 
     ASSUMPTIONS: Axis directions when facing gantry (default pose):
         +x: toward gantry <---> -x: away from gantry
         +y: left of gantry  <---> -y: right of gantry   
         +z: up  <---> -z: down
-        
+    
+    scan_data: list[]  
+        scan_data[0] = [(x1,y1,z1), (x2,y2,z3), ...] # List of np.ndarray for position
+        scan_data[1] = [l1, l2, l3, ...] # List of floats for light intensity values
+    
     np.eye(n): Create n x n identity matrix
     '''
     
     # ============================================================
     # START INITIALIZATION STATE: INITIALIZE DATA COLLECTION
     # ============================================================
-    
-    # Define variables and data to collect
+    atl_logger.info(f'wuriawgr')
     grav_rectangle_points: list = [] # Rectangle points or Gravity Test path points
     grav_path: list = [] # Path to move in (rectangle) for Gravity Test
     
@@ -40,8 +64,8 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     grav_plane_angle: int = 0               # Angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
     grav_rot_matrix: np.ndarray = np.eye(3) # Rotation matrix to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
     grav_angle_offset: float = 0.0          # Offset angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
-    grav_angle_offset: float                # Offset angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
 
+    dr_offset: float # Store angle offset about an axis (not Z)
 
     # ============================================================
     # END INITIALIZATION STATE: INITIALIZE DATA COLLECTION
@@ -107,18 +131,17 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
         grav_test_pos_data.append(position)
         grav_test_light_data.append(light_intensity)
     
-    # Alan returns: offset for angle needed to adjust about Y
-        #DataProcessing(grav_test_position_data, grav_test_light_data)
-    dr_offset: float
-    dr_offset, _ = dp.calculate_gravity_angle(grav_test_pos_data, grav_test_light_data) # STORE: ANGLE BETWEEN Y (TRUE) AND Z (ROBOT)
+    dr_offset, _ = dp.calculate_gravity_angle(grav_test_pos_data, grav_test_light_data) # STORE: ANGLE BETWEEN Z (TRUE) AND AXIS
     # offset negative theta: CW
     
     if side == "left":
         fr5.offset_add("Gravity", dry = dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)    
     elif side == "right":
-        fr5.offset_add("Gravity", drx = dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)  
+        fr5.offset_add("Gravity", dry = -dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)  
     elif side == "front":
-        pass
+        fr5.offset_add("Gravity", drx = dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)  
+
+    # Robot system: 
     
     # ex: angle btwn X and Z axis which represents offset about Y
     
@@ -143,6 +166,7 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     # Create rotation matrix to adjust robot rotation about X and Y axes
     
    # Inform which test offset was from: gravity
+   
 
     return
 
@@ -265,3 +289,4 @@ def gantry_test_automated(x, y, z, freq=4500, Navg=4,threshold: float = 0.75, st
         grav_test_pos_data.append(position)
         grav_test_light_data.append(light_intensity)
 '''
+

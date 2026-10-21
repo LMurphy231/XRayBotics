@@ -1,8 +1,22 @@
 
 import numpy as np
 import AutomatedTests.pathsRemade as paths
-import dataProcessingGravity as dp
+#import dataProcessingGravity as dp
 #from XRBPlotter import Rx, Ry, Rz
+
+import logging
+
+atl_logger = logging.getLogger('Automated Test Logic Results')
+atl_logger.setLevel(logging.INFO-10) # debug, info, warning, critical, error ---> low to high
+logging.INFO # 20 is level for info; above is recorded
+#atl_logger.propagate = False
+
+# Low to High Levels
+#atl_logger.debug('Debug message') # 10
+#atl_logger.info('Application started') # 20
+#atl_logger.warning('Disk space running low') # 30
+#atl_logger.error('Failed to connect to database') # 40
+#atl_logger.critical('System shutting down') # 50
 
 def simulate_straight_path_displacement(
     p1: np.ndarray,
@@ -297,7 +311,13 @@ def main():
     # ============================================================
     # RUN FULL GRAVITY SIMULATION
     # ============================================================
-    simulate_gravity_test(isocenter, side, length, width, step_length, Navg)
+    #simulate_gravity_test(isocenter, side, length, width, step_length, Navg)
+    
+    atl_logger.debug('Debug message') # 10
+    atl_logger.info('Application started') # 20
+    atl_logger.warning('Disk space running low') # 30
+    atl_logger.error('Failed to connect to database') # 40
+    atl_logger.critical('System shutting down') # 50
   
 
 
