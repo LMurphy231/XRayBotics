@@ -58,7 +58,9 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     
     grav_plane_angle: int = 0               # Angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
     grav_rot_matrix: np.ndarray = np.eye(3) # Rotation matrix to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
-    grav_angle_offset: float = 0.0          # Offset angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
+    grav_angle_offset_x: float = 0.0          # Offset angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
+    grav_angle_offset_y: float = 0.0          # Offset angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
+
 
     dr_offset: float # Store angle offset about an axis (not Z)
 
@@ -83,12 +85,14 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
         # Rotate basis place about x (CCW, +angle)
         grav_plane_angle = 90                       # Rotate rectangle points about z-axis to point photo-diode in +y-direction
         fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)     # if left -> rotate 90 about current z0 (robot)
-        grav_angle_offset = fr5.offset[4]           # Left side finds angle about Y; get previous offset
+        grav_angle_offset_x = fr5.offset[3]           # Left side finds angle about Y; get previous offset
+        grav_angle_offset_y = fr5.offset[4]         # Right side finds angle about Y; get previous offset
     elif side == "right":
         # Rotate basis place about x (CW, -angle)
         grav_plane_angle = -90
         fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)   # if right -> rotate -90 about current z0 (robot)
-        grav_angle_offset = -fr5.offset[4]         # Right side finds angle about Y; get previous offset
+        grav_angle_offset_x = -fr5.offset[3]         # Right side finds angle about Y; get previous offset
+        grav_angle_offset_y = -fr5.offset[4]         # Right side finds angle about Y; get previous offset
     elif side == "front":
         grav_plane_angle = 0  # No rotation needed; photodiode already facing laser
         
@@ -97,19 +101,19 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
         
         if side == "left" or side == "right":
             # Rotate rectangle points about z-axis to point photo-diode in other +/- other directions
-            grav_rot_matrix = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset) # Rotate about axis to point photo-diode in proper direction 
+            grav_rot_matrix = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction 
             grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
             
-            grav_rot_matrix = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset) # Rotate about axis to point photo-diode in proper direction    
+            grav_rot_matrix = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about axis to point photo-diode in proper direction    
             grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, grav_rectangle_points, grav_rot_matrix)
             
             grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
             
         elif side == "front":
-            matrix_1 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset) # Rotate about y-axis
-            matrix_2 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset) # Rotate about x-axis
+            matrix_1 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about y-axis
+            matrix_2 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about x-axis
             pass
-        
+    
     else:
         grav_rectangle_points = basis_points    # No rotation needed; laser already facing photodiode
         grav_path = basis_plane_path            # No rotation needed; laser already facing photodiode
