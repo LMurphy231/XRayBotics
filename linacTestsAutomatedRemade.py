@@ -23,9 +23,6 @@ atl_logger.error('Failed to connect to database')   # logging.ERROR     ---> 40
 atl_logger.critical('System shutting down')         # logging.CRITICAL  ---> 50
 '''
 
-
-exit()
-
 def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side: str, 
                            Navg: int = 4, step_length: float = 0.5, 
                            length: float = 100.0, width:float = 100.0):
@@ -53,7 +50,6 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     # ============================================================
     # START INITIALIZATION STATE: INITIALIZE DATA COLLECTION
     # ============================================================
-    atl_logger.info(f'wuriawgr')
     grav_rectangle_points: list = [] # Rectangle points or Gravity Test path points
     grav_path: list = [] # Path to move in (rectangle) for Gravity Test
     
@@ -97,7 +93,7 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
               
     # Define new rectangle points and path for Gravity Test based on rotation of basis plane points          
     if grav_plane_angle != 0:
-        # Rotate rectangle points about z-axis to point photo-diode in +/- y-direction
+        # Rotate rectangle points about z-axis to point photo-diode in other +/- other directions
         grav_rot_matrix = paths.get_rotation_matrix("z", grav_plane_angle, grav_angle_offset) # Rotate about z-axis to point photo-diode in +/- y-direction
         grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
         grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points)       
