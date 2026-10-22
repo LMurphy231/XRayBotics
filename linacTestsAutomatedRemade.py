@@ -60,7 +60,10 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     grav_rot_matrix: np.ndarray = np.eye(3) # Rotation matrix to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
     grav_angle_offset_x: float = 0.0          # Offset angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
     grav_angle_offset_y: float = 0.0          # Offset angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
+    grav_angle_offset_z: float = 0.0
 
+    matrix_1: np.ndarray
+    matrix_2: np.ndarray
 
     dr_offset: float # Store angle offset about an axis (not Z)
 
@@ -105,21 +108,20 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
         
         if side == "left" or side == "right":
             # Rotate rectangle points about z-axis to point photo-diode in other +/- other directions
-            grav_rot_matrix = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction 
+            matrix_1 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction 
+            matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about axis to point photo-diode in proper direction    
+
+            grav_rot_matrix = paths.rotation_matricies(matrix_1, matrix_2)
             grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
-            
-            grav_rot_matrix = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about axis to point photo-diode in proper direction    
-            grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, grav_rectangle_points, grav_rot_matrix)
-            
             grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
             
         elif side == "front":
-            matrix_1 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about y-axis
+            
+            matrix_1 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction 
+            matrix_2 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_z) # Rotate about axis to point photo-diode in proper direction    
+
+            grav_rot_matrix = paths.rotation_matricies(matrix_1, matrix_2)
             grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, matrix_1)
-
-            matrix_2 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about x-axis
-            grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, grav_rectangle_points, matrix_2)
-
             grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
 
     else:
