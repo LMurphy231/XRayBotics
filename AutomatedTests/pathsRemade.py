@@ -140,10 +140,10 @@ def rotation_matricies(matrix1: np.ndarray, *rotation_matricies: list[np.ndarray
         Multiply multiple rotation matrices (list) together
     '''
     
-    new_matrix: np.ndarray
+    new_matrix: np.ndarray = matrix1
     
     for matrix in rotation_matricies:
-        new_matrix = np.matmul(matrix1, matrix)
+        new_matrix = np.matmul(new_matrix, matrix)
     return new_matrix
    
  # =================================================================================  

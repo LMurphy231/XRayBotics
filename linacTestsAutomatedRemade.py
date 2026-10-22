@@ -104,7 +104,7 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
         grav_plane_angle = 90                           # No rotation needed; photodiode already facing laser  
         grav_angle_offset_x = fr5.offset[3]             # Left side finds angle about Y; get previous offset
         grav_angle_offset_y = fr5.offset[4]             # Right side finds angle about Y; get previous offset
-        
+    
     # Define new rectangle points and path for Gravity Test based on rotation of basis plane points          
     if grav_plane_angle != 0:
         
