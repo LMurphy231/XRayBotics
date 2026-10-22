@@ -22,11 +22,8 @@ atl_logger.error('Failed to connect to database')   # logging.ERROR     ---> 40
 atl_logger.critical('System shutting down')         # logging.CRITICAL  ---> 50
 '''
 
-<<<<<<< HEAD
-=======
 
 
->>>>>>> 6183b2ffa2011176f55024d2f26e2842c2ba6c08
 def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side: str, 
                            Navg: int = 4, step_length: float = 0.5, 
                            length: float = 100.0, width:float = 100.0):
