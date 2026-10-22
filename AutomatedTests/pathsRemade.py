@@ -35,7 +35,7 @@ def straight_path_absolute(end_pos: np.ndarray):
     """
     Return the absolute destination position for a straight path.
     
-    ASSSUMES: start_pos
+    ASSSUMES: origin is always (0,0,0)
     """
 
     abs_movement_path: list = []
@@ -62,14 +62,14 @@ def rectangle_path(isocenter: np.ndarray, points: list):
     p4: np.ndarray = points[3]
 
     # Create paths for each side; Decided internally
-    path_to_p1:     list = straight_path_absolute(p1)       # Non-Incremental
+    path_to_p1:     list = straight_path_absolute(p1)           # Non-Incremental
     path_p1_to_p2:  list = straight_path_displacement(p1, p2)   # Incremental
-    path_p2_to_p3:  list = straight_path_absolute(p3)       # Non-Incremental
+    path_p2_to_p3:  list = straight_path_absolute(p3)           # Non-Incremental
     path_p3_to_p4:  list = straight_path_displacement(p3, p4)   # Incremental
 
     # Store paths with scan information; True/False for Scanning
     rectangle_paths: list[tuple[list[np.ndarray], bool, np.ndarray]]= [
-        (path_to_p1, False, p1)
+        (path_to_p1, False, p1),
         (path_p1_to_p2, True, p1),
         (path_p2_to_p3, False, p2),
         (path_p3_to_p4, True, p3)
@@ -325,3 +325,16 @@ def rotation_matrix(points: list, angle: float):
     
     rotation_matrix = Ry(np.deg2rad(angle))
     return rotate_points_basis_plane(points, rotation_matrix)
+
+def straight_path_absolute(origin: np.ndarray, end_pos: np.ndarray):
+    """
+    Return the absolute destination position for a straight path.
+    
+    """
+    
+    pos: np.ndarray
+
+    abs_movement_path: list = []
+    abs_movement_path.append(end_pos.copy())
+
+    return abs_movement_path
