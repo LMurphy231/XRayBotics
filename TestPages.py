@@ -68,18 +68,24 @@ class TestResultsPage(BasePage):
         BasePage.__init__(self, root, **kwargs)
         self.name = name
         self.kwargs = kwargs
-        
+        self.current_results = None
+        self.loaded_results = []
         self.close_button = tk.Button(self.root, text='Close',)
         self.build()
 
     def build(self):
+
+        self.test_selection_frame = self._create_test_selection_frame()
+        if self.test_selection_frame is not None:
+            self.test_selection_frame.grid(row=0, column=0, sticky=tk.NSEW)
+
         self.comparison_frame = self._create_comparison_frame()
         if self.comparison_frame is not None:
             self.comparison_frame.grid(row=0, column=1, sticky=tk.NSEW)
 
         self.plotter_frame = self._create_plotter_frame()
         if self.plotter_frame is not None:
-            self.plotter_frame.grid(row=0, column=0, sticky=tk.NSEW)
+            self.plotter_frame.grid(row=0, column=2, sticky=tk.NSEW)
 
     def register_test_page(self, test_page):
         self.close_button.grid(row=0, column=15, sticky=tk.NE)
@@ -93,6 +99,69 @@ class TestResultsPage(BasePage):
     
     def _create_plotter_frame(self) -> tk.Frame:
         return None
+
+    def _create_test_selection_frame(self) -> tk.Frame:
+        test_selection_frame = tk.Frame(self.root)
+        self.test_selection = tk.Listbox(test_selection_frame, selectmode=tk.SINGLE, exportselection=False)
+        self.test_selection.grid(row=0, column=0, sticky=tk.NSEW)
+        self.test_selection.bind('<<ListboxSelect>>', self._change_selected_test)
+        return test_selection_frame
+
+    def _change_selected_test(self, event:tk.Event):
+        if event is None:
+            return
+        
+        selections = event.widget.curselection()
+
+        test_type, test_name, test_results = self.loaded_results[selections[-1]]
+        
+        self.update(*test_results)
+
+    def add_test(self, test_type, test_name, test_results):
+        self.loaded_results.append((test_type, test_name, test_results))
+        self.test_selection.insert(tk.END, test_name)
+
+    def save_results(self, filename=None):
+        if filename is None:
+            filename = filedialog.asksaveasfilename(title='Save Gravity Test Results', filetypes=(('XRayBotics Results', '*.xrb'),), defaultextension='*.xrb')
+
+        if not filename:
+            return
+
+        if self.current_results is None:
+            messagebox.showerror(title='No Test Data', message='No test data available!')
+            return
+
+        with open(filename, 'wb') as f:
+                        
+            for test_type, test_name, test_results in self.loaded_results:
+
+                if test_type.lower() == 'gravity':
+                    byte_data = _gravity_test_results_file_text(*test_results)
+                else:
+                    raise ValueError(f'Test type {test_type} not supported to save!')
+                
+                f.write(byte_data)
+
+    def load_results(self, filename=None):
+        if filename is None:
+            filename = filedialog.askopenfilename(title=f'Open Test Results', filetypes=(('XRayBotics Results', '*.xrb'),), defaultextension='*.xrb')
+
+        if not filename:
+            return
+        
+        for test_type, test_name, test_results in parse_xrb_file(filename):
+            if test_type == 'gravity':
+                current_results = _gravity_test_results_file_read(test_results)
+            else:
+                raise ValueError(f'Test type {test_type} not supported!')
+            
+            self.add_test(test_type, test_name, current_results)
+        self.test_selection.selection_clear(0, tk.END)
+        self.test_selection.selection_set(len(self.loaded_results)-1)
+        self.test_selection.event_generate("<<ListboxSelect>>")
+        
+        
 
 class GravityTestResultsPage(TestResultsPage):
     def __init__(self, _root):
@@ -117,40 +186,42 @@ class GravityTestResultsPage(TestResultsPage):
         self.plotter3d = plt.Plotter(plotter_3d_frame, projection='3d', row=0, column=0)
         tk.Button(plotter_frame, command=self._test_results, text='Test plotters').grid(row=1, column=0)
         tk.Button(plotter_frame, command=self.save_results, text='Save').grid(row=2, column=0)
+        tk.Button(plotter_frame, command=self.load_results, text='Load').grid(row=3, column=0)
         return plotter_frame
 
     def _test_results(self, angle=0.0):
         origin = np.array([0.0, 0.0, 0.0], dtype=float)
         dist = 0.1
         data = []
+        angle = np.random.randint(0, 360)
+        print(angle)
         position = np.array([0.0, 0.0, 0.0], dtype=float) + origin
         for i in range(1000):
-            distance = dist
-            position += np.array([distance*np.cos(np.deg2rad(angle)), distance* np.sin(np.deg2rad(angle)), 0.0], dtype=float)
+            distance = dist*i
+            position = origin + np.array([distance*np.cos(np.deg2rad(angle)), distance* np.sin(np.deg2rad(angle)), 0.0], dtype=float)
             intensity = abs(1/max(1,abs(500-i)))
             
-            data.append((np.array(list(position)), distance*i, intensity))
+            data.append((np.array(list(position)), distance, intensity))
 
-        self.update('left', data)
+        self.add_test('gravity', 'demo test', ('demo gravity test', 'left', data))
+        self.test_selection.selection_clear(0, tk.END)
+        self.test_selection.selection_set(len(self.loaded_results)-1)
+        self.test_selection.event_generate("<<ListboxSelect>>")
 
-    def update(self, side, result_data):
+    def update(self, test_name, side, result_data):
+        self.current_results = (test_name, side, result_data)
         position, distance, intensities = map(list, zip(*result_data))
         self.plotter2d.clear()
         self.plotter2d.scatter(x=distance, y=intensities)
         self.plotter2d.update()
+        
 
         self.plotter3d.clear()
         x, y, z = map(list, zip(*position))
         self.plotter3d.scatter(x, y, z, c=intensities, cmap='viridis')
-        self.plotter2d.update()
+        self.plotter3d.update()
 
-    def save_results(self, filename=None):
-        if filename is None:
-            filename = filedialog.asksaveasfilename(title='Save Gravity Test Results', filetypes=(('XRayBotics Results', '*.xrb'),), defaultextension='*.xrb')
-
-        if not filename:
-            return
-
+        
 class TestPage(BasePage):
     def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom=None, opts:settings.OptionDict=None, description='', results_page:TestResultsPage=None):
         self.name = name
@@ -516,3 +587,71 @@ class CollimatorTest(TestPage):
         p3 = plt.rotate_point(np.array([x2, y2, 0.0])  , rotation_matrix) + origin
         p4 = plt.rotate_point(np.array([-x1, y2, 0.0]) , rotation_matrix) + origin
         return [p1, p2, p3, p4]
+
+
+INDENT = '\t'
+def parse_xrb_file(filename):
+    with open(filename, 'rb') as f:
+        arr = f.read()
+
+    tests = []
+    while arr:
+        test_type, arr = _decode_string(arr)
+        test_name, arr = _decode_string(arr)
+        byte_length, arr = _decode_int(arr)
+        test_bytes = arr[:byte_length]
+        arr = arr[byte_length:]
+        tests.append((test_type, test_name, test_bytes))
+
+    return tests
+
+
+def _gravity_test_results_file_text(test_name, side, result_data):
+    positions, distance, intensities = map(list, zip(*result_data))
+    byte_data = b''
+    byte_data += _encode_string(test_name)
+    byte_data += _encode_string(side)
+
+    # Create numpy array of data
+    arr = np.column_stack((positions, distance, intensities))
+
+    byte_data += np.array(list(arr.shape), dtype=np.int64).tobytes()
+    byte_data += arr.tobytes()
+    
+    return _wrap_test_bytes('gravity', test_name, byte_data)
+
+def _gravity_test_results_file_read(arr:bytearray):
+    test_name, arr = _decode_string(arr)
+    side, arr = _decode_string(arr)
+
+    shape_arr = arr[:16]
+    result_data_arr = arr[16:]
+    shape = tuple(np.frombuffer(shape_arr, dtype=np.int64))
+    restored_1d = np.frombuffer(result_data_arr, dtype=np.float64)
+    raw_result_data = restored_1d.reshape(*shape)
+    result_data = [raw_result_data[:, :3], raw_result_data[:,3], raw_result_data[:,4]]
+    return test_name, side, tuple(zip(*result_data))
+
+def _wrap_test_bytes(test_type, test_name, arr):
+    return _encode_string(test_type) + _encode_string(test_name) + _encode_int(len(arr)) + arr
+
+def _encode_string(text:str):
+    byte_arr = b''
+    byte_arr += _encode_int(len(text))
+    byte_arr += text.encode()
+    return byte_arr
+
+def _encode_int(value:int):
+    return np.array([value], dtype=np.int64).tobytes()
+
+def _decode_string(arr:bytearray):
+    length, arr = _decode_int(arr)
+    return arr[:length].decode(), arr[length:]
+
+def _decode_int(arr:bytearray):
+    value = int().from_bytes(arr[0:8], byteorder='little')
+    return value, arr[8:]
+
+
+#arr = _gravity_test_results_file_text('demo', 'left', GravityTestResultsPage._test_results(None))
+#print(_gravity_test_results_file_read(arr))

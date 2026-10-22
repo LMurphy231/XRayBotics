@@ -126,8 +126,9 @@ class Plotter:
         else:
             self._set_axis_limit(self.xmin, self.xmax, self.ymin, self.ymax, self.zmin, self.zmax)
         self.canvas.draw()
+        
     update = _update
-    
+
     def _set_axis_limit(self, xmin=None, xmax=None, ymin=None, ymax=None, zmin=None, zmax=None):
         self.xmin = xmin if xmin is not None else self.ax.get_xlim()[0]
         self.xmax = xmax if xmax is not None else self.ax.get_xlim()[1]

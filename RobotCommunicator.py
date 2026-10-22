@@ -45,12 +45,18 @@ class RobotCom(RPC):
         
         self._default_options()
         
-        threading.Thread(target=RPC.__init__, args=(self, ip), daemon=True).start()
+        threading.Thread(target=self.startup, args=(ip,), daemon=True).start()
+        #threading.Thread(target=self.stop_thread, daemon=True).start()
         #threading.Thread(target=self._status_check, args=(root,), daemon=True).start()
         self.move_thread = threading.Thread(target=lambda:None)
         self.action_queue:queue.Queue[tuple[object, threading.Event]] = queue.Queue()
+        
         threading.Thread(target=self._queue_runner, name='robot movement queue',daemon=True).start()
 
+    def startup(self, ip):
+        RPC.__init__(self, ip)
+        self.set_isocenter(*self._get_tool_position())
+        
     def offset_add(self, reason, x=0.0, y=0.0, z=0.0, drx=0.0, dry=0.0, drz=0.0):
         self.offsets.append((reason, np.array([x, y, z, drx, dry, drz]))) 
 
@@ -94,12 +100,13 @@ class RobotCom(RPC):
 
     def interrupt_threads(self):
         self._stop_event.set()
-        self.stop()
+        threading.Thread(target=self.stop, daemon=True, name='Stop').start()
         for thread in list(self._monitor_threads):
             print(f'Waiting on thread: {thread.name}')
             thread.join()
             self._monitor_threads.remove(thread)
         self._stop_event.clear()
+        
 
     def is_connected(self):
         try:
@@ -119,6 +126,14 @@ class RobotCom(RPC):
             self.set_widget_statuses(False)
             print(f'Result: {funct()}')
             event.set()
+
+    def stop_thread(self):
+        thread = threading.Thread(target=self.stop, daemon=True, name='Stop')
+        while True:
+            if self._stop_event.is_set():
+                thread.start()
+                thread = threading.Thread(target=self.stop, daemon=True, name='Stop')
+            time.sleep(0.001)
 
     def _default_options(self):
         # Default Variables
@@ -150,7 +165,7 @@ class RobotCom(RPC):
 
     def home(self):
         self.logger.debug('Moving to home position')
-        self.stop()
+        self.interrupt_threads()
         self.move_joint(self.HOME, in_thread=True)
         self.SetToolCoord(0, [0.0,0.0,0.0, *self.TOOL_RBASE], 0, 0, 0, 0)
 
@@ -177,12 +192,15 @@ class RobotCom(RPC):
         acc: Acceleration - default: 100.0
         '''
         self._check_stop_interrupt()
-        self.SetToolCoord(2, [0., 0., 0., *self.TOOL_RBASE], 0, 0, 0, 0)
+        self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.TOOL_RBASE], 0, 0, 0, 0)
 
         desc_pos = self._get_tool_position()
+        angle = list(desc_pos[3:])
+        desc_pos[3:] = [0.0, 0.0, 0.0]
         #desc_pos[3:] = self.end_effector_angle[:]
-        offset = np.array([dx, dy, dz, drx, dry, drz])
+        offset = np.array([dx, dy, dz, angle[0]+drx, angle[1]+dry, angle[2]+drz])
         self._internal_position = desc_pos+offset
+        print('increment', self.GetActualTCPPose(), '\n', desc_pos, '\n', offset)
         self.logger.debug(f'Queing incremental Movement {offset} from {desc_pos} to {self._internal_position}')
         funct = lambda: self.MoveL(
                     desc_pos=desc_pos,
@@ -242,15 +260,19 @@ class RobotCom(RPC):
 
             
             desc_pos = self.isocenter if self.isocenter_set else np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            desc_pos[3:] = [0.0, 0.0, 0.0]
             self._internal_position = np.array([x, y, z, rx, ry, rz])
             #desc_pos += self._internal_position
+            self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.TOOL_RBASE], 0, 0, 0, 0)
+
+            print(self.GetActualTCPPose(), '\n', desc_pos, '\n', self._internal_position)
             
             self.logger.debug(f'Queueing Movement to {desc_pos} and {self._internal_position}')
             #dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,desc_pos[3]-rx,desc_pos[4]-ry,desc_pos[5]-rz] 
             
             funct = lambda: self.MoveL(
                         desc_pos,
-                        tool           = 0,
+                        tool           = self.cur_tool,
                         user           = 0,
                         vel            = 10.0,
                         acc            = 20.0,
@@ -342,8 +364,9 @@ class RobotCom(RPC):
     def stop(self):
         while not self.action_queue.empty():
             self.action_queue.get()
-        
+        print('stopping')
         self.StopMove()
+        print('finished stop')
 
     def _test_square(self, lq:SensorManager, x1, y1, z, length, width, angle=0.0, step_length=0.001, avg_sample=5):
         print((x1, y1, z))

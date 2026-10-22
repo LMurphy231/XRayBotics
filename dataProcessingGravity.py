@@ -181,10 +181,10 @@ for step in trials:
     actual[i]=0.1
     i=i+1
 
-pct_error = np.abs((actual - experimental) / actual) * 100
-print(experimental)
-print(actual)
-print(pct_error)
+#pct_error = np.abs((actual - experimental) / actual) * 100
+#print(experimental)
+#print(actual)
+#print(pct_error)
 
 # plt.figure(figsize=(8,6))
 # plt.scatter(np.arange(len(intensity)),intensity,s=4)
