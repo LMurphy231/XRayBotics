@@ -193,7 +193,7 @@ class GUI:
                 else:
                     widget = tk.Frame(minor_frame)
                     tk.Label(widget, textvariable=var, width=5).grid(row=0, column=0,sticky=tk.EW)
-                    tk.Scale(widget, from_=-100.0, to=100.0, orient=tk.HORIZONTAL, width=13, resolution=0.01, variable=var, showvalue=False).grid(row=0, column=1, sticky=tk.NSEW)
+                    tk.Scale(widget, from_=-250.0, to=250.0, orient=tk.HORIZONTAL, width=13, resolution=0.01, variable=var, showvalue=False).grid(row=0, column=1, sticky=tk.NSEW)
                 
                 widget.grid(row=index%3,column=1+2*(index//3),sticky=tk.NSEW)
                 minor_frame.columnconfigure(1+2*(index//3), minsize=75)
@@ -308,8 +308,8 @@ class GUI:
         frame.rowconfigure(1, weight=0)
         frame.columnconfigure(1, weight=1)
         self.test_types:dict[str, tp.TestPage] = {
-            'Gravity'   : tp.GravityTest('GravityTest'      , self.test_frame, self.robot, self.opts),
-            'Collimator': tp.CollimatorTest('CollimatorTest', self.test_frame, self.robot, self.opts),
+            'Gravity'   : tp.GravityTest('GravityTest'      , self.test_frame, self.robot, self.ls, self.opts),
+            'Collimator': tp.CollimatorTest('CollimatorTest', self.test_frame, self.robot, self.ls, self.opts),
             
         }
         self.current_test:tp.TestPage = None

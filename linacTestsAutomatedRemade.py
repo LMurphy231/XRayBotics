@@ -2,7 +2,7 @@ from os import path
 
 import numpy as np
 import RobotCommunicator as RC
-import LightSensor as lightSensor
+import LightSensor as lq
 import AutomatedTests.pathMovement as move
 import AutomatedTests.pathsRemade as paths
 import dataProcessingGravity as dp
@@ -22,7 +22,7 @@ atl_logger.error('Failed to connect to database')   # logging.ERROR     ---> 40
 atl_logger.critical('System shutting down')         # logging.CRITICAL  ---> 50
 '''
 
-def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side: str, 
+def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: float, z: float, side: str, 
                            Navg: int = 4, step_length: float = 0.5, 
                            length: float = 100.0, width:float = 100.0):
     '''
@@ -77,7 +77,7 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     
     # Return to "home" pos ---> isocenter+
     est_isocenter: np.ndarray = np.array([x, y, z])
-    fr5._position_move(*est_isocenter) # Start test at estimated isocenter ("origin")
+    #fr5._position_move(*est_isocenter) # Start test at estimated isocenter ("origin")
 
     # Define Basis Plane Rectangle: XY
     basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)  # Calculate rectangle points in basis plane: XY
@@ -107,22 +107,22 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     
     # Define new rectangle points and path for Gravity Test based on rotation of basis plane points          
     if grav_plane_angle != 0:
-        
         if side == "left" or side == "right":
             # Rotate rectangle points about z-axis to point photo-diode in other +/- other directions
             matrix_1 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction 
             matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about axis to point photo-diode in proper direction    
 
-            grav_rot_matrix = paths.rotation_matricies(matrix_1, matrix_2)
+            grav_rot_matrix = paths.rotation_matricies(matrix_2, matrix_1)
             grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
             grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
             
         elif side == "front":
-            matrix_1 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction    
+            
+            matrix_1 = paths.get_rotation_matrix("x", 0, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction    
             matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about axis to point photo-diode in proper direction 
-
+            
             grav_rot_matrix = paths.rotation_matricies(matrix_1, matrix_2)
-            grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, matrix_1)
+            grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
             grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
 
     else:
@@ -141,7 +141,7 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
 
     # Move the robot and scan in the defined path
     # start_data_recording()
-    move.execute_path(fr5, grav_path, grav_test_scan_data, Navg, step_length) # Move and scan in path according
+    move.execute_path(fr5, ls, grav_path, grav_test_scan_data, Navg, step_length) # Move and scan in path according
     # end_data_recording()
     
     # Return to "home" pos ---> isocenter
@@ -149,13 +149,15 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     
     # Process scan data
     for scan_result in grav_test_scan_data:
-        position: np.ndarray = scan_result[0]
-        light_intensity: float = scan_result[1]
+        position: float = scan_result[0]
+        position: np.ndarray = scan_result[1]
+        light_intensity: float = scan_result[2]
 
         grav_test_pos_data.append(position)
         grav_test_light_data.append(light_intensity)
-    
-    dr_offset, _ = dp.calculate_gravity_angle(grav_test_pos_data, grav_test_light_data) # STORE: ANGLE BETWEEN Z (TRUE) AND AXIS
+
+    return grav_test_scan_data
+    #dr_offset, _ = dp.calculate_gravity_angle(grav_test_pos_data, grav_test_light_data) # STORE: ANGLE BETWEEN Z (TRUE) AND AXIS
     # offset negative theta: CW
     
     if side == "left":

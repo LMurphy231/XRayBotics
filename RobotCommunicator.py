@@ -48,7 +48,6 @@ class RobotCom(RPC):
         threading.Thread(target=self.startup, args=(ip,), daemon=True).start()
         #threading.Thread(target=self.stop_thread, daemon=True).start()
         #threading.Thread(target=self._status_check, args=(root,), daemon=True).start()
-        self.move_thread = threading.Thread(target=lambda:None)
         self.action_queue:queue.Queue[tuple[object, threading.Event]] = queue.Queue()
         
         threading.Thread(target=self._queue_runner, name='robot movement queue',daemon=True).start()
@@ -88,7 +87,7 @@ class RobotCom(RPC):
 
     @property
     def end_effector_angle(self):
-        return self._end_eff_angle + self.TOOL_RBASE + self.offset[3:]
+        return self._end_eff_angle + self.offset[3:]
 
     def set_widget_statuses(self, state:bool):
         set_state = tk.NORMAL if state else tk.DISABLED
@@ -103,7 +102,10 @@ class RobotCom(RPC):
         threading.Thread(target=self.stop, daemon=True, name='Stop').start()
         for thread in list(self._monitor_threads):
             print(f'Waiting on thread: {thread.name}')
-            thread.join()
+            start_time = time.time()
+            while thread.is_alive() and time.time()-start_time <= 10.0:
+                time.sleep(0.01)
+            #thread.join()
             self._monitor_threads.remove(thread)
         self._stop_event.clear()
         
@@ -177,7 +179,7 @@ class RobotCom(RPC):
         self.user_input_window = None
         self.error_label = None
     
-    def move_increment(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=100.0, in_thread=False):
+    def move_increment(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=20.0, in_thread=False):
         '''
         Move Arm with incremental movements. 
 
@@ -192,7 +194,7 @@ class RobotCom(RPC):
         acc: Acceleration - default: 100.0
         '''
         self._check_stop_interrupt()
-        self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.TOOL_RBASE], 0, 0, 0, 0)
+        self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
 
         desc_pos = self._get_tool_position()
         angle = list(desc_pos[3:])
@@ -200,15 +202,31 @@ class RobotCom(RPC):
         #desc_pos[3:] = self.end_effector_angle[:]
         offset = np.array([dx, dy, dz, angle[0]+drx, angle[1]+dry, angle[2]+drz])
         self._internal_position = desc_pos+offset
-        print('increment', self.GetActualTCPPose(), '\n', desc_pos, '\n', offset)
         self.logger.debug(f'Queing incremental Movement {offset} from {desc_pos} to {self._internal_position}')
+        return self.MoveL(
+                    desc_pos=desc_pos,
+                    tool=self.cur_tool,
+                    user=0,
+                    joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    vel=vel,
+                    acc=acc,
+                    ovl=100.0,
+                    blendR=-1.0,
+                    blendMode=0,
+                    exaxis_pos=[0.0, 0.0, 0.0, 0.0],
+                    search=0,
+                    offset_flag=2,
+                    offset_pos=offset,
+                    oacc=20.0,
+                    velAccParamMode=0,
+                    )
         funct = lambda: self.MoveL(
                     desc_pos=desc_pos,
                     tool=self.cur_tool,
                     user=0,
                     joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    vel=10.0,
-                    acc=20.0,
+                    vel=vel,
+                    acc=acc,
                     ovl=100.0,
                     blendR=-1.0,
                     blendMode=0,
@@ -248,25 +266,23 @@ class RobotCom(RPC):
             return event
         return funct()
 
-    def move_position(self, x, y, z, rx=0.0, ry=0.0, rz=0.0, in_thread=False):
+    def move_position(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False):
             self._check_stop_interrupt()
             
-            #end_effector_angle = self.end_effector_angle
+            end_effector_angle = self.end_effector_angle
             
 
-            #rx = end_effector_angle[0] if rx is None else rx
-            #ry = end_effector_angle[1] if ry is None else ry
-            #rz = end_effector_angle[2] if rz is None else rz
+            rx = end_effector_angle[0] if rx is None else rx
+            ry = end_effector_angle[1] if ry is None else ry
+            rz = end_effector_angle[2] if rz is None else rz
 
             
             desc_pos = self.isocenter if self.isocenter_set else np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-            desc_pos[3:] = [0.0, 0.0, 0.0]
+            desc_pos[3:] = [0.0, 0.0, 0.0]# self.end_effector_angle
             self._internal_position = np.array([x, y, z, rx, ry, rz])
             #desc_pos += self._internal_position
-            self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.TOOL_RBASE], 0, 0, 0, 0)
+            self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
 
-            print(self.GetActualTCPPose(), '\n', desc_pos, '\n', self._internal_position)
-            
             self.logger.debug(f'Queueing Movement to {desc_pos} and {self._internal_position}')
             #dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,desc_pos[3]-rx,desc_pos[4]-ry,desc_pos[5]-rz] 
             
@@ -292,6 +308,10 @@ class RobotCom(RPC):
                 return event
             return funct()
 
+    @property
+    def tool_frame(self):
+        return np.array(self.TOOL_RBASE) + self.offset[3:]
+    
     _position_move  = move_position
     _incriment_move = move_increment
     _joint_move     = move_joint
@@ -364,9 +384,7 @@ class RobotCom(RPC):
     def stop(self):
         while not self.action_queue.empty():
             self.action_queue.get()
-        print('stopping')
         self.StopMove()
-        print('finished stop')
 
     def _test_square(self, lq:SensorManager, x1, y1, z, length, width, angle=0.0, step_length=0.001, avg_sample=5):
         print((x1, y1, z))

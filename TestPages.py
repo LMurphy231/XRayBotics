@@ -9,7 +9,7 @@ from tkinter import ttk, messagebox, filedialog, scrolledtext
 import numpy as np
 
 import RobotCommunicator as rc
-import LightSensor as ls
+import LightSensor as lq
 import XRBPlotter as plt
 import settingshandler as settings
 from AutomatedTests import pathsRemade as pr
@@ -211,6 +211,7 @@ class GravityTestResultsPage(TestResultsPage):
     def update(self, test_name, side, result_data):
         self.current_results = (test_name, side, result_data)
         position, distance, intensities = map(list, zip(*result_data))
+        print(len(distance), len(intensities))
         self.plotter2d.clear()
         self.plotter2d.scatter(x=distance, y=intensities)
         self.plotter2d.update()
@@ -223,10 +224,11 @@ class GravityTestResultsPage(TestResultsPage):
 
         
 class TestPage(BasePage):
-    def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom=None, opts:settings.OptionDict=None, description='', results_page:TestResultsPage=None):
+    def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom=None, ls: lq.SensorManager=None, opts:settings.OptionDict=None, description='', results_page:TestResultsPage=None):
         self.name = name
         self.opts = opts
         self.robot = robot
+        self.ls = ls
         self.results_page = results_page
         
         self.description = inspect.cleandoc(description)
@@ -335,7 +337,7 @@ class TestPage(BasePage):
         if self.robot is not None:
             self.robot._disable_move_widgets.append(start_button)
             
-        tk.Button(header_frame, command=self.robot.interrupt_threads, text='Stop test',).grid(row=0, column=3)
+        tk.Button(header_frame, command=lambda: threading.Thread(target=self.robot.interrupt_threads, daemon=True).start(), text='Stop test',).grid(row=0, column=3)
 
         if self.results_page is not None:
             tk.Button(header_frame, command=lambda: self._toggle_results(True), text='View Results',).grid(row=0, column=4)
@@ -366,7 +368,7 @@ class TestPage(BasePage):
         return None
 
 class GravityTest(TestPage):
-    def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom, opts:settings.OptionDict):
+    def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
         description = """
         Description
         ___________
@@ -380,7 +382,7 @@ class GravityTest(TestPage):
         """
 
         results_page = GravityTestResultsPage(_root)
-        TestPage.__init__(self, name, _root, robot, opts, description=description, results_page=results_page)
+        TestPage.__init__(self, name, _root, robot, ls, opts, description=description, results_page=results_page)
     
     def _default_settings(self):
 
@@ -455,15 +457,17 @@ class GravityTest(TestPage):
         x = 0.0
         y = 0.0
         z = 0.0
-        side = 'left'
-        length = 100
-        width = 100
+        side = 'right'
+        length = 20
+        width = 20
         self.robot.register_thread()
-        step_length = 10
-        LinacTests.gravity_test_automated(self.robot, x, y, z, side, step_length=step_length, length=length, width=width)
+        step_length = 0.1
+        test_results = LinacTests.gravity_test_automated(self.robot, self.ls, x, y, z, side, step_length=step_length, length=length, width=width)
+        if self.results_page is not None:
+            self.results_page.add_test('gravity', 'Gravity Test Official', ('Gravity Test Official', side, test_results))
 
 class CollimatorTest(TestPage):
-    def __init__(self, name, root:tk.Frame, robot:rc.RobotCom, opts:settings.OptionDict):
+    def __init__(self, name, root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
         description = """
         Description
         ___________
@@ -474,7 +478,7 @@ class CollimatorTest(TestPage):
 
         Press start.
         """
-        TestPage.__init__(self, name, root, robot, opts, description=description)
+        TestPage.__init__(self, name, root, robot, ls, opts, description=description)
     
     def _default_settings(self):
         section = 'linac.jaws'

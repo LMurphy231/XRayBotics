@@ -64,8 +64,8 @@ def rectangle_path(isocenter: np.ndarray, points: list):
     # Create paths for each side; Decided internally
     path_to_p1:     list = straight_path_absolute(p1)           # Non-Incremental
     path_p1_to_p2:  list = straight_path_displacement(p1, p2)   # Incremental
-    path_p2_to_p3:  list = straight_path_absolute(p3)           # Non-Incremental
-    path_p3_to_p4:  list = straight_path_displacement(p3, p4)   # Incremental
+    path_p2_to_p3:  list = straight_path_absolute(p4)           # Non-Incremental
+    path_p3_to_p4:  list = straight_path_displacement(p4, p3)   # Incremental
 
     # Store paths with scan information; True/False for Scanning
     rectangle_paths: list[tuple[list[np.ndarray], bool, np.ndarray]]= [
@@ -324,4 +324,4 @@ def rotation_matrix(points: list, angle: float):
     angle_radians = np.deg2rad(angle) # Convert from degrees to radians; ASSUMES + = CCW
     
     rotation_matrix = Ry(np.deg2rad(angle))
-    return rotate_points_basis_plane(points, rotation_matrix)
+    return rotation_matrix
