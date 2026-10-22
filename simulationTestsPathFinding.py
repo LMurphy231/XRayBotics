@@ -274,6 +274,8 @@ def simulate_gravity_test(
         # scan_data[0] = [(x1,y1,z1), (x2,y2,z3), ...] # List of np.ndarray
         # scan_data[1] = [l1, l2, l3, ...] # List of floats
     
+    
+
 
 def main():
 
@@ -285,8 +287,8 @@ def main():
     p2: np.ndarray = np.array([20.0, 40.0, 60.0])
 
     isocenter: np.ndarray = np.array([0.0, 0.0, 0.0])
-    length: float = 10.0
-    width: float = 5.0
+    length: float = 100.0
+    width: float = 100.0
 
     axis: str = "z"
     angle: float = 0.0
@@ -304,8 +306,8 @@ def main():
     #simulate_straight_path_absolute(p1, p2)
     #simulate_basis_plane(isocenter, length, width)
 
-    #points: list = paths.basis_plane_calculate_four_points(isocenter, length, width)
-    #simulate_rectangle_path(isocenter, points)
+    points: list = paths.basis_plane_calculate_four_points(isocenter, length, width)
+    simulate_rectangle_path(isocenter, points)
     #simulate_rotate_basis_plane(isocenter, points, axis, angle, offset)
 
     # ============================================================

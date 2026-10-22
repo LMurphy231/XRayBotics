@@ -22,8 +22,6 @@ atl_logger.error('Failed to connect to database')   # logging.ERROR     ---> 40
 atl_logger.critical('System shutting down')         # logging.CRITICAL  ---> 50
 '''
 
-
-
 def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side: str, 
                            Navg: int = 4, step_length: float = 0.5, 
                            length: float = 100.0, width:float = 100.0):
@@ -78,35 +76,44 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
 
     # Define Basis Plane Rectangle: XY
     basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)  # Calculate rectangle points in basis plane: XY
-    
-    # Need to rotate about x axis
-    #grav_rot_matrix = paths.get_rotation_matrix("x", 90, 0.0) # Rotate about z-axis to point photo-diode in +/- y-direction
-    #basis_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
-    
     basis_plane_path: list = paths.rectangle_path(est_isocenter, basis_points)                  # Create path with points in basis plane: XY
 
     # Rotate the robot to the correct side to ensure photodiode faces laser
     if side == "left":
+        # Rotate basis place about x (CCW, +angle)
         grav_plane_angle = 90                       # Rotate rectangle points about z-axis to point photo-diode in +y-direction
         fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)     # if left -> rotate 90 about current z0 (robot)
         grav_angle_offset = fr5.offset[4]           # Left side finds angle about Y; get previous offset
     elif side == "right":
+        # Rotate basis place about x (CW, -angle)
         grav_plane_angle = -90
         fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)   # if right -> rotate -90 about current z0 (robot)
-        grav_angle_offset = -fr5.offset[4]         # Left side finds angle about Y; get previous offset
+        grav_angle_offset = -fr5.offset[4]         # Right side finds angle about Y; get previous offset
     elif side == "front":
-        grav_plane_angle = 0  # No rotation needed; laser already facing photodiode
-              
+        grav_plane_angle = 0  # No rotation needed; photodiode already facing laser
+        
     # Define new rectangle points and path for Gravity Test based on rotation of basis plane points          
     if grav_plane_angle != 0:
-        # Rotate rectangle points about z-axis to point photo-diode in other +/- other directions
-        grav_rot_matrix = paths.get_rotation_matrix("z", grav_plane_angle, grav_angle_offset) # Rotate about z-axis to point photo-diode in +/- y-direction
-        grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
-        grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points)       
+        
+        if side == "left" or side == "right":
+            # Rotate rectangle points about z-axis to point photo-diode in other +/- other directions
+            grav_rot_matrix = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset) # Rotate about axis to point photo-diode in proper direction 
+            grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
+            
+            grav_rot_matrix = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset) # Rotate about axis to point photo-diode in proper direction    
+            grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, grav_rectangle_points, grav_rot_matrix)
+            
+            grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
+            
+        elif side == "front":
+            matrix_1 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset) # Rotate about y-axis
+            matrix_2 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset) # Rotate about x-axis
+            pass
+        
     else:
         grav_rectangle_points = basis_points    # No rotation needed; laser already facing photodiode
         grav_path = basis_plane_path            # No rotation needed; laser already facing photodiode
-              
+     
     # ============================================================
     # END MOTION PLANNING STATE: ROTATE ROBOT TO CORRECT SIDE, RETURN TO ISOCENTER, DEFINE MOVEMENT PATH
     # ============================================================
