@@ -85,11 +85,14 @@ def transformation_matrix(DH:DenavitHartenbergParameter, set_angle=None):
 
 
 class Plotter:
-    def __init__(self, root, **options):
-        self.root = root
+    def __init__(self, _root, projection=None, row=0, column=0, sticky=tk.NSEW, **options):
+        self._root = _root
+        self.root = tk.Frame(self._root)
+        self.root.grid(row=row, column=column, sticky=sticky)
+
         self.fig = Figure(figsize=options.get('figsize', (6, 4)), dpi=options.get('dpi', 100))
-        self.ax = self.fig.add_subplot(111, projection=options.get('projection', None))
-        self._projection = options.get('projection', None)
+        self.ax = self.fig.add_subplot(111, projection = projection)
+        self._projection = projection
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
 
@@ -106,6 +109,7 @@ class Plotter:
         self.zmin = self.zmax = self._user_zmin = self._user_zmax = 0
         canvas_widget = self.canvas.get_tk_widget()
         canvas_widget.grid(row=0, column=0, sticky=tk.NSEW)
+
         self.clear()
         self.label_axis('X (mm)', 'Y (mm)', 'Z (mm)')
         self._set_axis_limit(-500, 500, -500, 500, -500, 500)
@@ -115,13 +119,15 @@ class Plotter:
         self.scatter = self.ax.scatter
         self.plot    = self.ax.plot
 
+    
     def _update(self, keep_axis=True):
         if keep_axis:
             self._set_axis_limit(self._user_xmin, self._user_xmax, self._user_ymin, self._user_ymax, self._user_zmin, self._user_zmax)
         else:
             self._set_axis_limit(self.xmin, self.xmax, self.ymin, self.ymax, self.zmin, self.zmax)
         self.canvas.draw()
-
+    update = _update
+    
     def _set_axis_limit(self, xmin=None, xmax=None, ymin=None, ymax=None, zmin=None, zmax=None):
         self.xmin = xmin if xmin is not None else self.ax.get_xlim()[0]
         self.xmax = xmax if xmax is not None else self.ax.get_xlim()[1]
