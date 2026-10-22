@@ -134,13 +134,13 @@ def rotate_point_with_matrix(point: np.ndarray, rotation_matrix: np.ndarray):
     '''
     return rotation_matrix @ point
    
-def rotation_matricies(matrix1: np.ndarray, rotation_matricies: list[np.ndarray]):
+def rotation_matricies(matrix1: np.ndarray, *rotation_matricies: list[np.ndarray]):
     '''
     rotation_matricies(matrix1: np.ndarray, rotation_matricies: list[np.ndarray]):
         Multiply multiple rotation matrices (list) together
     '''
     
-    new_matrix: np.ndarray = matrix1.copy() # New matrix created by multiplying the rotation matrices together
+    new_matrix: np.ndarray
     
     for matrix in rotation_matricies:
         new_matrix = np.matmul(matrix1, matrix)
@@ -325,16 +325,3 @@ def rotation_matrix(points: list, angle: float):
     
     rotation_matrix = Ry(np.deg2rad(angle))
     return rotate_points_basis_plane(points, rotation_matrix)
-
-def straight_path_absolute(origin: np.ndarray, end_pos: np.ndarray):
-    """
-    Return the absolute destination position for a straight path.
-    
-    """
-    
-    pos: np.ndarray
-
-    abs_movement_path: list = []
-    abs_movement_path.append(end_pos.copy())
-
-    return abs_movement_path
