@@ -101,6 +101,7 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
         grav_angle_offset_y = -fr5.offset[4]         # Right side finds angle about Y; get previous offset
         
     elif side == "front":
+        
         grav_plane_angle = 90                           # No rotation needed; photodiode already facing laser  
         grav_angle_offset_x = fr5.offset[3]             # Left side finds angle about Y; get previous offset
         grav_angle_offset_y = fr5.offset[4]             # Right side finds angle about Y; get previous offset
@@ -109,11 +110,10 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
     if grav_plane_angle != 0:
         
         if side == "left" or side == "right":
-            # Rotate rectangle points about z-axis to point photo-diode in other +/- other directions
             matrix_1 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction 
             matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about axis to point photo-diode in proper direction    
 
-            grav_rot_matrix = paths.rotation_matricies(matrix_1, matrix_2)
+            grav_rot_matrix = paths.rotation_matricies(matrix_2, matrix_1) # about y first, then about x
             grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
             grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
             
@@ -121,8 +121,8 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
             matrix_1 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction    
             matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about axis to point photo-diode in proper direction 
 
-            grav_rot_matrix = paths.rotation_matricies(matrix_1, matrix_2)
-            grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, matrix_1)
+            grav_rot_matrix = paths.rotation_matricies(matrix_2) # about y only
+            grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
             grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
 
     else:

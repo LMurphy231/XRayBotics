@@ -211,7 +211,7 @@ def simulate_gravity_test(
 
     if angle != 0:
         rotation_matrix: np.ndarray = paths.get_rotation_matrix(
-            "z", angle
+            "x", angle, 0
         )
 
         points = paths.rotate_basis_plane_points(
@@ -294,8 +294,8 @@ def main():
     angle: float = 0.0
     offset: float = 0.0
 
-    side: str = "front"
-    step_length: float = 2.5
+    side: str = "left"
+    step_length: float = 25
     Navg: int = 4
 
     # ============================================================
@@ -306,14 +306,14 @@ def main():
     #simulate_straight_path_absolute(p1, p2)
     #simulate_basis_plane(isocenter, length, width)
 
-    points: list = paths.basis_plane_calculate_four_points(isocenter, length, width)
-    simulate_rectangle_path(isocenter, points)
+    #points: list = paths.basis_plane_calculate_four_points(isocenter, length, width)
+    #simulate_rectangle_path(isocenter, points)
     #simulate_rotate_basis_plane(isocenter, points, axis, angle, offset)
 
     # ============================================================
     # RUN FULL GRAVITY SIMULATION
     # ============================================================
-    #simulate_gravity_test(isocenter, side, length, width, step_length, Navg)
+    simulate_gravity_test(isocenter, side, length, width, step_length, Navg)
     
     atl_logger.debug('Debug message') # 10
     atl_logger.info('Application started') # 20
