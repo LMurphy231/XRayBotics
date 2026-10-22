@@ -82,17 +82,21 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
 
     # Rotate the robot to the correct side to ensure photodiode faces laser
     if side == "left":
+        
         # Rotate basis place about x (CCW, +angle)
         grav_plane_angle = 90                       # Rotate rectangle points about z-axis to point photo-diode in +y-direction
         fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)     # if left -> rotate 90 about current z0 (robot)
         grav_angle_offset_x = fr5.offset[3]           # Left side finds angle about Y; get previous offset
         grav_angle_offset_y = fr5.offset[4]         # Right side finds angle about Y; get previous offset
+        
     elif side == "right":
+        
         # Rotate basis place about x (CW, -angle)
         grav_plane_angle = -90
         fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)   # if right -> rotate -90 about current z0 (robot)
         grav_angle_offset_x = -fr5.offset[3]         # Right side finds angle about Y; get previous offset
         grav_angle_offset_y = -fr5.offset[4]         # Right side finds angle about Y; get previous offset
+        
     elif side == "front":
         grav_plane_angle = 0  # No rotation needed; photodiode already facing laser
         
@@ -111,9 +115,13 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
             
         elif side == "front":
             matrix_1 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about y-axis
+            grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, matrix_1)
+
             matrix_2 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about x-axis
-            pass
-    
+            grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, grav_rectangle_points, matrix_2)
+
+            grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
+
     else:
         grav_rectangle_points = basis_points    # No rotation needed; laser already facing photodiode
         grav_path = basis_plane_path            # No rotation needed; laser already facing photodiode
