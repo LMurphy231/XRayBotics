@@ -19,8 +19,9 @@ def absolute_move_path(fr5: RC.RobotCom, path: list):
         
         # Robot's/GUI move function here
         #fr5._position_move(x, y, z)     # Absolute Position
-        fr5._position_move(*np.array([x, y, z]))     # Absolute Position
-        
+        print(f'Moving to {[x, y, z]}')
+        event = fr5.move_position(x, y, z)     # Absolute Position
+
     return
 
 def increment_move_and_scan(fr5: RC.RobotCom, path: list, start_position: np.ndarray, scan_data: list, Navg: int, step_length: float = 1.0):
@@ -53,8 +54,7 @@ def increment_move_and_scan(fr5: RC.RobotCom, path: list, start_position: np.nda
             dy: float = movement[1]     # Extract dy from moveset for that move
             dz: float = movement[2]     # Extract dz from moveset for that move
             
-            #fr5._incriment_move(dx, dy, dz) # Vector Movement; robot gui funciton
-            fr5._increment_move(*np.array([dx, dy, dz])) # Vector Movement; robot gui funciton
+            fr5.move_increment(dx, dy, dz) # Vector Movement; robot gui funciton
 
             # Scan after movement
             light_intensity = light_scan(Navg) # Scan after movement
@@ -94,7 +94,8 @@ def store_data(scan_data: list, position: np.ndarray, light_intensity: float):
     return
 
 def light_scan(Navg: int = 5):
-    
+    # TEMP
+    return 0.0
     light_intensity: float  # Store light values
     _, light_intensity = lq.read(Navg) # Return an int (or similar)
 

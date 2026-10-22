@@ -14,7 +14,7 @@ import settingshandler as settings
 
 class RobotCom(RPC):
     HOME = [0, -45, -135, -90, 90, 0]
-    TOOL_RBASE = [0, 180, 90]
+    TOOL_RBASE = np.array([0, 180, 90])
     AXIS_LIMIT = [
         (-175, 175),
         (-265, 85),
@@ -37,7 +37,10 @@ class RobotCom(RPC):
         self._monitor_threads: set[threading.Thread] = set()
         self.cur_tool = 0
         self.isocenter_set = False
+        self.isocenter = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self.offsets:list[tuple[str, np.ndarray[float, float]]] = []
+        self._end_eff_angle = np.array([0.0, 0.0, 0.0])
+        self._internal_position = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self._disable_move_widgets: list[tk.BaseWidget] = []
         
         self._default_options()
@@ -58,6 +61,29 @@ class RobotCom(RPC):
             cur_offset += offset
         return cur_offset 
 
+    def get_prev_test_offset(self, reason):
+        cur_offset = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        for key, offset in self.offsets:
+            if reason == key:
+                cur_offset += offset
+
+        return cur_offset
+
+    def get_prev_test_offset_list(self, reason):
+        prev_offsets = []
+        for key, offset in self.offsets:
+            if reason == key:
+                prev_offsets.append(offset)
+                
+        return prev_offsets
+
+    def set_end_effector_angle(self, rx, ry, rz):
+        self._end_eff_angle = np.array([rx, ry, rz])
+
+    @property
+    def end_effector_angle(self):
+        return self._end_eff_angle + self.TOOL_RBASE + self.offset[3:]
+
     def set_widget_statuses(self, state:bool):
         set_state = tk.NORMAL if state else tk.DISABLED
         for widget in self._disable_move_widgets:
@@ -70,13 +96,20 @@ class RobotCom(RPC):
         self._stop_event.set()
         self.stop()
         for thread in list(self._monitor_threads):
+            print(f'Waiting on thread: {thread.name}')
             thread.join()
             self._monitor_threads.remove(thread)
         self._stop_event.clear()
 
+    def is_connected(self):
+        try:
+            err, [mainerr, suberr] = self.GetRobotErrorCode()
+            return True
+        except:
+            return False
+
     def _check_stop_interrupt(self):
         if self._stop_event.is_set():
-            
             raise InterruptedError(f'{threading.current_thread().name} stopped from stopped event.')
 
     def _queue_runner(self):
@@ -118,16 +151,9 @@ class RobotCom(RPC):
     def home(self):
         self.logger.debug('Moving to home position')
         self.stop()
-        self._joint_move(self.HOME)
+        self.move_joint(self.HOME, in_thread=True)
+        self.SetToolCoord(0, [0.0,0.0,0.0, *self.TOOL_RBASE], 0, 0, 0, 0)
 
-    def _monitor(self):
-        thread = threading.Thread(target=lambda:None)
-        while True:
-            while thread.is_alive():
-                time.sleep(0.01)
-
-            thread = self.action_queue.get()
-            thread.start()
 
     def _clear_error(self):
         ierr = self.ResetAllError()
@@ -136,9 +162,9 @@ class RobotCom(RPC):
         self.user_input_window = None
         self.error_label = None
     
-    def _incriment_move(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=100.0, in_thread=False):
+    def move_increment(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=100.0, in_thread=False):
         '''
-        Move Arm with incrimental movements. 
+        Move Arm with incremental movements. 
 
         ref: Movement reference
          0 - joint point movement
@@ -151,15 +177,15 @@ class RobotCom(RPC):
         acc: Acceleration - default: 100.0
         '''
         self._check_stop_interrupt()
-        self.logger.debug(f'Queing Incrimental Movement ({dx}, {dy}, {dz})')
-        print(f'Queing Incrimental Movement ({dx}, {dy}, {dz})')
-        print(f'Current Position: {self.GetActualTCPPose(0)}')
-        #next_pos = self.GetActualTCPPose(0)[1] + np.array([dx, dy, dz, drx, dry, drz])
-        #joint_angles = self._invk(*next_pos, self.cur_tool)
-        #return self._joint_move(joint_angles, in_thread)
-        
+        self.SetToolCoord(2, [0., 0., 0., *self.TOOL_RBASE], 0, 0, 0, 0)
+
+        desc_pos = self._get_tool_position()
+        #desc_pos[3:] = self.end_effector_angle[:]
+        offset = np.array([dx, dy, dz, drx, dry, drz])
+        self._internal_position = desc_pos+offset
+        self.logger.debug(f'Queing incremental Movement {offset} from {desc_pos} to {self._internal_position}')
         funct = lambda: self.MoveL(
-                    desc_pos=self.GetActualTCPPose(1)[1],
+                    desc_pos=desc_pos,
                     tool=self.cur_tool,
                     user=0,
                     joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -171,7 +197,7 @@ class RobotCom(RPC):
                     exaxis_pos=[0.0, 0.0, 0.0, 0.0],
                     search=0,
                     offset_flag=2,
-                    offset_pos=[dz, dy, dx, drx, dry, drz],
+                    offset_pos=offset,
                     oacc=20.0,
                     velAccParamMode=0,
                     )
@@ -179,80 +205,88 @@ class RobotCom(RPC):
             event = threading.Event()
             self.action_queue.put((funct, event))
             return event
-        print(funct())
+        return funct()
 
-    def _position_move(self, x, y, z, rx=0.0, ry=0.0, rz=0.0, ref=4, vel=20.0, acc=100.0, in_thread=False):
+    def move_joint(self, joint_pos, in_thread=False):
         self._check_stop_interrupt()
-        desc_pos = self.isocenter if self.isocenter_set else self.GetActualTCPPose(1)[1]
-        #desc_pos = [1]
-        #next_pos = np.array([x, y, z, rx, ry, rz])
-        #joint_angles = self._invk(*next_pos, self.cur_tool)
-        #return self._joint_move(joint_angles, in_thread)
-        dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,desc_pos[3]-rx,desc_pos[4]-ry,desc_pos[5]-rz] 
-        tool=self.cur_tool
-        user=0
-        vel=10.0
-        acc=20.0
-        ovl=100.0
-        blendR=-1.0
-        blendMode=0
-        exaxis_pos=[0.0, 0.0, 0.0, 0.0]
-        search=0
-        offset_flag=2
-        offset_pos=dpos
-        oacc=20.0
-        velAccParamMode=0
-        self.logger.debug(f'Queueing Movement to ({x}, {y}, {z})')
-        funct = lambda: self.MoveL(desc_pos, tool, user, vel, acc, ovl, blendR, blendMode, exaxis_pos, search, offset_flag, offset_pos, oacc, velAccParamMode)
-        if in_thread:
-            event = threading.Event()
-            self.action_queue.put((funct, event))
-            return event
-        funct()
-
-    def _joint_move(self, joint_pos, in_thread=False):
-        self._check_stop_interrupt()
-        tool=self.cur_tool
-        user=0
-        desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0]
-        vel = 20.0
-        acc = 0.0
-        ovl = 100.0
-        exaxis_pos = [0.0,0.0,0.0,0.0]
-        blendT = -1.0
-        offset_flag = 0
-        offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0]
+        
         self.logger.debug(f'Queing joint movement to {tuple(joint_pos)}')
-        funct = lambda: self.MoveJ(joint_pos, tool, user, desc_pos, vel, acc, ovl, exaxis_pos, blendT, offset_flag, offset_pos)
+        
+        funct = lambda: self.MoveJ(joint_pos,
+                    tool=self.cur_tool,
+                    user=0,
+                    desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0],
+                    vel = 20.0,
+                    acc = 0.0,
+                    ovl = 100.0,
+                    exaxis_pos = [0.0,0.0,0.0,0.0],
+                    blendT = -1.0,
+                    offset_flag = 0,
+                    offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0],
+                )
         if in_thread:
             event = threading.Event()
             self.action_queue.put((funct, event))
             return event
-        
-        funct()
+        return funct()
 
-    def _move_path(self, path, lq:SensorManager):
-        recordings = []
-        for direction_name, move_vec in path:
-            drx, dry, drz = 0.0
-            if len(move_vec) == 3:
-                dx, dy, dz = move_vec
-            elif len(move_vec) == 6:
-                dx, dy, dz, drx, dry, drz = move_vec
-            else:
-                raise ValueError(f'Move Vector recieved an unexpected amount of values {move_vec}')
+    def move_position(self, x, y, z, rx=0.0, ry=0.0, rz=0.0, in_thread=False):
+            self._check_stop_interrupt()
             
-            self.robot_logger.debug('Moving {} ({})'.format(direction_name, '{:>0.3f}'.join(move_vec)))
-            move_thread = self._incriment_move(dx, dy, dz, drx, dry, drz)
+            #end_effector_angle = self.end_effector_angle
+            
 
-            time_data, light_data = _record_thread(move_thread, lq)
+            #rx = end_effector_angle[0] if rx is None else rx
+            #ry = end_effector_angle[1] if ry is None else ry
+            #rz = end_effector_angle[2] if rz is None else rz
 
-            recordings.append((time_data, light_data))
+            
+            desc_pos = self.isocenter if self.isocenter_set else np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            self._internal_position = np.array([x, y, z, rx, ry, rz])
+            #desc_pos += self._internal_position
+            
+            self.logger.debug(f'Queueing Movement to {desc_pos} and {self._internal_position}')
+            #dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,desc_pos[3]-rx,desc_pos[4]-ry,desc_pos[5]-rz] 
+            
+            funct = lambda: self.MoveL(
+                        desc_pos,
+                        tool           = 0,
+                        user           = 0,
+                        vel            = 10.0,
+                        acc            = 20.0,
+                        ovl            = 100.0,
+                        blendR         = -1.0,
+                        blendMode      = 0,
+                        exaxis_pos     = [0.0, 0.0, 0.0, 0.0],
+                        search         = 0,
+                        offset_flag    = 2,
+                        offset_pos     = self._internal_position,
+                        oacc           = 20.0,
+                        velAccParamMode= 0,
+                        )
+            if in_thread:
+                event = threading.Event()
+                self.action_queue.put((funct, event))
+                return event
+            return funct()
 
-        return recordings         
-        
+    _position_move  = move_position
+    _incriment_move = move_increment
+    _joint_move     = move_joint
+
+    def move_to_isocenter(self):
+        self.move_position(*self.isocenter)
+
+    def move_to_home(self):
+        self.logger.debug('Moving to home position')
+        self.stop()
+        self.move_joint(self.HOME)
+
     def _get_tool_position(self):
-        ierr, tcp_pose = self.GetActualTCPPose()
+        if self.is_connected():
+            ierr, tcp_pose = self.GetActualTCPPose()
+        else:
+            tcp_pose = self._internal_position
         return tcp_pose
 
     def _get_joint_angles(self, degrees=True, flag=1):
@@ -286,14 +320,13 @@ class RobotCom(RPC):
 
     def set_isocenter(self, x, y, z, rx, ry, rz):
         self.isocenter_set = True
-        self.isocenter = np.array([x,y,z,*self.TOOL_RBASE])
+        self.isocenter = np.array([x,y,z,*self.end_effector_angle])
         self.robot_logger.info(f'Setting Isocenter to {self.isocenter}')
         self.cur_tool = 2
-        #self.SetToolCoord(self.cur_tool, self.isocenter, 0, 0, 0, 0)
-        #self.SetToolList(self.cur_tool, self.isocenter, 0, 0, 0)
+        self.SetToolCoord(2, [0., 0., 0., *self.TOOL_RBASE], 0, 0, 0, 0)
+        self.SetToolList(2, [0., 0., 0., *self.TOOL_RBASE], 0, 0, 0)
         #self.SetWObjCoord(0, self.isocenter, 0)
         self.robot_logger.info(f'Done Setting Isocenter to {self.isocenter}')
-        self.robot_logger.info(f'{self.GetTCPOffset(0)}')
 
 
     def _update_connection(self):
@@ -307,7 +340,6 @@ class RobotCom(RPC):
             time.sleep(5)
 
     def stop(self):
-        
         while not self.action_queue.empty():
             self.action_queue.get()
         
