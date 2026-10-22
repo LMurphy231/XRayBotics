@@ -116,9 +116,8 @@ def gravity_test_automated(fr5: RC.RobotCom, x: float, y: float, z: float, side:
             grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
             
         elif side == "front":
-            
-            matrix_1 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about axis to point photo-diode in proper direction 
-            matrix_2 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction    
+            matrix_1 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction    
+            matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about axis to point photo-diode in proper direction 
 
             grav_rot_matrix = paths.rotation_matricies(matrix_1, matrix_2)
             grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, matrix_1)
