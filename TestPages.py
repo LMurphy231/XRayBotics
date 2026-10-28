@@ -673,3 +673,7 @@ def alan_function(filename, index):
         raise ValueError(f'Test type {test_type} not supported!')
     
     return current_results
+
+test_results = alan_function(r'TestData/Official Gravity/GravityTest1.xrb', 0)
+for pos, distance, intensity in test_results[2]:
+    print(pos, distance, intensity)
