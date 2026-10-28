@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, scrolledtext
 
 import numpy as np
+import xlsxwriter
 
 import RobotCommunicator as rc
 import LightSensor as lq
@@ -211,10 +212,13 @@ class GravityTestResultsPage(TestResultsPage):
     def update(self, test_name, side, result_data):
         self.current_results = (test_name, side, result_data)
         position, distance, intensities = map(list, zip(*result_data))
-        print(len(distance), len(intensities))
+        
         self.plotter2d.clear()
-        self.plotter2d.scatter(x=distance, y=intensities)
-        self.plotter2d.update()
+        for i in range(2):
+            self.plotter2d.scatter(x=distance[i*(len(distance)//2):(1+i)*(len(distance)//2)], y=intensities[i*(len(distance)//2):(1+i)*(len(distance)//2)])
+            
+        self.plotter2d._set_axis_limit(xmin=distance[0], xmax=distance[-1], ymin=min(intensities), ymax=max(intensities)*1.05)
+        self.plotter2d.update(keep_axis=False)
         
 
         self.plotter3d.clear()
@@ -657,5 +661,15 @@ def _decode_int(arr:bytearray):
     return value, arr[8:]
 
 
-#arr = _gravity_test_results_file_text('demo', 'left', GravityTestResultsPage._test_results(None))
-#print(_gravity_test_results_file_read(arr))
+
+
+def alan_function(filename, index):
+    tests = list(parse_xrb_file(filename))
+    test_type, test_name, test_results = tests[index]
+    print(f'Picking {test_type} test: "{test_name}"')
+    if test_type == 'gravity':
+        current_results = _gravity_test_results_file_read(test_results)
+    else:
+        raise ValueError(f'Test type {test_type} not supported!')
+    
+    return current_results

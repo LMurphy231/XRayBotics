@@ -134,6 +134,7 @@ class Plotter:
         self.xmax = xmax if xmax is not None else self.ax.get_xlim()[1]
         self.ymin = ymin if ymin is not None else self.ax.get_ylim()[0]
         self.ymax = ymax if ymax is not None else self.ax.get_ylim()[1]
+        
         self.ax.set_xlim(self.xmin, self.xmax)
         self.ax.set_ylim(self.ymin, self.ymax)
         if self._projection == '3d':
