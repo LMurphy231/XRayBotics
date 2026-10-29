@@ -21,7 +21,7 @@ def absolute_move_path(fr5: RC.RobotCom, path: list):
 
     return
 
-def increment_move_and_scan(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, start_position: np.ndarray, scan_data: list, Navg: int, step_length: float = 1.0):
+def increment_move_and_scan(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, start_position: np.ndarray, Navg: int, step_length: float = 1.0):
     """
     move_and_path
     Move ---> scan AFTER the movement
@@ -29,6 +29,7 @@ def increment_move_and_scan(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, 
 
     light_intensity: float = 0.0
     current_position: np.ndarray
+    scan_data: list = []
 
     current_position = start_position.copy()
     
@@ -59,7 +60,9 @@ def increment_move_and_scan(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, 
             current_position = current_position + movement
             total_displacement += np.linalg.norm(movement)
  
-            store_data(scan_data, total_displacement, current_position, light_intensity)
+            store_data(scan_data, current_position, total_displacement, light_intensity)
+            
+    return scan_data
 
 def execute_path(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, scan_data: list, Navg: int, step_length: float = 1.0):
     """
@@ -68,18 +71,17 @@ def execute_path(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, scan_data: 
     Determines whether to move only or move and scan.
     WRAPPER FUNCTION: choose if scanning after (incremental) move or not
     """
+    scan_data_for_side: list = [] # Store scan data (pos, displ, light) for just 1 side; for segmenting data
 
     for move, scan, start_pos in path:
-        
         if scan:
-            increment_move_and_scan(fr5, ls, move, start_pos, scan_data, Navg, step_length) # Scan if True
-
+            scan_data_for_side = increment_move_and_scan(fr5, ls, move, start_pos, scan_data, Navg, step_length) 
+            return scan_data.append(scan_data_for_side)
+        
         else:
             absolute_move_path(fr5, move) # Move without scanning
 
-    return
-
-def store_data(scan_data: list, mag_displacement: float, position: np.ndarray, light_intensity: float):
+def store_data(scan_data: list, position: np.ndarray, mag_displacement: float, light_intensity: float):
     '''
     store_data
     Create list of detected light values with corresponding position

@@ -95,6 +95,8 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
         grav_test_distance.append(distance)
         grav_test_light_data.append(light_intensity)
 
+    
+
     return grav_test_scan_data
 
 
@@ -412,7 +414,6 @@ def create_collimator_test_rectangle_points(fr5: RC.RobotCom, est_isocenter: np.
     end_effector_direction: float = -90.0
     fr5.set_end_effector_angle(gantry_angle + rx_offset, end_effector_direction + ry_offset, collimator_angle - couch_angle + rz_offset)
 
-    
     rx_matrix: np.ndarray = paths.get_rotation_matrix("x", gantry_angle, rx_offset)                     # Rotate path about x axis (Rotation about x axis to match with true z)
     ry_matrix: np.ndarray = paths.get_rotation_matrix("y", 0.0, ry_offset)                              # Rotate path about y axis (Rotation about y axis to match with true z)
     rz_matrix: np.ndarray = paths.get_rotation_matrix("z", collimator_angle - couch_angle, rz_offset)   # Rotate path about z axis (Rotation about z axis to match with couch angle)
