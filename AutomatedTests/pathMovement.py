@@ -26,10 +26,11 @@ def increment_move_and_scan(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, 
     move_and_path
     Move ---> scan AFTER the movement
     """
-
-    light_intensity: float = 0.0
-    current_position: np.ndarray
+    
     scan_data: list = []
+    current_position: np.ndarray
+    total_displacement: float = 0.0
+    light_intensity: float = 0.0
 
     current_position = start_position.copy()
     
@@ -45,7 +46,7 @@ def increment_move_and_scan(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, 
         #n_steps: int = int(mag_displacement // step_length) 
         
         movement: np.ndarray = displacement / n_steps # Movement for each step
-        total_displacement: float = 0.0 
+        total_displacement = 0.0 
 
         for i in range(n_steps):
             
