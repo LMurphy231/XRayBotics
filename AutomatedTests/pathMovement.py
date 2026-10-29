@@ -11,14 +11,11 @@ def absolute_move_path(fr5: RC.RobotCom, path: list):
     HELPER FUNCTION: making move compatible with a defined path
     """
     for position in path:
-        x: float = position[0]     # Extract x from moveset for that move
-        y: float = position[1]     # Extract y from moveset for that move
-        z: float = position[2]     # Extract z from moveset for that move
+        x: float = position[0]
+        y: float = position[1]
+        z: float = position[2]
 
-        # Pass in the destination point
-        
         # Robot's/GUI move function here
-        #fr5._position_move(x, y, z)     # Absolute Position
         print(f'Moving to {[x, y, z]}')
         event = fr5.move_position(x, y, z)     # Absolute Position
 
@@ -30,8 +27,8 @@ def increment_move_and_scan(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, 
     Move ---> scan AFTER the movement
     """
 
-    light_intensity: float = 0.0  # Store light values
-    current_position: np.ndarray  # Store position values
+    light_intensity: float = 0.0
+    current_position: np.ndarray
 
     current_position = start_position.copy()
     
@@ -47,23 +44,21 @@ def increment_move_and_scan(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, 
         #n_steps: int = int(mag_displacement // step_length) 
         
         movement: np.ndarray = displacement / n_steps # Movement for each step
-        total_displacement = 0.0 
+        total_displacement: float = 0.0 
+
         for i in range(n_steps):
             
-            dx: float = movement[0]     # Extract dx from moveset for that move
-            dy: float = movement[1]     # Extract dy from moveset for that move
-            dz: float = movement[2]     # Extract dz from moveset for that move
+            dx: float = movement[0]
+            dy: float = movement[1]
+            dz: float = movement[2]
             
             fr5.move_increment(dx, dy, dz) # Vector Movement; robot gui funciton
-
-            # Scan after movement
-            light_intensity = light_scan(ls, Navg) # Scan after movement
+            light_intensity = light_scan(ls, Navg)
 
             # Update current absolute position
             current_position = current_position + movement
             total_displacement += np.linalg.norm(movement)
-
-            # Store scan data: corresponding position (absolute) & light intensity 
+ 
             store_data(scan_data, total_displacement, current_position, light_intensity)
 
 def execute_path(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, scan_data: list, Navg: int, step_length: float = 1.0):
@@ -96,8 +91,8 @@ def store_data(scan_data: list, mag_displacement: float, position: np.ndarray, l
 
 def light_scan(ls:lq.SensorManager, Navg: int = 5):
     # TEMP
-    light_intensity: float  # Store light values
-    _, light_intensity = ls.read(Navg) # Return an int (or similar)
+    light_intensity: float
+    _, light_intensity = ls.read(Navg)
 
     return light_intensity
     

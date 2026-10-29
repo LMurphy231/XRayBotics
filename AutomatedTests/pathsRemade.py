@@ -21,13 +21,12 @@ def straight_path_displacement(p1: np.ndarray, p2: np.ndarray) -> list:
     Hierarchy: lowest level function (point-level)
     """
 
-    movement: list = []                # Store movements into a list
-    displacement: np.ndarray        # Store the displacement vector
-    movement: np.ndarray            # Store how much to move in each axis
+    movement: list = []
+    displacement: np.ndarray
+    movement: np.ndarray
     
-    displacement = p2  - p1        # Find Magnitude displacement vector
+    displacement = p2  - p1
   
-    # Create moveset:  one movement for entire path from p1 to p2 without increments
     movement.append(displacement)
     return movement
 
@@ -105,7 +104,7 @@ def basis_plane_calculate_four_points(isocenter: np.ndarray, length: float, widt
     p3 = p3 + isocenter
     p4 = p4 + isocenter
 
-    points: list = [p1, p2, p3, p4] # Store points in a list
+    points: list = [p1, p2, p3, p4]
     
     return points
 
@@ -115,14 +114,14 @@ def rotate_basis_plane_points(isocenter: np.ndarray, points: list, rotation_matr
         Rotate list of points of basis plane using rotation matrix
     '''
 
-    rotated_point: np.ndarray # Extract the rotated point from the rotation matrix
-    rotated_points: list = [] # Store rotated points
+    rotated_point: np.ndarray
+    rotated_points: list = []
     
     for point in points:
         relative_point: np.ndarray = point - isocenter
-        rotated_point = rotate_point_with_matrix(relative_point, rotation_matrix)    # Rotate the points
+        rotated_point = rotate_point_with_matrix(relative_point, rotation_matrix)
         rotated_point = rotated_point + isocenter
-        rotated_points.append(rotated_point)                                # Add to list of newly rotated points 
+        rotated_points.append(rotated_point)
 
     return rotated_points
 

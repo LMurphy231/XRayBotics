@@ -49,87 +49,32 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
     # ============================================================
     # START INITIALIZATION STATE: INITIALIZE DATA COLLECTION
     # ============================================================
-    grav_rectangle_points: list = [] # Rectangle points or Gravity Test path points
-    grav_path: list = [] # Path to move in (rectangle) for Gravity Test
+    grav_rectangle_points: list = []
+    grav_path: list = []
     
     grav_test_scan_data: list = []   # Tuple of both position data & light: (position, light)
-    grav_test_pos_data: list = []    # Position Vectors (x,y,z) as np.ndarray
+    grav_test_pos_data: list = []    # List of position vectors (x,y,z) as np.ndarray
     grav_test_distance: list = []    # Distance from start of the current movement
-    grav_test_light_data: list = []  # Light intensity values
+    grav_test_light_data: list = [] 
     
-    grav_plane_angle: int = 0               # Angle to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
-    grav_rot_matrix: np.ndarray = np.eye(3) # Rotation matrix to rotate rectangle points about z-axis to point photo-diode in +y-direction (left) or -y-direction (right)
-    grav_angle_offset_x: float = 0.0          # Offset angle to rotate rectangle points about x-axis
-    grav_angle_offset_y: float = 0.0          # Offset angle to rotate rectangle points about y-axis
-    grav_angle_offset_z: float = 0.0          # Offset angle to rotate rectangle points about y-axis
-
-    matrix_1: np.ndarray
-    matrix_2: np.ndarray
-
     dr_offset: float # Store angle offset about an axis (not Z)
 
     # ============================================================
     # END INITIALIZATION STATE: INITIALIZE DATA COLLECTION
     # ============================================================
 
+
+
     # ============================================================
     # START MOTION PLANNING STATE: ROTATE ROBOT TO CORRECT SIDE, RETURN TO ISOCENTER, DEFINE MOVEMENT PATH
     # ============================================================
-    
-    # Return to "home" pos ---> isocenter+
+        
     est_isocenter: np.ndarray = np.array([x, y, z])
-    #fr5._position_move(*est_isocenter) # Start test at estimated isocenter ("origin")
+    fr5._position_move(*est_isocenter) # Start/return to estimated isocenter ("origin")
 
-    # Define Basis Plane Rectangle: XY
-    basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)  # Calculate rectangle points in basis plane: XY
-    #basis_plane_path: list = paths.rectangle_path(est_isocenter, basis_points)                  # Create path with points in basis plane: XY
-
-    # Rotate the robot to the correct side to ensure photodiode faces laser
-    if side == "left":
-        
-        # Rotate basis place about x (CCW, +angle)
-        grav_plane_angle = 90                       # Rotate rectangle points about z-axis to point photo-diode in +y-direction
-        fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)     # if left -> rotate 90 about current z0 (robot)
-        grav_angle_offset_x = fr5.offset[3]             # Left side finds angle about Y; get previous offset
-        grav_angle_offset_y = fr5.offset[4]             # Right side finds angle about Y; get previous offset
-        
-    elif side == "right":
-        
-        # Rotate basis place about x (CW, -angle)
-        grav_plane_angle = -90
-        fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)   # if right -> rotate -90 about current z0 (robot)
-        grav_angle_offset_x = -fr5.offset[3]         # Right side finds angle about Y; get previous offset
-        grav_angle_offset_y = -fr5.offset[4]         # Right side finds angle about Y; get previous offset
-        
-    elif side == "front":
-        
-        grav_plane_angle = 90                           # No rotation needed; photodiode already facing laser  
-        grav_angle_offset_x = fr5.offset[3]             # Left side finds angle about Y; get previous offset
-        grav_angle_offset_y = fr5.offset[4]             # Right side finds angle about Y; get previous offset
+    grav_rectangle_points = create_gravity_test_rectangle_points(fr5, est_isocenter, length, width, side)
+    grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points)
     
-    # Define new rectangle points and path for Gravity Test based on rotation of basis plane points          
-    #if grav_plane_angle != 0:
-    if side == "left" or side == "right":
-        matrix_1 = paths.get_rotation_matrix("x", grav_plane_angle, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction 
-        matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about axis to point photo-diode in proper direction    
-
-        grav_rot_matrix = paths.rotation_matricies(matrix_2, matrix_1)
-        grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
-        grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
-        
-    elif side == "front":
-        
-        matrix_1 = paths.get_rotation_matrix("x", 0, grav_angle_offset_x) # Rotate about axis to point photo-diode in proper direction    
-        matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, grav_angle_offset_y) # Rotate about axis to point photo-diode in proper direction 
-        
-        grav_rot_matrix = paths.rotation_matricies(matrix_1, matrix_2)
-        grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
-        grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
-
-    #else:
-    #    grav_rectangle_points = basis_points    # No rotation needed; laser already facing photodiode
-    #    grav_path = basis_plane_path            # No rotation needed; laser already facing photodiode
-     
     # ============================================================
     # END MOTION PLANNING STATE: ROTATE ROBOT TO CORRECT SIDE, RETURN TO ISOCENTER, DEFINE MOVEMENT PATH
     # ============================================================
@@ -141,12 +86,8 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
     # ===========================================================
 
     # Move the robot and scan in the defined path
-    # start_data_recording()
-    move.execute_path(fr5, ls, grav_path, grav_test_scan_data, Navg, step_length) # Move and scan in path according
-    # end_data_recording()
-    
-    # Return to "home" pos ---> isocenter
-    fr5._position_move(*est_isocenter) # End test at estimated isocenter ("origin")
+    move.execute_path(fr5, ls, grav_path, grav_test_scan_data, Navg, step_length)
+    fr5._position_move(*est_isocenter)
     
     # Process scan data
     for position, distance, light_intensity in grav_test_scan_data:
@@ -155,6 +96,8 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
         grav_test_light_data.append(light_intensity)
 
     return grav_test_scan_data
+
+
     #dr_offset, _ = dp.calculate_gravity_angle(grav_test_pos_data, grav_test_light_data) # STORE: ANGLE BETWEEN Z (TRUE) AND AXIS
     # offset negative theta: CW
     
@@ -300,8 +243,6 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
     gantry_test_distance: list = []    # Distance from start of the current movement
     gantry_test_light_data: list = []  # Light intensity values
 
-
-
     # Define path to move in (rectangle)
     #basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)  # Calculate rectangle points in basis plane: XY
     #basis_plane_path: list = paths.rectangle_path(est_isocenter, basis_points)                  # Create path with points in basis plane: XY
@@ -404,72 +345,78 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
 '''
 
 
-def create_gravity_test_rectangle_points(fr5: RC.RobotCom, est_isocenter, length, width, side):
+def create_gravity_test_rectangle_points(fr5: RC.RobotCom, est_isocenter: np.ndarray, 
+                                         length: float, width: float, side: str):
+    
     basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)  # Calculate rectangle points in basis plane: XY        
 
     # Get axis offsets found from previous tests.
-    rx_offset, ry_offset, rz_offset = fr5.offset[3:]
+    rx_offset, ry_offset, rz_offset = fr5.offset[3:] # floats
     
-    if side == "left":
-        # Rotate basis place about x (CCW, +angle)
-        grav_plane_angle = 90                       # Rotate rectangle points about z-axis to point photo-diode in +y-direction
-        fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)     # if left -> rotate 90 about current z0 (robot)
+    grav_plane_angle: float
+    grav_rot_matrix: np.ndarray
+    grav_rectangle_points: list = [] # OUTPUT OF THIS FUNCTION 
+    
+    # Helper matrices for rotations
+    matrix_1: np.ndarray
+    matrix_2: np.ndarray
+    
+    if side == "left":                  # Rotate basis place about x (CCW, +angle)
+        grav_plane_angle = 90.0
+        fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)
              
-    elif side == "right":
-        
-        # Rotate basis place about x (CW, -angle)
-        grav_plane_angle = -90
-        fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)   # if right -> rotate -90 about current z0 (robot)
+    elif side == "right":               # Rotate basis place about x (CW, -angle)
+        grav_plane_angle = -90.0
+        fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)
         
     elif side == "front":
-        grav_plane_angle = 90                           # No rotation needed; photodiode already facing laser   
-        fr5.set_end_effector_angle(0.0, 0.0, 0.0)       # if front -> rotate 0 about current z0 (robot)
+        grav_plane_angle = 90.0
+        fr5.set_end_effector_angle(0.0, 0.0, 0.0)
 
     if side == "left" or side == "right":
-        matrix_1 = paths.get_rotation_matrix("x", grav_plane_angle, rx_offset) # Rotate about axis to point photo-diode in proper direction 
-        matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, ry_offset) # Rotate about axis to point photo-diode in proper direction    
+        matrix_1 = paths.get_rotation_matrix("x", grav_plane_angle, rx_offset)
+        matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, ry_offset)   
 
         grav_rot_matrix = paths.rotation_matricies(matrix_2, matrix_1)
         grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
         
     elif side == "front":
         
-        matrix_1 = paths.get_rotation_matrix("x", 0, rx_offset) # Rotate about axis to point photo-diode in proper direction    
-        matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, ry_offset) # Rotate about axis to point photo-diode in proper direction 
+        matrix_1 = paths.get_rotation_matrix("x", 0, rx_offset)   
+        matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, ry_offset)
         
         grav_rot_matrix = paths.rotation_matricies(matrix_1, matrix_2)
         grav_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
 
     return grav_rectangle_points
-    grav_path = paths.rectangle_path(est_isocenter, grav_rectangle_points) 
 
 
-def create_collimator_test_rectangle_points(fr5: RC.RobotCom, est_isocenter, x1, x2, y1, y2, umbra, gantry_angle, collimator_angle, couch_angle):
+def create_collimator_test_rectangle_points(fr5: RC.RobotCom, est_isocenter: np.ndarray, 
+                                            x1: float, x2: float, y1: float, y2: float, umbra: float, 
+                                            gantry_angle: float, collimator_angle: float, couch_angle: float):
 
-    length = x1 + x2 + umbra
-    width = y1 + y2 - umbra
+    collimator_rectangle_points: list = [] # OUTPUT OF THIS FUNCTION
+    collimator_rot_matrix: np.ndarray
+
+    length: float = x1 + x2 + umbra
+    width: float = y1 + y2 - umbra
+    
     # Define path to move in (rectangle)
     basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)  # Calculate rectangle points in basis plane: XY
     #basis_plane_path: list = paths.rectangle_path(est_isocenter, basis_points)                  # Create path with points in basis plane: XY
 
-
-        # Get axis offsets found from previous tests.
-    rx_offset, ry_offset, rz_offset = fr5.offset[3:]
+    # Get axis offsets found from previous tests.
+    rx_offset, ry_offset, rz_offset = fr5.offset[3:] # Floats
     
     # Set end effector sensor to face upwards (base direction is forward)
-    end_effector_direction: float = -90
+    end_effector_direction: float = -90.0
     fr5.set_end_effector_angle(gantry_angle + rx_offset, end_effector_direction + ry_offset, collimator_angle - couch_angle + rz_offset)
 
-    # Rotate path about x axis (Rotation about x axis to match with true z)
-    rx_matrix = paths.get_rotation_matrix("x", gantry_angle, rx_offset)
     
-    # Rotate path about y axis (Rotation about y axis to match with true z)
-    ry_matrix = paths.get_rotation_matrix("y", 0.0, ry_offset)
+    rx_matrix: np.ndarray = paths.get_rotation_matrix("x", gantry_angle, rx_offset)                     # Rotate path about x axis (Rotation about x axis to match with true z)
+    ry_matrix: np.ndarray = paths.get_rotation_matrix("y", 0.0, ry_offset)                              # Rotate path about y axis (Rotation about y axis to match with true z)
+    rz_matrix: np.ndarray = paths.get_rotation_matrix("z", collimator_angle - couch_angle, rz_offset)   # Rotate path about z axis (Rotation about z axis to match with couch angle)
 
-    # Rotate path about z axis (Rotation about z axis to match with couch angle)
-    rz_matrix = paths.get_rotation_matrix("z", collimator_angle - couch_angle, rz_offset)
-
-    
     ## Rotate path about x0 axis (Rotation about x axis to match with true z)
     #rx_matrix = paths.get_rotation_matrix("x", 0.0, rx_offset)
     #
@@ -483,52 +430,45 @@ def create_collimator_test_rectangle_points(fr5: RC.RobotCom, est_isocenter, x1,
     #rz_matrix = paths.get_rotation_matrix("z", collimator_angle, rz_offset)
 
     # Rotate about x0, Rotate about y0, rotate about x2, rotate about z3
-    grav_rot_matrix = paths.rotation_matricies(rx_matrix, ry_matrix, rz_matrix)
-    #grav_rot_matrix = paths.rotation_matricies(rx_matrix, ry_matrix, rx2_matrix, rz_matrix)
+    collimator_rot_matrix = paths.rotation_matricies(rx_matrix, ry_matrix, rz_matrix)
+    #collimator_rot_matrix: np.ndarray = paths.rotation_matricies(rx_matrix, ry_matrix, rx2_matrix, rz_matrix)
 
-    collimator_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
+    collimator_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, collimator_rot_matrix)
     return collimator_rectangle_points
 
 
-def create_gantry_test_rectangle_points(fr5: RC.RobotCom, est_isocenter, x1, x2, y1, y2, height, umbra, gantry_angle, collimator_angle, couch_angle):
+def create_gantry_test_rectangle_points(fr5: RC.RobotCom, est_isocenter: np.ndarray, 
+                                        x1: float, x2: float, y1: float, y2: float, height: float, umbra: float, 
+                                        gantry_angle: float, collimator_angle: float, couch_angle: float):
 
-    length = x1 + x2 + umbra
-    #height = y1 + y2 + umbra
+    gantry_rectangle_points: list = [] # OUTPUT OF THIS FUNCTION
+    gantry_rot_matrix: np.ndarray
+
+    length: float = x1 + x2 + umbra
+    #height: float = y1 + y2 + umbra
 
     #est_isocenter = est_isocenter + np.array([0.0, 0.0, y1+umbra/2])
 
     # Define path to move in (rectangle)
     basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, height, dy=height/2)  # Calculate rectangle points in basis plane: XY
 
-    # Get axis offsets found from previous tests.
-    rx_offset, ry_offset, rz_offset = fr5.offset[3:]
+    rx_offset, ry_offset, rz_offset = fr5.offset[3:] # Get axis offsets found from previous tests
 
     # Set end effector sensor to face upwards (base direction is forward)
     end_effector_direction: float = -90
     fr5.set_end_effector_angle(gantry_angle + rx_offset, end_effector_direction + ry_offset, collimator_angle - couch_angle + rz_offset)
     
-    # Rotate path about x axis (Rotation about x axis to match with true z)
-    rx_matrix = paths.get_rotation_matrix("x", gantry_angle, rx_offset)
-    
-    # Rotate path about y axis (Rotation about y axis to match with true z)
-    ry_matrix = paths.get_rotation_matrix("y", 0.0, ry_offset)
+    rx_matrix = paths.get_rotation_matrix("x", gantry_angle, rx_offset)                     # Rotate path about x axis (Rotation about x axis to match with true z)
+    ry_matrix = paths.get_rotation_matrix("y", 0.0, ry_offset)                              # Rotate path about y axis (Rotation about y axis to match with true z)
+    rz_matrix = paths.get_rotation_matrix("z", collimator_angle - couch_angle, rz_offset)   # Rotate path about z axis (Rotation about z axis to match with couch angle)
 
-    # Rotate path about z axis (Rotation about z axis to match with couch angle)
-    rz_matrix = paths.get_rotation_matrix("z", collimator_angle - couch_angle, rz_offset)
-
-
-    # Rotate path about y axis (main rotation about collimator)
-    gantry_path_offset_matrix = paths.get_rotation_matrix("y", 90, 0.0)
-
-    # Rotate path about x axis (main rotation about collimator)
-    gantry_path_offset_matrix2 = paths.get_rotation_matrix("x", 90, 0.0)
-
-    # Rotate path about z axis (main rotation about collimator)
-    gantry_path_offset_matrix3 = paths.get_rotation_matrix("z", 90, 0.0)
+    gantry_path_offset_matrix = paths.get_rotation_matrix("y", 90, 0.0)     # Rotate path about y axis (main rotation about gantry)
+    gantry_path_offset_matrix2 = paths.get_rotation_matrix("x", 90, 0.0)    # Rotate path about x axis (main rotation about gantry)
+    gantry_path_offset_matrix3 = paths.get_rotation_matrix("z", 90, 0.0)    # Rotate path about z axis (main rotation about gantry)
 
     # Rotate about x0, Rotate about y0, rotate about x0, rotate about y2, rotate about x2 (or something like that)
-    grav_rot_matrix = paths.rotation_matricies(rx_matrix, ry_matrix, rz_matrix, gantry_path_offset_matrix3, gantry_path_offset_matrix2, gantry_path_offset_matrix)
+    gantry_rot_matrix = paths.rotation_matricies(rx_matrix, ry_matrix, rz_matrix, gantry_path_offset_matrix3, gantry_path_offset_matrix2, gantry_path_offset_matrix)
 
-    collimator_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
+    gantry_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, gantry_rot_matrix)
 
-    return collimator_rectangle_points
+    return gantry_rectangle_points
