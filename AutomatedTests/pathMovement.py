@@ -89,7 +89,7 @@ def store_data(scan_data: list, position: np.ndarray, mag_displacement: float, l
     '''
     scan_result: tuple = (position.copy(), mag_displacement, light_intensity)
     scan_data.append(scan_result)
-    
+
     return
 
 def light_scan(ls:lq.SensorManager, Navg: int = 5):

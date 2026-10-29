@@ -52,12 +52,13 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
     grav_rectangle_points: list = []
     grav_path: list = []
     
-    grav_test_scan_data: list = []   # Tuple of both position data & light: (position, light)
+    grav_test_scan_data: list = []   # [ [ [(x,y,z), d, l], [...] ] , [ [(x,y,z), d, l], [...] ] ] 
     grav_test_pos_data: list = []    # List of position vectors (x,y,z) as np.ndarray
     grav_test_distance: list = []    # Distance from start of the current movement
     grav_test_light_data: list = [] 
     
-    dr_offset: float # Store angle offset about an axis (not Z)
+    dr_offset: float            # Store angle offset about an axis (not Z)
+    peaks: tuple [int, int]     # Peaks from Data Processing
 
     # ============================================================
     # END INITIALIZATION STATE: INITIALIZE DATA COLLECTION
@@ -90,18 +91,18 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
     fr5._position_move(*est_isocenter)
     
     # Process scan data
-    for position, distance, light_intensity in grav_test_scan_data:
-        grav_test_pos_data.append(position)
-        grav_test_distance.append(distance)
-        grav_test_light_data.append(light_intensity)
+    #for position, distance, light_intensity in grav_test_scan_data:
+        #grav_test_pos_data.append(position)
+        #grav_test_distance.append(distance)
+        #grav_test_light_data.append(light_intensity)
 
-    
+    dr_offset, peaks = dp.calculate_gravity_angle(grav_test_scan_data) # Offset negative theta: CW
 
-    return grav_test_scan_data
+    return grav_test_scan_data, dr_offset
 
 
     #dr_offset, _ = dp.calculate_gravity_angle(grav_test_pos_data, grav_test_light_data) # STORE: ANGLE BETWEEN Z (TRUE) AND AXIS
-    # offset negative theta: CW
+    
     
     if side == "left":
         fr5.offset_add("Gravity", dry = dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)    
@@ -157,6 +158,9 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
     coll_test_pos_data: list = []    # Position Vectors (x,y,z)
     coll_test_distance: list = []    # Distance from start of the current movement
     coll_test_light_data: list = []  # Light intensity values
+    
+    dr_offset: float            # Store angle offset about an axis (not Z)
+    peaks: tuple [int, int]     # Peaks from Data Processing
 
     # Define path to move in (rectangle)
     #basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)  # Calculate rectangle points in basis plane: XY
@@ -197,7 +201,7 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
         coll_test_distance.append(distance)
         coll_test_light_data.append(light_intensity)
 
-
+    dr_offset, peaks = dp.calculate_gravity_angle(coll_test_scan_data) # Offset negative theta: CW
 
     ## Rotate rectangle if needed
     #if angle != 0.0:
@@ -224,7 +228,7 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
     #
     ## DataProcessing(coll_test_pos_data, coll_test_light_data)
 
-    return coll_test_scan_data
+    return coll_test_scan_data, dr_offset
 
 
 def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:float, x2:float, y1:float, y2:float, height:float, umbra:float,
@@ -244,6 +248,9 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
     gantry_test_pos_data: list = []    # Position Vectors (x,y,z)
     gantry_test_distance: list = []    # Distance from start of the current movement
     gantry_test_light_data: list = []  # Light intensity values
+    
+    dr_offset: float            # Store angle offset about an axis (not Z)
+    peaks: tuple [int, int]     # Peaks from Data Processing
 
     # Define path to move in (rectangle)
     #basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)  # Calculate rectangle points in basis plane: XY
@@ -284,11 +291,7 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
         gantry_test_light_data.append(light_intensity)
 
 
-
-
-
-
-
+    dr_offset, peaks = dp.calculate_gravity_angle(gantry_test_scan_data) # Offset negative theta: CW
 
     ## Define path to move in (rectangle)
     #gantry_test_axes: tuple = ("y", "z")  # Define active axes
@@ -321,7 +324,7 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
 
     # DataProcessing(gantry_test_pos_data, gantry_test_light_data)
 
-    return
+    return gantry_test_scan_data, dr_offset, peaks
 
 '''
  offset_angle = 0 # Degrees
