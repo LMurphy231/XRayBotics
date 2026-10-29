@@ -54,7 +54,7 @@ def increment_move_and_scan(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, 
             dy: float = movement[1]     # Extract dy from moveset for that move
             dz: float = movement[2]     # Extract dz from moveset for that move
             
-            fr5.move_increment(dx, dy, dz, vel=100.0, acc=100.0) # Vector Movement; robot gui funciton
+            fr5.move_increment(dx, dy, dz) # Vector Movement; robot gui funciton
 
             # Scan after movement
             light_intensity = light_scan(ls, Navg) # Scan after movement

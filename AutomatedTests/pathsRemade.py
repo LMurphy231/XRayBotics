@@ -77,7 +77,7 @@ def rectangle_path(isocenter: np.ndarray, points: list):
 
     return rectangle_paths
 
-def basis_plane_calculate_four_points(isocenter: np.ndarray, length: float, width: float):
+def basis_plane_calculate_four_points(isocenter: np.ndarray, length: float, width: float, dx:float=0.0, dy:float=0.0):
     '''
     basis_plane(isocenter: np.ndarray, length: float, width: float)
         Find the "4 corners" of the rectangle given  isocenter (origin), length (L), width (W)
@@ -94,10 +94,10 @@ def basis_plane_calculate_four_points(isocenter: np.ndarray, length: float, widt
     half_length: float = length / 2
     half_width: float = width / 2
     
-    p1: np.ndarray = np.array([-half_length,  half_width, 0]) # Top-left corner     (-x, +y, 0)
-    p2: np.ndarray = np.array([ half_length,  half_width, 0]) # Top-right corner    (+x, +y, 0)
-    p3: np.ndarray = np.array([ half_length, -half_width, 0]) # Bottom-right corner (+x, -y, 0)
-    p4: np.ndarray = np.array([-half_length, -half_width, 0]) # Bottom-left corner  (-x, -y, 0)
+    p1: np.ndarray = np.array([-half_length+dx,  half_width+dy, 0]) # Top-left corner     (-x, +y, 0)
+    p2: np.ndarray = np.array([ half_length+dx,  half_width+dy, 0]) # Top-right corner    (+x, +y, 0)
+    p3: np.ndarray = np.array([ half_length+dx, -half_width+dy, 0]) # Bottom-right corner (+x, -y, 0)
+    p4: np.ndarray = np.array([-half_length+dx, -half_width+dy, 0]) # Bottom-left corner  (-x, -y, 0)
     
     # Move points from isocenter-reference to robot/world coordinates
     p1 = p1 + isocenter

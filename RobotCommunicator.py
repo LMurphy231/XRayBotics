@@ -179,7 +179,7 @@ class RobotCom(RPC):
         self.user_input_window = None
         self.error_label = None
     
-    def move_increment(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=20.0, in_thread=False):
+    def move_increment1(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=20.0, in_thread=False):
         '''
         Move Arm with incremental movements. 
 
@@ -266,7 +266,7 @@ class RobotCom(RPC):
             return event
         return funct()
 
-    def move_position(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False):
+    def move_position1(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False):
             self._check_stop_interrupt()
             
             end_effector_angle = self.end_effector_angle
@@ -308,6 +308,72 @@ class RobotCom(RPC):
                 return event
             return funct()
 
+    def move_position(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False):
+        self._check_stop_interrupt()
+        
+        end_effector_angle = self.end_effector_angle
+        
+
+        rx = end_effector_angle[0] if rx is None else rx
+        ry = end_effector_angle[1] if ry is None else ry
+        rz = end_effector_angle[2] if rz is None else rz
+
+        
+        desc_pos = self.isocenter if self.isocenter_set else np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        desc_pos[3:] = [0.0, 0.0, 0.0]# self.end_effector_angle
+        self._internal_position = np.array([x, y, z, rx, ry, rz])
+        #desc_pos += self._internal_position
+        self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
+
+        self.logger.debug(f'Queueing Movement to {desc_pos} and {self._internal_position}')
+        #dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,desc_pos[3]-rx,desc_pos[4]-ry,desc_pos[5]-rz] 
+        
+        funct = lambda: self.MoveCart(
+                    desc_pos + self._internal_position,
+                    tool           = self.cur_tool,
+                    user           = 0,
+                    vel            = 10.0,
+                    acc            = 20.0,
+                    ovl            = 100.0,
+                    )
+        if in_thread:
+            event = threading.Event()
+            self.action_queue.put((funct, event))
+            return event
+        return funct()
+
+    def move_increment(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=20.0, in_thread=False):
+        '''
+        Move Arm with incremental movements. 
+
+        ref: Movement reference
+            0 - joint point movement
+            2 - base coordinate system point movement
+            4 - tool coordinate system point movement
+            8 - workpiece coordinate system point movement
+
+        vel: Velocity - default: 20.0
+        
+        acc: Acceleration - default: 100.0
+        '''
+        self._check_stop_interrupt()
+        self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
+
+        desc_pos = self._get_tool_position()
+        angle = list(desc_pos[3:])
+        desc_pos[3:] = [0.0, 0.0, 0.0]
+        #desc_pos[3:] = self.end_effector_angle[:]
+        offset = np.array([dx, dy, dz, angle[0]+drx, angle[1]+dry, angle[2]+drz])
+        self._internal_position = desc_pos+offset
+        self.logger.debug(f'Queing incremental Movement {offset} from {desc_pos} to {self._internal_position}')
+        funct = lambda: self.MoveCart(
+                            self._internal_position,
+                            tool           = self.cur_tool,
+                            user           = 0,
+                            vel            = 10.0,
+                            acc            = 20.0,
+                            ovl            = 100.0,
+                            )
     @property
     def tool_frame(self):
         return np.array(self.TOOL_RBASE) + self.offset[3:]
@@ -362,11 +428,13 @@ class RobotCom(RPC):
 
     def set_isocenter(self, x, y, z, rx, ry, rz):
         self.isocenter_set = True
-        self.isocenter = np.array([x,y,z,*self.end_effector_angle])
+        end_effector_offset = np.array([0.0, 0.0, 0.0])
+        iso_pos = np.array([x, y, z]) #+ end_effector_offset
+        self.isocenter = np.array([*iso_pos,*self.end_effector_angle])
         self.robot_logger.info(f'Setting Isocenter to {self.isocenter}')
         self.cur_tool = 2
-        self.SetToolCoord(2, [0., 0., 0., *self.TOOL_RBASE], 0, 0, 0, 0)
-        self.SetToolList(2, [0., 0., 0., *self.TOOL_RBASE], 0, 0, 0)
+        self.SetToolCoord(2, [*end_effector_offset, *self.TOOL_RBASE], 0, 0, 0, 0)
+        self.SetToolList(2 , [*end_effector_offset, *self.TOOL_RBASE], 0, 0, 0)
         #self.SetWObjCoord(0, self.isocenter, 0)
         self.robot_logger.info(f'Done Setting Isocenter to {self.isocenter}')
 
@@ -385,62 +453,6 @@ class RobotCom(RPC):
         while not self.action_queue.empty():
             self.action_queue.get()
         self.StopMove()
-
-    def _test_square(self, lq:SensorManager, x1, y1, z, length, width, angle=0.0, step_length=0.001, avg_sample=5):
-        print((x1, y1, z))
-        #_wait_on_thread(self._position_move(x1, y1, z))
-        test_results = []
-        x2 = x1 + width* np.cos(angle)
-        y2 = y1 + width* np.sin(angle)
-        light_data = []
-        time_data = []
-        pos_data  = []
-        print(angle, np.cos(angle), np.sin(angle))
-        nsteps = int(width // step_length)
-        for i in range(nsteps+1):
-            x = x1+(i/nsteps)*width*np.cos(angle)
-            y = y1+(i/nsteps)*width*np.sin(angle)
-            
-            #_wait_on_thread(self._position_move(x, y, z))
-            t, ld = lq.read(avg_sample)
-            print(i, nsteps, x, y, ld)
-            time_data.append(t)
-            light_data.append(ld)
-            pos_data.append((x, y, z))
-        test_results.append((pos_data, time_data, light_data))
-        #_wait_on_thread(self._position_move(x2, y2, z))
-            
-
-        x3 = x2 + length*np.cos(angle-np.pi/2)
-        y3 = y2 + length*np.sin(angle-np.pi/2)
-        #_wait_on_thread(self._position_move(x3, y3, z))
-        
-
-        x4 = x3 + width*np.cos(angle-np.pi)
-        y4 = y3 + width*np.sin(angle-np.pi)
-        dist = np.sqrt((x4-x3)**2+(y4-y3)**2)
-        nsteps = int(width // step_length)
-
-        light_data = []
-        time_data = []
-        pos_data  = []
-        for i in range(nsteps+1):
-            x = x3+(i/nsteps)*width*np.cos(angle)
-            y = y3+(i/nsteps)*width*np.sin(angle)
-            #_wait_on_thread(self._position_move(x, y, z))
-            t, ld = lq.read(avg_sample)
-            print(i, nsteps, x, y, ld)
-            time_data.append(t)
-            light_data.append(ld)
-            pos_data.append((x, y, z))
-            
-        test_results.append((pos_data, time_data, light_data))
-        #_wait_on_thread(self._position_move(x4, y4, z))
-        print(f'Start: {(x1, y1, z)}')
-        print(f'Pos1: {(x2, y2, z)}')
-        print(f'Pos2: {(x3, y3, z)}')
-        print(f'Pos3: {(x4, y4, z)}')
-
 
 def _wait_thread_start(thread:threading.Thread, delay=0.001):
     while thread.ident is None:

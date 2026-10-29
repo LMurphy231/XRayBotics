@@ -308,8 +308,9 @@ class GUI:
         frame.rowconfigure(1, weight=0)
         frame.columnconfigure(1, weight=1)
         self.test_types:dict[str, tp.TestPage] = {
-            'Gravity'   : tp.GravityTest('GravityTest'      , self.test_frame, self.robot, self.ls, self.opts),
-            'Collimator': tp.CollimatorTest('CollimatorTest', self.test_frame, self.robot, self.ls, self.opts),
+            'Gravity'   : tp.GravityTest('Gravity Test'      , self.test_frame, self.robot, self.ls, self.opts),
+            'Collimator': tp.CollimatorTest('Collimator Test', self.test_frame, self.robot, self.ls, self.opts),
+            'Gantry'    : tp.GantryTest('Gantry Test'        , self.test_frame, self.robot, self.ls, self.opts),
             
         }
         self.current_test:tp.TestPage = None
