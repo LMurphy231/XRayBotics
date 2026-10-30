@@ -58,7 +58,6 @@ class MessageTerminal(logging.Handler):
 class GUI:
     def __init__(self, name = 'XRayBotics'):
         self.window = tk.Tk()
-        self.window.geometry('1500x650')
         self.name = name
         self.window.title(name)
         self.settings_window = None
@@ -80,42 +79,37 @@ class GUI:
         self.ls.close()
 
     def _build(self):
-        self.window.columnconfigure(0, weight=1)
-        self.window.rowconfigure(0, weight=1)
-        
-        self.root = tk.Frame(self.window)
-        self.root.grid(row=0, column=0, sticky=tk.NSEW)
 
         self._create_menu()
 
-        self.root.rowconfigure(0, weight=1, minsize=400)
-        self.root.rowconfigure(1, weight=1, minsize=150)
+        self.window.grid_columnconfigure(0, weight=1)
+        self.window.grid_rowconfigure(0, weight=1)
 
-        self.root.columnconfigure(0, weight=0, minsize=450)
-        self.root.columnconfigure(1, weight=0, minsize=200)
-        self.root.columnconfigure(2, weight=1, minsize=200)
+        self.root = tk.Frame(self.window)
+        self.root.grid(row=0, column=0, sticky=tk.NSEW)
 
-        test_setup_frame = tk.Frame(self.root)
-        test_setup_frame.grid(row=0, column=0, sticky=tk.NSEW)
-        self._create_test_setup(test_setup_frame)
-
-        robot_window_frame = tk.LabelFrame(self.root, text='Robot Controller')
-        robot_window_frame.grid(row=1, column=0, sticky=tk.NSEW)
-        self._create_robot_controller(robot_window_frame)
-
+        self.page_frame = tk.PanedWindow(self.root, orient=tk.VERTICAL, sashwidth=15)
+        self.page_frame.pack(expand=True, fill=tk.BOTH)
         
-        plotter_frame = tk.Frame(self.root)
-        #plotter_frame.grid(row=0, column=2, sticky=tk.NSEW)
-        self._create_plotter_window(plotter_frame)
+        
+        test_setup_frame = tk.Frame(self.page_frame)
+        #test_setup_frame.grid(row=0, column=0, sticky=tk.NSEW)
+        #test_setup_frame.grid_columnconfigure(0, weight=1)
+        #test_setup_frame.grid_rowconfigure(0, weight=1)  
+         
+        self._create_test_setup(test_setup_frame)
+        self.page_frame.add(test_setup_frame, sticky=tk.NSEW, minsize=500)
 
-        self.text_window_frame = tk.PanedWindow(self.window)
-        #text_window_frame.grid(row=1, column=0, sticky=tk.NSEW)
+        robot_window_frame = tk.LabelFrame(self.page_frame, text='Robot Controller')
+        
+        self._create_robot_controller(robot_window_frame)
+        self.page_frame.add(robot_window_frame, sticky=tk.NSEW, minsize=250)
+
+        self.text_window_frame = tk.Frame(self.window)
         self._create_text_window(self.text_window_frame)
 
         self.settings_frame = tk.Frame(self.window)
-        
-        #self._create_option_window(self.settings_frame)
-        
+    
     def _create_loggers(self):
         self.gui_logger = logging.getLogger('GUI logger')
         self.gui_logger.setLevel(1)
@@ -128,8 +122,6 @@ class GUI:
 
     def _create_menu(self):
         self.menubar = tk.Menu(self.window, tearoff=False)
-
-        
 
         # Settings Menu
         settings_menu = tk.Menu(self.menubar, tearoff=False)
@@ -145,23 +137,12 @@ class GUI:
 
         self.window.config(menu=self.menubar)
 
-    def _create_plotter_window(self, frame:tk.Frame):
-        plotter_notebook = ttk.Notebook(frame)
-        plotter_notebook.grid(row=0, column=0, sticky=tk.NSEW)
-
-        plotter_3d_frame = tk.Frame(plotter_notebook)
-        plotter_notebook.add(plotter_3d_frame, text='3D Plotter')
-        self.plotter_3d = plt.Plotter(plotter_3d_frame, projection='3d')
-
-        plotter_2d_frame = tk.Frame(plotter_notebook)
-        plotter_notebook.add(plotter_2d_frame, text='2D Plotter')
-        self.plotter_2d = plt.Plotter(plotter_2d_frame)
-
     def _create_robot_controller(self, frame:tk.Frame):
         self.robot_vars = {}
 
         move_type_notebook = ttk.Notebook(frame)
-        move_type_notebook.grid(row=0, column=0)
+        #move_type_notebook.pack(expand=True)
+        move_type_notebook.grid(row=0, column=0, sticky=tk.NSEW)
 
 
         var_names = ['x', 'y', 'z', 'rx', 'ry', 'rz']
@@ -332,11 +313,19 @@ class GUI:
         return
 
     def _create_test_setup(self, frame:tk.Frame):
+        #current_frame = tk.Frame(frame)
+        #current_frame.grid(row=0, column=0, sticky=tk.NSEW)
+
+        frame.grid_columnconfigure(1, weight=1)
+        frame.grid_rowconfigure(0, weight=1)
+
+
         self.test_frame = tk.Frame(frame)
         self.test_frame.grid(row=0, column=1, sticky=tk.NSEW)
-        frame.rowconfigure(0, weight=1)
-        frame.rowconfigure(1, weight=0)
-        frame.columnconfigure(1, weight=1)
+        
+        self.test_frame.grid_columnconfigure(0, weight=1)
+        self.test_frame.grid_rowconfigure(0, weight=1)
+        
         self.test_types:dict[str, tp.TestPage] = {
             'Gravity'   : tp.GravityTest('Gravity Test'      , self.test_frame, self.robot, self.ls, self.opts),
             'Collimator': tp.CollimatorTest('Collimator Test', self.test_frame, self.robot, self.ls, self.opts),
@@ -357,7 +346,6 @@ class GUI:
         self.current_test = self.test_types[list(self.test_types.keys())[0]]
         self.current_test.toggle_page(True)
         
-
     def _create_text_window(self, frame:tk.Frame):
         frame.configure(relief=tk.GROOVE)
         textbox_notebook = ttk.Notebook(frame, width=450)

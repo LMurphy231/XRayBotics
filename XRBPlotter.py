@@ -88,7 +88,8 @@ class Plotter:
     def __init__(self, _root, projection=None, row=0, column=0, sticky=tk.NSEW, **options):
         self._root = _root
         self.root = tk.Frame(self._root)
-        self.root.grid(row=row, column=column, sticky=sticky)
+        #self.root.grid(row=row, column=column, sticky=sticky)
+        self.root.pack(expand=True, fill=tk.BOTH)
 
         self.fig = Figure(figsize=options.get('figsize', (6, 4)), dpi=options.get('dpi', 100))
         self.ax = self.fig.add_subplot(111, projection = projection)
@@ -98,8 +99,10 @@ class Plotter:
 
         if options.get('toolbar', True):
             toolbar_frame = tk.Frame(self.root)
-            toolbar_frame.grid(row=1, column=0, sticky=tk.W)
+            #toolbar_frame.grid(row=1, column=0, sticky=tk.W)
+            toolbar_frame.pack(side=tk.BOTTOM, expand=False, fill=None)
             toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
+            
             toolbar.update()
 
         self.ax.minorticks_on()
@@ -108,7 +111,8 @@ class Plotter:
 
         self.zmin = self.zmax = self._user_zmin = self._user_zmax = 0
         canvas_widget = self.canvas.get_tk_widget()
-        canvas_widget.grid(row=0, column=0, sticky=tk.NSEW)
+        canvas_widget.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
+        #canvas_widget.grid(row=0, column=0, sticky=tk.NSEW)
 
         self.clear()
         self.label_axis('X (mm)', 'Y (mm)', 'Z (mm)')

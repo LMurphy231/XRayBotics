@@ -155,8 +155,9 @@ class OptionTree:
         for i, obj in enumerate(self.columns.values()):
             self.tree.heading(obj.name, text=obj.display_name)
             self.tree.column(i, width=obj.initial_size, minwidth=obj.minsize)
-            
-        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.tree.pack(expand=True, fill=tk.BOTH)
+        #self.tree.grid(row=0, column=0, sticky=tk.NSEW, padx=10, pady=10)
 
         # Bind double-click event to trigger editing
         self.tree.bind("<Double-1>", self.on_double_click)
@@ -315,11 +316,6 @@ class OptionTree:
                 x, y, width, height = self.tree.bbox(row_id, column)
                 widget.place(x=x, y=y, width=width, height=height)
                 widget.focus()
-
-                #if isinstance(widget, ttk.Menubutton):
-                #    x = widget.winfo_rootx()
-                #    y = widget.winfo_rooty() + widget.winfo_height()
-                #    widget['menu'].post(x, y)
 
         def _on_focus_out(widget):
             row_values = list(self.tree.item(row_id, "values"))
