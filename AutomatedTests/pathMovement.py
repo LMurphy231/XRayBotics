@@ -72,12 +72,12 @@ def execute_path(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, scan_data: 
     Determines whether to move only or move and scan.
     WRAPPER FUNCTION: choose if scanning after (incremental) move or not
     """
-    scan_data_for_side: list = [] # Store scan data (pos, displ, light) for just 1 side; for segmenting data
+    scan_data_for_side: list # Store scan data (pos, displ, light) for just 1 side; for segmenting data
 
     for move, scan, start_pos in path:
         if scan:
-            scan_data_for_side = increment_move_and_scan(fr5, ls, move, start_pos, scan_data, Navg, step_length) 
-            return scan_data.append(scan_data_for_side)
+            scan_data_for_side = increment_move_and_scan(fr5, ls, move, start_pos, Navg, step_length) 
+            scan_data.append(scan_data_for_side)
         
         else:
             absolute_move_path(fr5, move) # Move without scanning

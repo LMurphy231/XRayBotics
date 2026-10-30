@@ -66,9 +66,10 @@ class BasePage:
         self.current_winfo = getattr(self.root, f'{self.winfo_manager}_info')()
         
 class TestResultsPage(BasePage):
-    def __init__(self, name, root:tk.Frame, **kwargs):
+    def __init__(self, name, type_, root:tk.Frame, **kwargs):
         BasePage.__init__(self, root, **kwargs)
         self.name = name
+        self.type = type_
         self.kwargs = kwargs
         self.current_results = None
         self.loaded_results = []
@@ -120,6 +121,8 @@ class TestResultsPage(BasePage):
         self.update(*test_results)
 
     def add_test(self, test_type, test_name, test_results):
+        if test_type != self.type:
+            return
         self.loaded_results.append((test_type, test_name, test_results))
         self.test_selection.insert(tk.END, test_name)
 
@@ -140,6 +143,10 @@ class TestResultsPage(BasePage):
 
                 if test_type.lower() == 'gravity':
                     byte_data = _gravity_test_results_file_text(*test_results)
+
+                elif test_type.lower() == 'collimator':
+                    byte_data = _collimator_test_results_file_text(*test_results)
+
                 else:
                     raise ValueError(f'Test type {test_type} not supported to save!')
                 
@@ -155,6 +162,8 @@ class TestResultsPage(BasePage):
         for test_type, test_name, test_results in parse_xrb_file(filename):
             if test_type == 'gravity':
                 current_results = _gravity_test_results_file_read(test_results)
+            elif test_type == 'collimator':
+                current_results = _collimator_test_results_file_read(test_results)
             else:
                 raise ValueError(f'Test type {test_type} not supported!')
             
@@ -167,7 +176,7 @@ class TestResultsPage(BasePage):
 
 class GravityTestResultsPage(TestResultsPage):
     def __init__(self, _root):
-        TestResultsPage.__init__(self, 'Gravity Test', tk.Frame(_root))
+        TestResultsPage.__init__(self, 'Gravity Test', 'gravity', tk.Frame(_root))
 
     def _create_comparison_frame(self) -> tk.Frame:
         comparison_frame = tk.Frame(self.root)
@@ -212,19 +221,105 @@ class GravityTestResultsPage(TestResultsPage):
 
     def update(self, test_name, side, result_data):
         self.current_results = (test_name, side, result_data)
-        position, distance, intensities = map(list, zip(*result_data))
-        
+
         self.plotter2d.clear()
-        for i in range(2):
-            self.plotter2d.scatter(x=distance[i*(len(distance)//2):(1+i)*(len(distance)//2)], y=intensities[i*(len(distance)//2):(1+i)*(len(distance)//2)])
+        self.plotter3d.clear()
+
+        xmin = 0.0
+        xmax = 0.0
+        ymin = 0.0
+        ymax = 0.0
+        for movement_results in result_data:
+            position, distance, intensities = map(list, zip(*movement_results))
             
-        self.plotter2d._set_axis_limit(xmin=distance[0], xmax=distance[-1], ymin=min(intensities), ymax=max(intensities)*1.05)
+            
+            self.plotter2d.scatter(x=distance, y=intensities)
+
+            x, y, z = map(list, zip(*position))
+            self.plotter3d.scatter(x, y, z, c=intensities, cmap='viridis')
+
+
+            xmin = min(xmin, distance[0])
+            xmax = max(xmax, distance[-1])
+            ymin = min(ymin, min(intensities))
+            ymax = max(ymax, max(intensities))
+
+        self.plotter2d._set_axis_limit(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax*1.05)
         self.plotter2d.update(keep_axis=False)
+        self.plotter3d.update()
+
+class CollimatorTestResultsPage(TestResultsPage):
+    def __init__(self, _root):
+        TestResultsPage.__init__(self, 'Gravity Test', 'collimator', tk.Frame(_root))
+
+    def _create_comparison_frame(self) -> tk.Frame:
+        comparison_frame = tk.Frame(self.root)
+        return comparison_frame
+
+    def _create_plotter_frame(self):
+        plotter_frame = tk.Frame(self.root)
+        plotter_notebook = ttk.Notebook(plotter_frame)
+        plotter_notebook.grid(row=0, column=0, sticky=tk.NSEW)
+
+        plotter_2d_frame = tk.Frame(plotter_notebook)
+        plotter_notebook.add(plotter_2d_frame, text='2D Plotter')
+        self.plotter2d = plt.Plotter(plotter_2d_frame, row=0, column=0)
         
 
+        plotter_3d_frame = tk.Frame(plotter_notebook)
+        plotter_notebook.add(plotter_3d_frame, text='3D Plotter')
+        self.plotter3d = plt.Plotter(plotter_3d_frame, projection='3d', row=0, column=0)
+        tk.Button(plotter_frame, command=self._test_results, text='Test plotters').grid(row=1, column=0)
+        tk.Button(plotter_frame, command=self.save_results, text='Save').grid(row=2, column=0)
+        tk.Button(plotter_frame, command=self.load_results, text='Load').grid(row=3, column=0)
+        return plotter_frame
+
+    def _test_results(self, angle=0.0):
+        origin = np.array([0.0, 0.0, 0.0], dtype=float)
+        dist = 0.1
+        data = []
+        angle = np.random.randint(0, 360)
+        print(angle)
+        position = np.array([0.0, 0.0, 0.0], dtype=float) + origin
+        for i in range(1000):
+            distance = dist*i
+            position = origin + np.array([distance*np.cos(np.deg2rad(angle)), distance* np.sin(np.deg2rad(angle)), 0.0], dtype=float)
+            intensity = abs(1/max(1,abs(500-i)))
+            
+            data.append((np.array(list(position)), distance, intensity))
+
+        self.add_test('collimator', 'demo collimator test', ('demo collimator test', data))
+        self.test_selection.selection_clear(0, tk.END)
+        self.test_selection.selection_set(len(self.loaded_results)-1)
+        self.test_selection.event_generate("<<ListboxSelect>>")
+
+    def update(self, test_name, result_data):
+        self.current_results = (test_name, result_data)
+
+        self.plotter2d.clear()
         self.plotter3d.clear()
-        x, y, z = map(list, zip(*position))
-        self.plotter3d.scatter(x, y, z, c=intensities, cmap='viridis')
+
+        xmin = 0.0
+        xmax = 0.0
+        ymin = 0.0
+        ymax = 0.0
+        for movement_results in result_data:
+            position, distance, intensities = map(list, zip(*movement_results))
+            
+            
+            self.plotter2d.scatter(x=distance, y=intensities)
+
+            x, y, z = map(list, zip(*position))
+            self.plotter3d.scatter(x, y, z, c=intensities, cmap='viridis')
+
+
+            xmin = min(xmin, distance[0])
+            xmax = max(xmax, distance[-1])
+            ymin = min(ymin, min(intensities))
+            ymax = max(ymax, max(intensities))
+
+        self.plotter2d._set_axis_limit(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax*1.05)
+        self.plotter2d.update(keep_axis=False)
         self.plotter3d.update()
 
         
@@ -450,7 +545,12 @@ class GravityTest(TestPage):
 
         self.plotter.scatter(*isocenter)
 
-        prev_point = points[0]
+
+        try:
+            prev_point = points[0]
+        except BaseException as e:
+            logging.critical(f'{e}')
+            return
         self.plotter.scatter(*prev_point)
         for point in points[1:]:
             self.plotter.scatter(*point)
@@ -478,7 +578,7 @@ class GravityTest(TestPage):
             self.results_page.add_test('gravity', 'Gravity Test Official', ('Gravity Test Official', side, test_results))
 
 class CollimatorTest(TestPage):
-    def __init__(self, name, root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
+    def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
         description = """
         Description
         ___________
@@ -489,14 +589,15 @@ class CollimatorTest(TestPage):
 
         Press start.
         """
-        TestPage.__init__(self, name, root, robot, ls, opts, description=description)
+        results_page = CollimatorTestResultsPage(_root)
+        TestPage.__init__(self, name, _root, robot, ls, opts, description=description, results_page=results_page)
     
     def _default_settings(self):
         section = 'linac.jaws'
         self.opts.add_option(section, 'x1', 10.0  , tk.DoubleVar()   , display_name='X1', units='mm' , description='X1 length of light field at 100 cm')
         self.opts.add_option(section, 'x2', 10.0  , tk.DoubleVar()   , display_name='X2', units='mm' , description='X2 length of light field at 100 cm')
-        self.opts.add_option(section, 'y1', 10.0  , tk.DoubleVar()   , display_name='Y1', units='mm' , description='Y1 length of light field at 100 cm')
-        self.opts.add_option(section, 'y2', 10.0  , tk.DoubleVar()   , display_name='Y2', units='mm' , description='Y2 length of light field at 100 cm')
+        self.opts.add_option(section, 'y1', 100.0  , tk.DoubleVar()   , display_name='Y1', units='mm' , description='Y1 length of light field at 100 cm')
+        self.opts.add_option(section, 'y2', 100.0  , tk.DoubleVar()   , display_name='Y2', units='mm' , description='Y2 length of light field at 100 cm')
         
         section = 'linac.angles'
         self.opts.add_option(section, 'gantry'    , 0.0  , tk.DoubleVar()   , display_name='Gantry angle'    , units='deg' , description='Angle set for the Gantry')
@@ -644,9 +745,12 @@ class CollimatorTest(TestPage):
             logging.critical(f'Could not start Gantry Test:\n{e}')
             raise e
     
-        test_results = LinacTests.collimator_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, umbra, 
-                                                        threshold, step_length, Navg, collimator_angle, gantry_angle, couch_angle)
-            
+        test_results = LinacTests.collimator_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, umbra, Navg,
+                                                        threshold, step_length, collimator_angle, gantry_angle, couch_angle)
+
+        if self.results_page is not None:
+            self.results_page.add_test('collimator', 'Collimator Test Official', ('Collimator Test Official', test_results))
+
 class GantryTest(TestPage):
     def __init__(self, name, root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
         description = """
@@ -665,8 +769,8 @@ class GantryTest(TestPage):
         section = 'linac.jaws'
         self.opts.add_option(section, 'x1', 10.0  , tk.DoubleVar()   , display_name='X1', units='mm' , description='X1 length of light field at 100 cm')
         self.opts.add_option(section, 'x2', 10.0  , tk.DoubleVar()   , display_name='X2', units='mm' , description='X2 length of light field at 100 cm')
-        self.opts.add_option(section, 'y1', 10.0  , tk.DoubleVar()   , display_name='Y1', units='mm' , description='Y1 length of light field at 100 cm')
-        self.opts.add_option(section, 'y2', 10.0  , tk.DoubleVar()   , display_name='Y2', units='mm' , description='Y2 length of light field at 100 cm')
+        self.opts.add_option(section, 'y1', 100.0  , tk.DoubleVar()   , display_name='Y1', units='mm' , description='Y1 length of light field at 100 cm')
+        self.opts.add_option(section, 'y2', 100.0  , tk.DoubleVar()   , display_name='Y2', units='mm' , description='Y2 length of light field at 100 cm')
         
         section = 'linac.angles'
         self.opts.add_option(section, 'gantry'    , 0.0  , tk.DoubleVar()   , display_name='Gantry angle'    , units='deg' , description='Angle set for the Gantry')
@@ -844,16 +948,22 @@ def parse_xrb_file(filename):
 
 
 def _gravity_test_results_file_text(test_name, side, result_data):
-    positions, distance, intensities = map(list, zip(*result_data))
+    
     byte_data = b''
     byte_data += _encode_string(test_name)
     byte_data += _encode_string(side)
 
+    byte_data += _encode_int(len(result_data))
+    
     # Create numpy array of data
-    arr = np.column_stack((positions, distance, intensities))
-
-    byte_data += np.array(list(arr.shape), dtype=np.int64).tobytes()
-    byte_data += arr.tobytes()
+    for movement_results in result_data:
+        
+        positions, distance, intensities = map(list, zip(*movement_results))
+        arr = np.column_stack((positions, distance, intensities))
+        movement_bytes = b''
+        movement_bytes += np.array(list(arr.shape), dtype=np.int64).tobytes()
+        movement_bytes += arr.tobytes()
+        byte_data += _encode_int(len(movement_bytes)) + movement_bytes
     
     return _wrap_test_bytes('gravity', test_name, byte_data)
 
@@ -861,13 +971,66 @@ def _gravity_test_results_file_read(arr:bytearray):
     test_name, arr = _decode_string(arr)
     side, arr = _decode_string(arr)
 
-    shape_arr = arr[:16]
-    result_data_arr = arr[16:]
-    shape = tuple(np.frombuffer(shape_arr, dtype=np.int64))
-    restored_1d = np.frombuffer(result_data_arr, dtype=np.float64)
-    raw_result_data = restored_1d.reshape(*shape)
-    result_data = [raw_result_data[:, :3], raw_result_data[:,3], raw_result_data[:,4]]
-    return test_name, side, tuple(zip(*result_data))
+    result_data = []
+    nmovements, arr = _decode_int(arr)
+    
+    for i in range(nmovements):
+        nbytes, arr = _decode_int(arr)
+        movement_arr = arr[:nbytes]
+        arr = arr[nbytes:]
+        
+        shape_arr = movement_arr[:16]
+        result_data_arr = movement_arr[16:]
+
+        shape = tuple(np.frombuffer(shape_arr, dtype=np.int64))
+        restored_1d = np.frombuffer(result_data_arr, dtype=np.float64)
+        raw_result_data = restored_1d.reshape(*shape)
+        movement_data = [raw_result_data[:, :3], raw_result_data[:,3], raw_result_data[:,4]]
+        result_data.append(tuple(zip(*movement_data)))
+
+    return test_name, side, result_data
+
+def _collimator_test_results_file_text(test_name, result_data):
+    
+    byte_data = b''
+    byte_data += _encode_string(test_name)
+
+    byte_data += _encode_int(len(result_data))
+    
+    # Create numpy array of data
+    for movement_results in result_data:
+        
+        positions, distance, intensities = map(list, zip(*movement_results))
+        arr = np.column_stack((positions, distance, intensities))
+        movement_bytes = b''
+        movement_bytes += np.array(list(arr.shape), dtype=np.int64).tobytes()
+        movement_bytes += arr.tobytes()
+        byte_data += _encode_int(len(movement_bytes)) + movement_bytes
+    
+    return _wrap_test_bytes('collimator', test_name, byte_data)
+
+def _collimator_test_results_file_read(arr:bytearray):
+    test_name, arr = _decode_string(arr)
+
+    result_data = []
+    nmovements, arr = _decode_int(arr)
+    
+    for i in range(nmovements):
+        nbytes, arr = _decode_int(arr)
+        movement_arr = arr[:nbytes]
+        arr = arr[nbytes:]
+        
+        shape_arr = movement_arr[:16]
+        result_data_arr = movement_arr[16:]
+
+        shape = tuple(np.frombuffer(shape_arr, dtype=np.int64))
+        restored_1d = np.frombuffer(result_data_arr, dtype=np.float64)
+        raw_result_data = restored_1d.reshape(*shape)
+        movement_data = [raw_result_data[:, :3], raw_result_data[:,3], raw_result_data[:,4]]
+        result_data.append(tuple(zip(*movement_data)))
+
+    return test_name, result_data
+
 
 def _wrap_test_bytes(test_type, test_name, arr):
     return _encode_string(test_type) + _encode_string(test_name) + _encode_int(len(arr)) + arr
@@ -890,6 +1053,9 @@ def _decode_int(arr:bytearray):
     return value, arr[8:]
 
 
+#def save_tests_to_xlsx(xlsx: str, tests):
+#
+#    with xlsxwriter.Workbook(xlsx) as wb:
 
 
 def alan_function(filename, index):

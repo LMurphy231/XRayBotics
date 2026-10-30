@@ -13,8 +13,8 @@ import settingshandler as settings
 
 
 class RobotCom(RPC):
-    HOME = [0, -45, -135, -90, 90, 0]
-    TOOL_RBASE = np.array([0, 180, 90])
+    HOME = [90, -45, -135, -90, 90, 0]
+    TOOL_RBASE = np.array([0, 180, 180])
     AXIS_LIMIT = [
         (-175, 175),
         (-265, 85),
@@ -126,7 +126,16 @@ class RobotCom(RPC):
             self.set_widget_statuses(True)
             funct, event = self.action_queue.get()
             self.set_widget_statuses(False)
-            print(f'Result: {funct()}')
+            try:
+                result = funct()
+                if result != 0:
+                    self._clear_error()
+                    result = funct()
+            except BaseException as e:
+                logging.error(f'Error in Queue Runner: {e}')
+                result = None
+
+            print(f'Result: {result}')
             event.set()
 
     def stop_thread(self):
@@ -179,7 +188,7 @@ class RobotCom(RPC):
         self.user_input_window = None
         self.error_label = None
     
-    def move_increment1(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=20.0, in_thread=False):
+    def move_increment(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=50.0, acc=50.0, in_thread=False):
         '''
         Move Arm with incremental movements. 
 
@@ -253,7 +262,7 @@ class RobotCom(RPC):
                     user=0,
                     desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0],
                     vel = 20.0,
-                    acc = 0.0,
+                    acc = 20.0,
                     ovl = 100.0,
                     exaxis_pos = [0.0,0.0,0.0,0.0],
                     blendT = -1.0,
@@ -266,7 +275,7 @@ class RobotCom(RPC):
             return event
         return funct()
 
-    def move_position1(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False):
+    def move_position(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False):
             self._check_stop_interrupt()
             
             end_effector_angle = self.end_effector_angle
@@ -308,7 +317,7 @@ class RobotCom(RPC):
                 return event
             return funct()
 
-    def move_position(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False):
+    def move_position1(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False, vel=50.0, acc=50.0):
         self._check_stop_interrupt()
         
         end_effector_angle = self.end_effector_angle
@@ -332,8 +341,8 @@ class RobotCom(RPC):
                     desc_pos + self._internal_position,
                     tool           = self.cur_tool,
                     user           = 0,
-                    vel            = 10.0,
-                    acc            = 20.0,
+                    vel            = vel,
+                    acc            = acc,
                     ovl            = 100.0,
                     )
         if in_thread:
@@ -342,7 +351,7 @@ class RobotCom(RPC):
             return event
         return funct()
 
-    def move_increment(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=20.0, acc=20.0, in_thread=False):
+    def move_increment1(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=50.0, acc=50.0, in_thread=False):
         '''
         Move Arm with incremental movements. 
 
@@ -370,10 +379,17 @@ class RobotCom(RPC):
                             self._internal_position,
                             tool           = self.cur_tool,
                             user           = 0,
-                            vel            = 10.0,
-                            acc            = 20.0,
+                            vel            = vel,
+                            acc            = acc,
                             ovl            = 100.0,
                             )
+
+        if in_thread:
+            event = threading.Event()
+            self.action_queue.put((funct, event))
+            return event
+        return funct()
+    
     @property
     def tool_frame(self):
         return np.array(self.TOOL_RBASE) + self.offset[3:]
@@ -383,7 +399,7 @@ class RobotCom(RPC):
     _joint_move     = move_joint
 
     def move_to_isocenter(self):
-        self.move_position(*self.isocenter)
+        self.move_position(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
     def move_to_home(self):
         self.logger.debug('Moving to home position')

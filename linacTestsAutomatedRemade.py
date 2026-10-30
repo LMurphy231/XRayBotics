@@ -96,9 +96,9 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
         #grav_test_distance.append(distance)
         #grav_test_light_data.append(light_intensity)
 
-    dr_offset, peaks = dp.calculate_gravity_angle(grav_test_scan_data) # Offset negative theta: CW
+    #dr_offset, peaks = dp.calculate_gravity_angle(grav_test_scan_data) # Offset negative theta: CW
 
-    return grav_test_scan_data, dr_offset
+    return grav_test_scan_data#, dr_offset
 
 
     #dr_offset, _ = dp.calculate_gravity_angle(grav_test_pos_data, grav_test_light_data) # STORE: ANGLE BETWEEN Z (TRUE) AND AXIS
@@ -194,12 +194,14 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
     collimator_path = paths.rectangle_path(est_isocenter, collimator_rectangle_points) 
 
     move.execute_path(fr5, ls, collimator_path, coll_test_scan_data, Navg, step_length) # Move and scan in path according
-
-    for position, distance, light_intensity in coll_test_scan_data:
-
-        coll_test_pos_data.append(position)
-        coll_test_distance.append(distance)
-        coll_test_light_data.append(light_intensity)
+    fr5._position_move(*est_isocenter)
+    
+    return coll_test_scan_data
+    #for position, distance, light_intensity in coll_test_scan_data:
+#
+    #    coll_test_pos_data.append(position)
+    #    coll_test_distance.append(distance)
+    #    coll_test_light_data.append(light_intensity)
 
     dr_offset, peaks = dp.calculate_gravity_angle(coll_test_scan_data) # Offset negative theta: CW
 
@@ -283,14 +285,15 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
     collimator_path = paths.rectangle_path(est_isocenter, collimator_rectangle_points) 
 
     move.execute_path(fr5, ls, collimator_path, gantry_test_scan_data, Navg, step_length) # Move and scan in path according
-
+    
     for position, distance, light_intensity in gantry_test_scan_data:
 
         gantry_test_pos_data.append(position)
         gantry_test_distance.append(distance)
         gantry_test_light_data.append(light_intensity)
 
-
+    fr5._position_move(*est_isocenter)
+    
     dr_offset, peaks = dp.calculate_gravity_angle(gantry_test_scan_data) # Offset negative theta: CW
 
     ## Define path to move in (rectangle)
@@ -368,15 +371,15 @@ def create_gravity_test_rectangle_points(fr5: RC.RobotCom, est_isocenter: np.nda
     
     if side == "left":                  # Rotate basis place about x (CCW, +angle)
         grav_plane_angle = 90.0
-        fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)
+        fr5.set_end_effector_angle(0.0, 0.0, 90)
              
     elif side == "right":               # Rotate basis place about x (CW, -angle)
         grav_plane_angle = -90.0
-        fr5.set_end_effector_angle(0.0, 0.0, grav_plane_angle)
+        fr5.set_end_effector_angle(0.0, 0.0, -90)
         
     elif side == "front":
         grav_plane_angle = 90.0
-        fr5.set_end_effector_angle(0.0, 0.0, 0.0)
+        fr5.set_end_effector_angle(0.0, 0.0, 0)
 
     if side == "left" or side == "right":
         matrix_1 = paths.get_rotation_matrix("x", grav_plane_angle, rx_offset)
@@ -404,7 +407,7 @@ def create_collimator_test_rectangle_points(fr5: RC.RobotCom, est_isocenter: np.
     collimator_rot_matrix: np.ndarray
 
     length: float = x1 + x2 + umbra
-    width: float = y1 + y2 - umbra
+    width: float = (y1 + y2 - umbra)/2
     
     # Define path to move in (rectangle)
     basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)  # Calculate rectangle points in basis plane: XY
@@ -414,24 +417,12 @@ def create_collimator_test_rectangle_points(fr5: RC.RobotCom, est_isocenter: np.
     rx_offset, ry_offset, rz_offset = fr5.offset[3:] # Floats
     
     # Set end effector sensor to face upwards (base direction is forward)
-    end_effector_direction: float = -90.0
-    fr5.set_end_effector_angle(gantry_angle + rx_offset, end_effector_direction + ry_offset, collimator_angle - couch_angle + rz_offset)
+    end_effector_direction: float = 90
+    fr5.set_end_effector_angle(end_effector_direction + gantry_angle + rx_offset,  ry_offset, collimator_angle - couch_angle + rz_offset)
 
     rx_matrix: np.ndarray = paths.get_rotation_matrix("x", gantry_angle, rx_offset)                     # Rotate path about x axis (Rotation about x axis to match with true z)
     ry_matrix: np.ndarray = paths.get_rotation_matrix("y", 0.0, ry_offset)                              # Rotate path about y axis (Rotation about y axis to match with true z)
     rz_matrix: np.ndarray = paths.get_rotation_matrix("z", collimator_angle - couch_angle, rz_offset)   # Rotate path about z axis (Rotation about z axis to match with couch angle)
-
-    ## Rotate path about x0 axis (Rotation about x axis to match with true z)
-    #rx_matrix = paths.get_rotation_matrix("x", 0.0, rx_offset)
-    #
-    ## Rotate path about x axis (main rotation about gantry)
-    #rx2_matrix = paths.get_rotation_matrix("x", gantry_angle, 0.0)
-#
-    ## Rotate path about y axis (Rotation about y axis to match with true z)
-    #ry_matrix = paths.get_rotation_matrix("y", 0.0, ry_offset)
-#
-    ## Rotate path about z axis (main rotation about collimator)
-    #rz_matrix = paths.get_rotation_matrix("z", collimator_angle, rz_offset)
 
     # Rotate about x0, Rotate about y0, rotate about x2, rotate about z3
     collimator_rot_matrix = paths.rotation_matricies(rx_matrix, ry_matrix, rz_matrix)

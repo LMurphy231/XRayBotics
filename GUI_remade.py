@@ -277,6 +277,7 @@ class GUI:
 
         tk.Button(button_frame, text='Stop Robot'   , command = self.robot.interrupt_threads).grid(row=0, column=1, sticky=tk.NSEW)
         tk.Button(button_frame, text='Clear Error'  , command = lambda: print(self.robot.ResetAllError())).grid(row=4, column=1, sticky=tk.NSEW)
+        tk.Button(button_frame, text='Got to isocenter'  , command = self.robot.move_to_isocenter).grid(row=1, column=2, sticky=tk.NSEW)
         isocenter_button = tk.Button(button_frame, text='Set Isocenter', command = lambda: self.robot.set_isocenter(*self.robot._get_tool_position()))
         isocenter_button.grid(row=1, column=1, sticky=tk.NSEW)
         home_button = tk.Button(button_frame, text='Home'         , command = lambda: self.robot.move_to_home())
