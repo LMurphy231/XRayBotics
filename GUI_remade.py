@@ -58,7 +58,7 @@ class MessageTerminal(logging.Handler):
 class GUI:
     def __init__(self, name = 'XRayBotics'):
         self.window = tk.Tk()
-        self.window.geometry('1000x500')
+        self.window.geometry('1500x650')
         self.name = name
         self.window.title(name)
         self.settings_window = None
@@ -112,9 +112,9 @@ class GUI:
         #text_window_frame.grid(row=1, column=0, sticky=tk.NSEW)
         self._create_text_window(self.text_window_frame)
 
-        settings_frame = tk.Frame(self.root)
-        #settings_frame.grid(row=1, column=1, columnspan=2, sticky=tk.NSEW)
-        self._create_options_window(settings_frame)
+        self.settings_frame = tk.Frame(self.window)
+        
+        #self._create_option_window(self.settings_frame)
         
     def _create_loggers(self):
         self.gui_logger = logging.getLogger('GUI logger')
@@ -129,11 +129,18 @@ class GUI:
     def _create_menu(self):
         self.menubar = tk.Menu(self.window, tearoff=False)
 
-        communications_menu = tk.Menu(self.menubar, tearoff=False)
+        
 
+        # Settings Menu
+        settings_menu = tk.Menu(self.menubar, tearoff=False)
+        settings_menu.add_command(label="All", command=lambda: self._create_option_window(self.settings_frame, '').grid(row=0, column=0, pady=1,sticky=tk.NSEW))
+        settings_menu.add_command(label="Robot", command=lambda: self._create_option_window(self.settings_frame, ['robot',]).grid(row=0, column=0, pady=1,sticky=tk.NSEW))
+
+        # View Menu
         communications_menu = tk.Menu(self.menubar, tearoff=False)
         communications_menu.add_command(label="Messages", command=lambda: self.text_window_frame.grid(row=0, column=0, sticky=tk.SE))
 
+        self.menubar.add_cascade(label="Settings", menu=settings_menu)
         self.menubar.add_cascade(label="View", menu=communications_menu)
 
         self.window.config(menu=self.menubar)
@@ -296,8 +303,30 @@ class GUI:
 
         move_type_notebook.bind('<<NotebookTabChanged>>', _change_functions)
 
-    def _create_options_window(self, frame:tk.Frame):
-        self.option_tree = settings.OptionTree(frame, self.opts)
+    def _create_option_window(self, frame:tk.Frame, sections):
+        for _, old_widget in list(frame.children.items()):
+            old_widget.destroy()
+
+        temp_frame = tk.Frame(frame)
+        temp_frame.grid(row=0, column=0, sticky=tk.NSEW)
+
+        option_frame = tk.Frame(temp_frame)
+        option_frame.grid(row=0, column=0, sticky=tk.NSEW)
+
+        
+        tree_frame = tk.Frame(temp_frame)
+        tree_frame.grid(row=1, column=0, sticky=tk.NSEW)
+        option_tree = settings.OptionTree(tree_frame, self.opts, sections)
+
+        tk.Button(option_frame, text='Close', command=lambda: temp_frame.destroy() == frame.grid_forget()).grid(row=0, column=0, sticky=tk.NE)
+
+        button_frame = tk.Frame(temp_frame)
+        button_frame.grid(row=3, column=0, sticky=tk.NSEW)
+        if self.opts is not None:
+            tk.Button(button_frame, command=option_tree.save, text='Save to Default', ).grid(row=2, column=0, sticky=tk.W)
+            tk.Button(button_frame, command=option_tree.load, text='Load Default',    ).grid(row=2, column=1, sticky=tk.W)
+
+        return frame
 
     def _default_options(self):
         return
@@ -321,6 +350,13 @@ class GUI:
         self.test_selection.bind('<<ListboxSelect>>', self._change_test_page)
         for test in self.test_types:
             self.test_selection.insert(tk.END, test)
+
+        self.test_selection.selection_set(0)
+        self.test_selection.event_generate("<<ListboxSelect>>")
+        
+        self.current_test = self.test_types[list(self.test_types.keys())[0]]
+        self.current_test.toggle_page(True)
+        
 
     def _create_text_window(self, frame:tk.Frame):
         frame.configure(relief=tk.GROOVE)

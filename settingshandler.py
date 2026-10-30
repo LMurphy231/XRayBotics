@@ -13,7 +13,7 @@ class Option:
     name           : str
     default        : typing.Any
     var            : tk.Variable
-    options        : list[str] = None
+    values         : list[str] = None
     min_value      : float = None
     max_value      : float = None
     display_name   : str = None
@@ -62,11 +62,11 @@ class OptionDict(collections.UserDict):
         super().__init__(defaults)
         self.data: dict[str, Option]
 
-    def add_option(self, section, name, default, var:tk.Variable=None, options:list[str]=None, min_value:float=None, max_value:float=None, display_name=None, units=None, description=None):
+    def add_option(self, section, name, default, var:tk.Variable=None, values:list[str]=None, min_value:float=None, max_value:float=None, display_name=None, units=None, description=None):
         section_data = self._create_section(section) 
         self.sections.add(section)
         if name not in section_data:
-            section_data[name] = Option(self._opts, section,  name, default, var, options, min_value=min_value, max_value=max_value, display_name=display_name, units=units, description=description, ini=self.ini)
+            section_data[name] = Option(self._opts, section,  name, default, var, values, min_value=min_value, max_value=max_value, display_name=display_name, units=units, description=description, ini=self.ini)
         section_data[name].load_user_default()
         return section_data[name]
     
@@ -135,7 +135,9 @@ class TreeColumn:
 
 
 class OptionTree:
-    def __init__(self, frame:tk.Frame, opts:OptionDict, sections=None, show='tree headings'):
+    def __init__(self, root:tk.Frame, opts:OptionDict, sections=None, show='tree headings', open=True):
+
+        self.root = root
         self.opts = opts
         self.columns = {obj.name: obj for obj in (
                 TreeColumn('default'        , 'Default'    , minsize=50, initial_size= 50 , state=False),
@@ -146,7 +148,7 @@ class OptionTree:
         }
         self.sections = sections if not sections or isinstance(sections, (tuple, list)) else (sections,)
 
-        self.tree = ttk.Treeview(frame, columns=tuple([obj.name for obj in self.columns.values()]), show=show)
+        self.tree = ttk.Treeview(root, columns=tuple([obj.name for obj in self.columns.values()]), show=show)
 
         self.tree.heading("#0", text="Option", anchor="w")
         self.tree.column("#0", minwidth=200)
@@ -158,8 +160,15 @@ class OptionTree:
 
         # Bind double-click event to trigger editing
         self.tree.bind("<Double-1>", self.on_double_click)
-        self._build()
+        self._build(open)
         active_trees.append(self)
+
+    def _is_alive(self):
+        try:
+            self.root.grid_info()
+            return True
+        except:
+            return False
 
     @property
     def _displayed_sections(self):
@@ -186,20 +195,20 @@ class OptionTree:
             obj = self.opts.get(section_name, option)
             self.tree.item(row_id, values=self._format_option(obj))
 
-    def _build(self):
+    def _build(self, open=True):
         def add_section(opt_dict:dict[str, Option], prev_sections, base_sections=[], prev_id=''):
             if tuple(prev_sections) not in self.sections_ids:
                 section = prev_sections[-1]
-                self.sections_ids[tuple(prev_sections)] = self.tree.insert('', tk.END, text=section.capitalize())
+                self.sections_ids[tuple(prev_sections)] = self.tree.insert('', tk.END, text=section.capitalize(), open=open)
 
             
             for name, obj in opt_dict.items():
                 if isinstance(obj, dict):
-                    new_id = self.tree.insert(prev_id, tk.END, text=name.capitalize())
+                    new_id = self.tree.insert(prev_id, tk.END, text=name.capitalize(), open=open)
                     self.sections_ids[tuple(prev_sections+[name,])] = new_id
                     add_section(obj, prev_sections+[name,], base_sections, new_id)
                 else:
-                    index = self.tree.insert(prev_id, tk.END, text=obj.display_unit_name, values=self._format_option(obj))
+                    index = self.tree.insert(prev_id, tk.END, text=obj.display_unit_name, values=self._format_option(obj), open=open)
                     self.vars[index] = ('.'.join(base_sections+prev_sections), name)
 
         self.sections_ids = {(): ''}
@@ -214,7 +223,7 @@ class OptionTree:
                 opt_dict = opt_dict[section]
 
             if section:
-                prev_id =  self.tree.insert('', tk.END, text=section.capitalize())
+                prev_id =  self.tree.insert('', tk.END, text=section.capitalize(), open=open)
                 self.sections_ids[tuple([section,])] = prev_id
 
             prev_sections = []
@@ -248,23 +257,35 @@ class OptionTree:
         x, y, width, height = self.tree.bbox(row_id, column)
 
         if col_index >= len(self.tree.item(row_id, "values")):
-                    return
+            return
 
         # Create and overlay the temporary Entry widget
-        entry = ttk.Entry(self.tree, textvariable=option.var)
-        entry.place(x=x, y=y, width=width, height=height)
+        if option.values is not None:
+            widget = ttk.OptionMenu(self.tree, option.var, option.var.get(), *option.values, command=lambda event=None: save_edit(widget, event, option.var))
+        else:
+            widget = ttk.Entry(self.tree, textvariable=option.var)
+            widget.icursor(tk.END)
+            widget.select_range(0, tk.END)
+            
 
+        widget.place(x=x, y=y, width=width, height=height)
+
+        
+
+        widget.focus()
+        
         
         # Pre-populate entry with the current value
         #current_val = self.tree.item(row_id, "values")[col_index]
         #entry.insert(0, current_val)
-        entry.icursor(tk.END)
-        entry.select_range(0, tk.END)
-        entry.focus()
+        
 
         # Inner function to save the new value
-        def save_edit(entry, event_obj=None):
-            new_val = entry.get()
+        def save_edit(widget, event_obj:tk.Event=None, var:tk.Variable=None):
+            if isinstance(widget, ttk.OptionMenu):
+                new_val = var.get()
+            else:
+                new_val = widget.get()
             (section_name, option_name) = self.vars[row_id]
 
             _option = self.opts.get(section_name, option_name)
@@ -276,38 +297,43 @@ class OptionTree:
             row_values[col_index] = _option.value
             # Apply changes back to the tree row
             self.tree.item(row_id, values=row_values)
-            
-            entry.destroy()
-            self.tree.unbind("<MouseWheel>")
+
             _update_trees()
 
-        def reposition(entry:tk.Widget):
-            position = entry.index(tk.INSERT)
-            entry.place_forget()
+            # Skip deleting widget if user scrolls on a combobox 
+            if isinstance(widget, ttk.Combobox) and str(event_obj.type) == '35':
+                return
+            
+            widget.destroy()
+            self.tree.unbind("<MouseWheel>")
+            
 
-            #entry = ttk.Entry(self.tree, textvariable=option.var)
+        def reposition(widget:tk.Widget):
+            widget.place_forget()
 
             if self.tree.bbox(row_id, column):
                 x, y, width, height = self.tree.bbox(row_id, column)
-                entry.place(x=x, y=y, width=width, height=height)
-                entry.focus()
-            entry.icursor(position)
+                widget.place(x=x, y=y, width=width, height=height)
+                widget.focus()
 
-            self.tree.bind("<MouseWheel>", lambda *args: self.tree.after('idle', reposition, entry))
-            entry.bind("<Return>", lambda e: save_edit(entry))
-            entry.bind("<FocusOut>", lambda e: _on_focus_out(entry))
+                #if isinstance(widget, ttk.Menubutton):
+                #    x = widget.winfo_rootx()
+                #    y = widget.winfo_rooty() + widget.winfo_height()
+                #    widget['menu'].post(x, y)
 
-        def _on_focus_out(entry):
+        def _on_focus_out(widget):
             row_values = list(self.tree.item(row_id, "values"))
+
             # Update the specific column value
             option.set(row_values[col_index]) 
-            entry.destroy()
+            widget.destroy()
             self.tree.unbind("<MouseWheel>")
 
-        self.tree.bind("<MouseWheel>", lambda *args: self.tree.after('idle', reposition, entry))
+        
         # Bind lifecycle events to the temporary widget
-        entry.bind("<Return>", lambda e: save_edit(entry))
-        entry.bind("<FocusOut>", lambda e: _on_focus_out(entry))
+        self.tree.bind("<MouseWheel>", lambda *args: self.tree.after('idle', reposition, widget))
+        widget.bind("<Return>", lambda e: save_edit(widget))
+        widget.bind("<FocusOut>", lambda e: _on_focus_out(widget))
     
     def save(self):
         self.opts.save(*self.sections)
@@ -326,7 +352,8 @@ active_trees: list[OptionTree] = []
 
 def _update_trees():
     for tree in active_trees:
-        tree._update()
+        if tree._is_alive():
+            tree._update()
 
 if __name__ == '__main__':
 

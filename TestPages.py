@@ -443,10 +443,10 @@ class GravityTest(TestPage):
 
         section = 'tests.gravity.path'
         self.option_sections.append(section)
-        self.opts.add_option(section, 'step_length', 1.0    , tk.DoubleVar()   , display_name='Step length', units='mm' , description='Distance between data recordings.')
+        self.opts.add_option(section, 'step_length', 1.0    , tk.DoubleVar(), display_name='Step length', units='mm' , description='Distance between data recordings.')
         self.opts.add_option(section, 'length'     , 100.0  , tk.DoubleVar(), display_name='Length'     , units='mm' , description='Length of rectangular path.')
         self.opts.add_option(section, 'height'     , 100.0  , tk.DoubleVar(), display_name='Height'     , units='mm' , description='Height of rectangular path.')
-        self.opts.add_option(section, 'side'       , 'right', tk.StringVar(), display_name='Side'       , units=''   , description='Side of the robot that the Gravity Test will perform on.')
+        self.opts.add_option(section, 'side'       , 'right', tk.StringVar(), display_name='Side'       , values=['left', 'right', 'center'], units=''   , description='Side of the robot that the Gravity Test will perform on.')
 
         section = 'tests.gravity.variables'
         self.option_sections.append(section)
@@ -559,7 +559,7 @@ class CollimatorTest(TestPage):
         self.opts.add_option(section, 'gantry'    , 0.0  , tk.DoubleVar()   , display_name='Gantry angle'    , units='deg' , description='Angle set for the Gantry')
         self.opts.add_option(section, 'collimator', 0.0  , tk.DoubleVar()   , display_name='Collimator angle', units='deg' , description='Angle set for the collimator')
         self.opts.add_option(section, 'couch'     , 0.0  , tk.DoubleVar()   , display_name='Couch angle'     , units='deg' , description='Angle set for the Couch')
-
+        
         section = 'tests.collimator.path'
         self.opts.add_option(section, 'step_length', 1.0  , tk.DoubleVar()   , display_name='Step length', units='mm' , description='Distance between data recordings.')
         #self.opts.add_option(section, 'length'     , 100.0, tk.DoubleVar(), display_name='Length'     , units='mm' , description='Length of rectangular path.')
@@ -570,6 +570,7 @@ class CollimatorTest(TestPage):
         section = 'tests.collimator.variables'
         self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
         self.opts.add_option(section, 'navg'     , 5, tk.IntVar()      , display_name='Sensor Average Readings', units=''  , description='Number of data points recorded at a single point. The average of these points will be returned.')
+        
 
         self.option_sections.append('linac')
         self.option_sections.append('tests.collimator')
