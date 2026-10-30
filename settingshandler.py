@@ -13,6 +13,9 @@ class Option:
     name           : str
     default        : typing.Any
     var            : tk.Variable
+    options        : list[str] = None
+    min_value      : float = None
+    max_value      : float = None
     display_name   : str = None
     units          : str = None
     description    : str = None
@@ -59,11 +62,11 @@ class OptionDict(collections.UserDict):
         super().__init__(defaults)
         self.data: dict[str, Option]
 
-    def add_option(self, section, name, default, var:tk.Variable=None, display_name=None, units=None, description=None):
+    def add_option(self, section, name, default, var:tk.Variable=None, options:list[str]=None, min_value:float=None, max_value:float=None, display_name=None, units=None, description=None):
         section_data = self._create_section(section) 
         self.sections.add(section)
         if name not in section_data:
-            section_data[name] = Option(self._opts, section,  name, default, var, display_name, units, description, ini=self.ini)
+            section_data[name] = Option(self._opts, section,  name, default, var, options, min_value=min_value, max_value=max_value, display_name=display_name, units=units, description=description, ini=self.ini)
         section_data[name].load_user_default()
         return section_data[name]
     
@@ -278,11 +281,11 @@ class OptionTree:
             self.tree.unbind("<MouseWheel>")
             _update_trees()
 
-        def reposition(entry):
+        def reposition(entry:tk.Widget):
             position = entry.index(tk.INSERT)
-            entry.destroy()
+            entry.place_forget()
 
-            entry = ttk.Entry(self.tree, textvariable=option.var)
+            #entry = ttk.Entry(self.tree, textvariable=option.var)
 
             if self.tree.bbox(row_id, column):
                 x, y, width, height = self.tree.bbox(row_id, column)
