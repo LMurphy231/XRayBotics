@@ -93,9 +93,6 @@ class GUI:
         
         
         test_setup_frame = tk.Frame(self.page_frame)
-        #test_setup_frame.grid(row=0, column=0, sticky=tk.NSEW)
-        #test_setup_frame.grid_columnconfigure(0, weight=1)
-        #test_setup_frame.grid_rowconfigure(0, weight=1)  
          
         self._create_test_setup(test_setup_frame)
         self.page_frame.add(test_setup_frame, sticky=tk.NSEW, minsize=500)
@@ -313,12 +310,8 @@ class GUI:
         return
 
     def _create_test_setup(self, frame:tk.Frame):
-        #current_frame = tk.Frame(frame)
-        #current_frame.grid(row=0, column=0, sticky=tk.NSEW)
-
         frame.grid_columnconfigure(1, weight=1)
         frame.grid_rowconfigure(0, weight=1)
-
 
         self.test_frame = tk.Frame(frame)
         self.test_frame.grid(row=0, column=1, sticky=tk.NSEW)
@@ -347,6 +340,7 @@ class GUI:
         self.current_test.toggle_page(True)
         
     def _create_text_window(self, frame:tk.Frame):
+
         frame.configure(relief=tk.GROOVE)
         textbox_notebook = ttk.Notebook(frame, width=450)
         textbox_notebook.grid(row=0, column=0, sticky=tk.NSEW, padx=5, pady=5)
@@ -356,7 +350,7 @@ class GUI:
         textbox_notebook.add(debug_frame, text='Messages')
 
 
-        textbox = scrolledtext.ScrolledText(debug_frame, state=tk.NORMAL)
+        textbox = scrolledtext.ScrolledText(debug_frame, wrap=None, state=tk.NORMAL)
         textbox.grid(row=0, column=0, sticky=tk.NSEW)
 
         message_handler = MessageTerminal(textbox, logging.INFO) 
@@ -366,7 +360,7 @@ class GUI:
         message_frame = tk.Frame(textbox_notebook)
         textbox_notebook.add(message_frame, text='Debug')
 
-        textbox2 = scrolledtext.ScrolledText(message_frame, state=tk.NORMAL)
+        textbox2 = scrolledtext.ScrolledText(message_frame, wrap=None, state=tk.NORMAL)
         textbox2.grid(row=0, column=0, sticky=tk.NSEW)
 
         self.debug_textbox = MessageTerminal(textbox2, logging.DEBUG) 

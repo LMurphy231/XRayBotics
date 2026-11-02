@@ -112,7 +112,6 @@ class TestResultsPage(BasePage):
         self.test_selection.selection_set(len(self.loaded_results)-1)
         self.test_selection.event_generate("<<ListboxSelect>>")
 
-
     def register_test_page(self, test_page):
         self.close_button.grid(row=0, column=15, sticky=tk.NE)
         self.close_button.configure(command=lambda: test_page._toggle_results(False))
@@ -219,7 +218,7 @@ class TestResultsPage(BasePage):
         tk.Button(test_selection_frame, command=self.load_results, text='Open').grid(row=1, column=0, sticky=tk.NSEW)
         tk.Button(test_selection_frame, text='Save Tests', command=self._prompt_save_window).grid(row=2, column=0, sticky=tk.NSEW)
 
-        tk.Button(test_selection_frame, text='Clear Current Test', command=lambda: self.clear_tests(self.test_selection.curselection())).grid(row=2, column=0, sticky=tk.NSEW)
+        tk.Button(test_selection_frame, text='Clear Current Test', command=lambda: self.clear_tests(self.test_selection.curselection())).grid(row=3, column=0, sticky=tk.NSEW)
 
         tk.Button(test_selection_frame, text='Rename Test', command=self._prompt_test_name_change).grid(row=4, column=0, sticky=tk.NSEW)
         
@@ -374,44 +373,39 @@ class TestPage(BasePage):
         self._update_test_demo()
     
     def build(self):
-        #self.root.columnconfigure(0, weight=1, minsize=150)
-
-        #self.root.grid_columnconfigure(0, weight=1)
-        #self.root.grid_rowconfigure(0, weight=1)
         self.page_frame = tk.PanedWindow(self.root, orient='horizontal', sashwidth=15, height=500)
         self.page_frame.pack(expand=True, fill=tk.BOTH)
-        #self.page_frame.grid(row=0, column=0)
 
         left_frame  = tk.PanedWindow(self.page_frame, orient='vertical', sashwidth=15)
         right_frame = tk.PanedWindow(self.page_frame, orient='vertical', sashwidth=15)
 
-        self.page_frame.add(left_frame , sticky=tk.EW, minsize=500)
-        self.page_frame.add(right_frame, sticky=tk.EW, minsize=500)
+        self.page_frame.add(left_frame , sticky=tk.NSEW, minsize=500)
+        self.page_frame.add(right_frame, sticky=tk.NSEW, minsize=500)
         
         self.header_frame = self._create_header_frame(left_frame)
         if self.header_frame is not None:
-            self.header_frame.configure(relief=tk.GROOVE, borderwidth=5)
-            left_frame.add(self.header_frame, stretch='middle',minsize=150, sticky=tk.NSEW, height=250)
+            #self.header_frame.configure(relief=tk.GROOVE, borderwidth=5)
+            left_frame.add(self.header_frame, stretch='first',minsize=150, sticky=tk.NSEW, height=250)
 
         self.input_frame = self._create_input_frame(left_frame)
         if self.input_frame is not None:
-            self.input_frame.configure(relief=tk.GROOVE, borderwidth=5)
-            left_frame.add(self.input_frame, stretch='last',minsize=150, sticky=tk.NSEW, height=200)
+            #self.input_frame.configure(relief=tk.GROOVE, borderwidth=5)
+            left_frame.add(self.input_frame, stretch='always',minsize=150, sticky=tk.NSEW, height=200)
 
         self.start_frame = self._create_start_frame(left_frame)
         if self.start_frame is not None:
-            self.start_frame.configure(relief=tk.GROOVE, borderwidth=5)
-            left_frame.add(self.start_frame, stretch='first',minsize=30, sticky=tk.NSEW)
+            #self.start_frame.configure(relief=tk.GROOVE, borderwidth=5)
+            left_frame.add(self.start_frame, stretch='middle',minsize=40, sticky=tk.NSEW)
 
         self.test_demo_frame = self._create_test_demo_frame(right_frame)
         if self.test_demo_frame is not None:
-            self.test_demo_frame.configure(relief=tk.GROOVE, borderwidth=5)
-            right_frame.add(self.test_demo_frame, stretch='first', minsize=150, height=450)
+            #self.test_demo_frame.configure(relief=tk.GROOVE, borderwidth=5)
+            right_frame.add(self.test_demo_frame, stretch='first', minsize=150, height=450, sticky=tk.NSEW)
 
         self.parameter_frame = self._create_parameter_frame(right_frame)
         if self.parameter_frame is not None:
-            self.parameter_frame.configure(relief=tk.GROOVE, borderwidth=5)
-            right_frame.add(self.parameter_frame, stretch='last', minsize=150, height=150)
+            #self.parameter_frame.configure(relief=tk.GROOVE, borderwidth=5)
+            right_frame.add(self.parameter_frame, stretch='last', minsize=150, height=150, sticky=tk.NSEW)
 
         if self.results_page is not None:
             self.results_page.register_test_page(self)
@@ -683,11 +677,14 @@ class CollimatorTest(TestPage):
             frame = self.root
 
         test_demo_frame = tk.Frame(frame)
-        plotter_frame = tk.Frame(test_demo_frame)
-        plotter_frame.grid(row=0, column=0)
-        self.plotter = plt.Plotter(plotter_frame, projection='3d')
+        self.plotter = plt.Plotter(test_demo_frame, projection='3d')
+        return test_demo_frame
+    
+    def _create_parameter_frame(self, frame = None):
+        if frame is None:
+            frame = self.root
 
-        paramter_frame = tk.LabelFrame(test_demo_frame, text='Parameters', labelanchor=tk.N)
+        paramter_frame = tk.LabelFrame(frame, text='Parameters', labelanchor=tk.N)
         paramter_frame.grid(row=1, column=0)
 
         section = 'linac.jaws'
@@ -725,7 +722,7 @@ class CollimatorTest(TestPage):
             tk.Label(angle_frame, textvariable=option.var).grid(row=i, column=1)
             self.traces.append((option.var, lambda option=option: option.var.trace_add('write', lambda *args: self._update_test_demo()), 'write', None))
         
-        return test_demo_frame
+        return paramter_frame
 
     def _update_test_demo(self):
 
@@ -748,21 +745,9 @@ class CollimatorTest(TestPage):
             return
         isocenter = self.robot.isocenter[:3]
         points = LinacTests.create_collimator_test_rectangle_points(self.robot, isocenter, x1, x2, y1, y2, umbra, gantry_angle, collimator_angle, couch_angle)
-        #points = pr.calculate_four_points_rectangle(isocenter, x1+x2+umbra, (y1+y2)*2/3, 'y','z')
-#
-        #points = pr.rotate_points(points, collimator_angle, 'y', 'z')
-        #points = pr.rotate_points(points, -gantry_angle, 'x', 'y')
-
-        self.plotter.clear()
-        #R = plt.Ry(np.deg2rad(-90))
-        #new_points = []
-        #for point in points:
-        #    new_points.append(plt.rotate_point(point, R))
-        #self._plot_light_field(x1, x2, y1, y2, isocenter[2], gantry_angle, collimator_angle)
-        self.plotter.plot_shape(self._dummy_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle-couch_angle))
         
-        #points = new_points
-
+        self.plotter.clear()
+        self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle-couch_angle)
         self.plotter.scatter(*isocenter)
 
         prev_point = points[0]
@@ -773,15 +758,6 @@ class CollimatorTest(TestPage):
             prev_point = point
 
         self.plotter._update()
-
-    def _dummy_light_field(self, x1, x2, y1, y2, gantry_angle, collimator_angle, origin=np.array([0,0,0])):
-
-        rotation_matrix = plt.rotate(plt.Rx(np.deg2rad(gantry_angle)), plt.Rz(np.deg2rad(collimator_angle)))
-        p1 = plt.rotate_point(np.array([-x1, -y1, 0.0]), rotation_matrix) + origin
-        p2 = plt.rotate_point(np.array([x2, -y1, 0.0]) , rotation_matrix) + origin
-        p3 = plt.rotate_point(np.array([x2, y2, 0.0])  , rotation_matrix) + origin
-        p4 = plt.rotate_point(np.array([-x1, y2, 0.0]) , rotation_matrix) + origin
-        return [p1, p2, p3, p4]
 
     def start(self):
         try:
@@ -859,11 +835,15 @@ class GantryTest(TestPage):
             frame = self.root
 
         test_demo_frame = tk.Frame(frame)
-        plotter_frame = tk.Frame(test_demo_frame)
-        plotter_frame.grid(row=0, column=0)
-        self.plotter = plt.Plotter(plotter_frame, projection='3d')
+        self.plotter = plt.Plotter(test_demo_frame, projection='3d')
 
-        paramter_frame = tk.LabelFrame(test_demo_frame, text='Parameters', labelanchor=tk.N)
+        return test_demo_frame
+
+    def _create_parameter_frame(self, frame = None):
+        if frame is None:
+            frame = self.root
+
+        paramter_frame = tk.LabelFrame(frame, text='Parameters', labelanchor=tk.N)
         paramter_frame.grid(row=1, column=0)
 
         section = 'linac.jaws'
@@ -899,12 +879,10 @@ class GantryTest(TestPage):
             tk.Label(angle_frame, text=f'{option.display_name}:').grid(row=i, column=0)
             tk.Label(angle_frame, textvariable=option.var).grid(row=i, column=1)
             self.traces.append((option.var, lambda option=option: option.var.trace_add('write', lambda *args: self._update_test_demo()), 'write', None))
-        
-        return test_demo_frame
+
+        return paramter_frame
 
     def _update_test_demo(self):
-
-        
         try:
             section = 'linac.jaws'
             x1 = self.opts.get(section, 'x1').var.get()
@@ -925,21 +903,10 @@ class GantryTest(TestPage):
         
         isocenter = self.robot.isocenter[:3]
         points = LinacTests.create_gantry_test_rectangle_points(self.robot, isocenter, x1, x2, y1, y2, height, umbra, gantry_angle, collimator_angle, couch_angle)
-        #points = pr.calculate_four_points_rectangle(isocenter, x1+x2+umbra, (y1+y2)*2/3, 'y','z')
-#
-        #points = pr.rotate_points(points, collimator_angle, 'y', 'z')
-        #points = pr.rotate_points(points, -gantry_angle, 'x', 'y')
 
         self.plotter.clear()
-        #R = plt.Ry(np.deg2rad(-90))
-        #new_points = []
-        #for point in points:
-        #    new_points.append(plt.rotate_point(point, R))
-        #self._plot_light_field(x1, x2, y1, y2, isocenter[2], gantry_angle, collimator_angle)
-        self.plotter.plot_shape(self._dummy_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle))
+        self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle)
         
-        #points = new_points
-
         self.plotter.scatter(*isocenter)
 
         prev_point = points[0]
@@ -950,15 +917,6 @@ class GantryTest(TestPage):
             prev_point = point
 
         self.plotter._update()
-
-    def _dummy_light_field(self, x1, x2, y1, y2, gantry_angle, collimator_angle, origin=np.array([0,0,0])):
-
-        rotation_matrix = plt.rotate(plt.Rx(np.deg2rad(gantry_angle)), plt.Rz(np.deg2rad(collimator_angle)))
-        p1 = plt.rotate_point(np.array([-x1, -y1, 0.0]), rotation_matrix) + origin
-        p2 = plt.rotate_point(np.array([x2, -y1, 0.0]) , rotation_matrix) + origin
-        p3 = plt.rotate_point(np.array([x2, y2, 0.0])  , rotation_matrix) + origin
-        p4 = plt.rotate_point(np.array([-x1, y2, 0.0]) , rotation_matrix) + origin
-        return [p1, p2, p3, p4]
 
     def start(self):
         try:
