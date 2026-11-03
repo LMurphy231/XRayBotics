@@ -3,6 +3,13 @@ import RobotCommunicator as RC
 
 import LightSensor as lq
 
+import logging
+
+move_logger = logging.getLogger('Moving')
+scan_logger = logging.getLogger('Scanning')
+data_logger = logging.getLogger('Data Storage')
+path_logger = logging.getLogger('Path Movement')
+
 # TODO: Complete functions
 def absolute_move_path(fr5: RC.RobotCom, path: list):
     """
@@ -60,7 +67,10 @@ def increment_move_and_scan(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, 
             # Update current absolute position
             current_position = current_position + movement
             total_displacement += np.linalg.norm(movement)
- 
+            
+            move_logger.info(f'Step {i+1}/{n_steps}')
+            scan_logger.info(f'Light Intensity: {light_intensity:.2f}')
+            
             store_data(scan_data, current_position, total_displacement, light_intensity)
             
     return scan_data
@@ -76,10 +86,12 @@ def execute_path(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, scan_data: 
 
     for move, scan, start_pos in path:
         if scan:
+            path_logger.info(f'Moving and scanning: {move} from {start_pos}')
             scan_data_for_side = increment_move_and_scan(fr5, ls, move, start_pos, Navg, step_length) 
             scan_data.append(scan_data_for_side)
         
         else:
+            path_logger.info(f'Moving without scanning: {move} from {start_pos}')
             absolute_move_path(fr5, move) # Move without scanning
 
 def store_data(scan_data: list, position: np.ndarray, mag_displacement: float, light_intensity: float):
@@ -87,13 +99,20 @@ def store_data(scan_data: list, position: np.ndarray, mag_displacement: float, l
     store_data
     Create list of detected light values with corresponding position
     '''
+    
+    data_logger.info(f'Storing data: Position: {position}, Displacement: {mag_displacement:.2f}mm')
     scan_result: tuple = (position.copy(), mag_displacement, light_intensity)
     scan_data.append(scan_result)
 
     return
 
 def light_scan(ls:lq.SensorManager, Navg: int = 5):
-    # TEMP
+    '''
+    light_scan()
+    Scan light intensity using the light sensor (LabQuest)
+    Returns the light intensity value
+    '''
+    
     light_intensity: float
     _, light_intensity = ls.read(Navg)
 

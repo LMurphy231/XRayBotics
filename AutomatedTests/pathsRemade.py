@@ -42,6 +42,40 @@ def straight_path_absolute(end_pos: np.ndarray):
 
     return abs_movement_path
 
+def zigzag_path(isocenter: np.ndarray, points: list):
+    """
+    zigzag_path()
+    Create the movement paths needed to travel in a zigzag pattern.
+    Returns movement vectors between the paths
+    Movement:
+        Isocenter -> P1       No scan
+        P1 -> P2              Scan
+        P2 -> P3              No scan
+        P3 -> P4              Scan
+    """
+
+    # Access the 4 zigzag points; Class is drarray
+    p1: np.ndarray = points[0]
+    p2: np.ndarray = points[1]
+    p3: np.ndarray = points[2]
+    p4: np.ndarray = points[3]
+
+    # Create paths for each side; Decided internally
+    path_to_p1:     list = straight_path_absolute(p1)           # Non-Incremental
+    path_p1_to_p2:  list = straight_path_displacement(p1, p2)   # Incremental
+    path_p2_to_p3:  list = straight_path_absolute(p4)           # Non-Incremental
+    path_p3_to_p4:  list = straight_path_displacement(p4, p3)   # Incremental
+
+    # Store paths with scan information; True/False for Scanning
+    zigzag_paths: list[tuple[list[np.ndarray], bool, np.ndarray]]= [
+        (path_to_p1, False, p1),
+        (path_p1_to_p2, True, p1),
+        (path_p2_to_p3, False, p2),
+        (path_p3_to_p4, True, p3)
+    ]
+
+    return zigzag_paths
+
 def rectangle_path(isocenter: np.ndarray, points: list):
     """
     rectangle_path()
@@ -63,8 +97,8 @@ def rectangle_path(isocenter: np.ndarray, points: list):
     # Create paths for each side; Decided internally
     path_to_p1:     list = straight_path_absolute(p1)           # Non-Incremental
     path_p1_to_p2:  list = straight_path_displacement(p1, p2)   # Incremental
-    path_p2_to_p3:  list = straight_path_absolute(p4)           # Non-Incremental
-    path_p3_to_p4:  list = straight_path_displacement(p4, p3)   # Incremental
+    path_p2_to_p3:  list = straight_path_absolute(p3)           # Non-Incremental
+    path_p3_to_p4:  list = straight_path_displacement(p3, p4)   # Incremental
 
     # Store paths with scan information; True/False for Scanning
     rectangle_paths: list[tuple[list[np.ndarray], bool, np.ndarray]]= [
