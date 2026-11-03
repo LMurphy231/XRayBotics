@@ -2,6 +2,9 @@ import numpy as np
 import RobotCommunicator as RC
 
 import LightSensor as lq
+import logging
+
+status_logger = logging.getLogger(f'status logger')
 
 import logging
 
@@ -83,8 +86,13 @@ def execute_path(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, scan_data: 
     WRAPPER FUNCTION: choose if scanning after (incremental) move or not
     """
     scan_data_for_side: list # Store scan data (pos, displ, light) for just 1 side; for segmenting data
+    n_movements = len(path)
+    for move_index, (move, scan, start_pos) in enumerate(path):
+        status_logger.info(f'Movement ({move_index:>len(str(n_movements))}/{n_movements})')
+        #status_logger.info('Movement ({:>length}/{})'.format(move_index, n_movements, length=len(str(n_movements))))
+        #status_logger.info('Movement (%3d /%3d)', move_index, n_movements)
 
-    for move, scan, start_pos in path:
+
         if scan:
             path_logger.info(f'Moving and scanning: {move} from {start_pos}')
             scan_data_for_side = increment_move_and_scan(fr5, ls, move, start_pos, Navg, step_length) 

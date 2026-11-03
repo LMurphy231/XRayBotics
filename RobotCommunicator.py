@@ -149,11 +149,11 @@ class RobotCom(RPC):
     def _default_options(self):
         # Default Variables
         section = 'robot.move'
-        self.opts.add_option(section, 'tool', 0   , tk.IntVar()   , display_name='Tool'           , units=None, description='Tool number')
-        self.opts.add_option(section, 'user', 0   , tk.IntVar()   , display_name='User'           , units=None, description='Artifact number')
-        self.opts.add_option(section, 'vel' , 10.0, tk.DoubleVar(), display_name='Velocity'       , units='%', description='Percentage of speed')
-        self.opts.add_option(section, 'acc' , 20.0, tk.DoubleVar(), display_name='Acceleration'   , units='%', description='Percentage of acceleration')
-        self.opts.add_option(section, 'ovl' , 0   , tk.IntVar()   , display_name='Velocity factor', units='%', description='Velocity scaling factor')
+        #self.opts.add_option(section, 'tool', 0   , tk.IntVar()   , display_name='Tool'           , units=None, description='Tool number')
+        #self.opts.add_option(section, 'user', 0   , tk.IntVar()   , display_name='User'           , units=None, description='Artifact number')
+        self.opts.add_option(section, 'vel' , 10.0 , tk.DoubleVar(), display_name='Velocity'       , units='%', description='Percentage of speed')
+        self.opts.add_option(section, 'acc' , 20.0 , tk.DoubleVar(), display_name='Acceleration'   , units='%', description='Percentage of acceleration')
+        self.opts.add_option(section, 'ovl' , 100.0, tk.DoubleVar(), display_name='Velocity factor', units='%', description='Velocity scaling factor')
 
     def _status_check(self, root=None):
         while True:
@@ -188,7 +188,7 @@ class RobotCom(RPC):
         self.user_input_window = None
         self.error_label = None
     
-    def move_increment(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=50.0, acc=50.0, in_thread=False):
+    def move_increment(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, in_thread=False, move_type='linear'):
         '''
         Move Arm with incremental movements. 
 
@@ -208,44 +208,42 @@ class RobotCom(RPC):
         desc_pos = self._get_tool_position()
         angle = list(desc_pos[3:])
         desc_pos[3:] = [0.0, 0.0, 0.0]
-        #desc_pos[3:] = self.end_effector_angle[:]
         offset = np.array([dx, dy, dz, angle[0]+drx, angle[1]+dry, angle[2]+drz])
         self._internal_position = desc_pos+offset
         self.logger.debug(f'Queing incremental Movement {offset} from {desc_pos} to {self._internal_position}')
-        return self.MoveL(
-                    desc_pos=desc_pos,
-                    tool=self.cur_tool,
-                    user=0,
-                    joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    vel=vel,
-                    acc=acc,
-                    ovl=100.0,
-                    blendR=-1.0,
-                    blendMode=0,
-                    exaxis_pos=[0.0, 0.0, 0.0, 0.0],
-                    search=0,
-                    offset_flag=2,
-                    offset_pos=offset,
-                    oacc=20.0,
-                    velAccParamMode=0,
-                    )
-        funct = lambda: self.MoveL(
-                    desc_pos=desc_pos,
-                    tool=self.cur_tool,
-                    user=0,
-                    joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    vel=vel,
-                    acc=acc,
-                    ovl=100.0,
-                    blendR=-1.0,
-                    blendMode=0,
-                    exaxis_pos=[0.0, 0.0, 0.0, 0.0],
-                    search=0,
-                    offset_flag=2,
-                    offset_pos=offset,
-                    oacc=20.0,
-                    velAccParamMode=0,
-                    )
+
+        section = 'robot.move'
+        vel = self.opts.get(section, 'vel')
+        acc = self.opts.get(section, 'acc')
+        ovl = self.opts.get(section, 'ovl')
+
+        if move_type == 'linear':
+            funct = lambda: self.MoveL(
+                        desc_pos=desc_pos,
+                        tool=self.cur_tool,
+                        user=0,
+                        joint_pos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        vel=vel,
+                        acc=acc,
+                        ovl=ovl,
+                        blendR=-1.0,
+                        blendMode=0,
+                        exaxis_pos=[0.0, 0.0, 0.0, 0.0],
+                        search=0,
+                        offset_flag=2,
+                        offset_pos=offset,
+                        oacc=20.0,
+                        velAccParamMode=0,
+                        )
+        else:
+            funct = lambda: self.MoveCart(
+                self._internal_position,
+                tool           = self.cur_tool,
+                user           = 0,
+                vel            = vel,
+                acc            = acc,
+                ovl            = ovl,
+                )
         if in_thread:
             event = threading.Event()
             self.action_queue.put((funct, event))
@@ -256,14 +254,19 @@ class RobotCom(RPC):
         self._check_stop_interrupt()
         
         self.logger.debug(f'Queing joint movement to {tuple(joint_pos)}')
+
+        section = 'robot.move'
+        vel = self.opts.get(section, 'vel')
+        acc = self.opts.get(section, 'acc')
+        ovl = self.opts.get(section, 'ovl')
         
         funct = lambda: self.MoveJ(joint_pos,
                     tool=self.cur_tool,
                     user=0,
                     desc_pos = [0.0,0.0,0.0,0.0,0.0,0.0,0.0],
-                    vel = 20.0,
-                    acc = 20.0,
-                    ovl = 100.0,
+                    vel = vel,
+                    acc = acc,
+                    ovl = ovl,
                     exaxis_pos = [0.0,0.0,0.0,0.0],
                     blendT = -1.0,
                     offset_flag = 0,
@@ -275,49 +278,7 @@ class RobotCom(RPC):
             return event
         return funct()
 
-    def move_position(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False):
-            self._check_stop_interrupt()
-            
-            end_effector_angle = self.end_effector_angle
-            
-
-            rx = end_effector_angle[0] if rx is None else rx
-            ry = end_effector_angle[1] if ry is None else ry
-            rz = end_effector_angle[2] if rz is None else rz
-
-            
-            desc_pos = self.isocenter if self.isocenter_set else np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-            desc_pos[3:] = [0.0, 0.0, 0.0]# self.end_effector_angle
-            self._internal_position = np.array([x, y, z, rx, ry, rz])
-            #desc_pos += self._internal_position
-            self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
-
-            self.logger.debug(f'Queueing Movement to {desc_pos} and {self._internal_position}')
-            #dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,desc_pos[3]-rx,desc_pos[4]-ry,desc_pos[5]-rz] 
-            
-            funct = lambda: self.MoveL(
-                        desc_pos,
-                        tool           = self.cur_tool,
-                        user           = 0,
-                        vel            = 10.0,
-                        acc            = 20.0,
-                        ovl            = 100.0,
-                        blendR         = -1.0,
-                        blendMode      = 0,
-                        exaxis_pos     = [0.0, 0.0, 0.0, 0.0],
-                        search         = 0,
-                        offset_flag    = 2,
-                        offset_pos     = self._internal_position,
-                        oacc           = 20.0,
-                        velAccParamMode= 0,
-                        )
-            if in_thread:
-                event = threading.Event()
-                self.action_queue.put((funct, event))
-                return event
-            return funct()
-
-    def move_position1(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False, vel=50.0, acc=50.0):
+    def move_position(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False, move_type='linear'):
         self._check_stop_interrupt()
         
         end_effector_angle = self.end_effector_angle
@@ -329,67 +290,50 @@ class RobotCom(RPC):
 
         
         desc_pos = self.isocenter if self.isocenter_set else np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        desc_pos[3:] = [0.0, 0.0, 0.0]# self.end_effector_angle
+        desc_pos[3:] = [0.0, 0.0, 0.0]
         self._internal_position = np.array([x, y, z, rx, ry, rz])
-        #desc_pos += self._internal_position
+
         self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
 
         self.logger.debug(f'Queueing Movement to {desc_pos} and {self._internal_position}')
-        #dpos = [desc_pos[0]-x,desc_pos[3]-y, desc_pos[2]-z,desc_pos[3]-rx,desc_pos[4]-ry,desc_pos[5]-rz] 
         
-        funct = lambda: self.MoveCart(
-                    desc_pos + self._internal_position,
-                    tool           = self.cur_tool,
-                    user           = 0,
-                    vel            = vel,
-                    acc            = acc,
-                    ovl            = 100.0,
-                    )
+        section = 'robot.move'
+        vel = self.opts.get(section, 'vel')
+        acc = self.opts.get(section, 'acc')
+        ovl = self.opts.get(section, 'ovl')
+
+        if move_type == 'linear':
+            funct = lambda: self.MoveL(
+                        desc_pos,
+                        tool           = self.cur_tool,
+                        user           = 0,
+                        vel            = vel,
+                        acc            = acc,
+                        ovl            = ovl,
+                        blendR         = -1.0,
+                        blendMode      = 0,
+                        exaxis_pos     = [0.0, 0.0, 0.0, 0.0],
+                        search         = 0,
+                        offset_flag    = 2,
+                        offset_pos     = self._internal_position,
+                        oacc           = 20.0,
+                        velAccParamMode= 0,
+                        )
+        else:
+            funct = lambda: self.MoveCart(
+                        desc_pos + self._internal_position,
+                        tool           = self.cur_tool,
+                        user           = 0,
+                        vel            = vel,
+                        acc            = acc,
+                        ovl            = ovl,
+                        )
         if in_thread:
             event = threading.Event()
             self.action_queue.put((funct, event))
             return event
         return funct()
 
-    def move_increment1(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, ref=4, vel=50.0, acc=50.0, in_thread=False):
-        '''
-        Move Arm with incremental movements. 
-
-        ref: Movement reference
-            0 - joint point movement
-            2 - base coordinate system point movement
-            4 - tool coordinate system point movement
-            8 - workpiece coordinate system point movement
-
-        vel: Velocity - default: 20.0
-        
-        acc: Acceleration - default: 100.0
-        '''
-        self._check_stop_interrupt()
-        self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
-
-        desc_pos = self._get_tool_position()
-        angle = list(desc_pos[3:])
-        desc_pos[3:] = [0.0, 0.0, 0.0]
-        #desc_pos[3:] = self.end_effector_angle[:]
-        offset = np.array([dx, dy, dz, angle[0]+drx, angle[1]+dry, angle[2]+drz])
-        self._internal_position = desc_pos+offset
-        self.logger.debug(f'Queing incremental Movement {offset} from {desc_pos} to {self._internal_position}')
-        funct = lambda: self.MoveCart(
-                            self._internal_position,
-                            tool           = self.cur_tool,
-                            user           = 0,
-                            vel            = vel,
-                            acc            = acc,
-                            ovl            = 100.0,
-                            )
-
-        if in_thread:
-            event = threading.Event()
-            self.action_queue.put((funct, event))
-            return event
-        return funct()
-    
     @property
     def tool_frame(self):
         return np.array(self.TOOL_RBASE) + self.offset[3:]
