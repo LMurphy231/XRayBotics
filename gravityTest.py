@@ -12,11 +12,6 @@ gravity, the beam appears at a different height in the two vertical scans:
 
 where h is the horizontal coordinate of the test plane (x for the XZ test, y for the YZ test).
 Positive theta means the beam appears to rise toward +h in the arm frame.
-
-The beam centre of each scan comes from the 50% method, which works on a saturated sensor:
-the scan is split in half, the rising edge (first half) and falling edge (second half) are each
-located where the intensity crosses the 50% level, by linear interpolation between the two
-samples that straddle it, and the centre is the midpoint of the two crossings.
 """
 import numpy as np
 
@@ -48,7 +43,7 @@ def _crossing(pos, intensity, a, b, level):
 
 def locate_center(pos, intensity):
     """
-    Beam centre [x, y, z] of one vertical scan using the 50% method.
+    Beam center [x, y, z] of one vertical scan using the 50% decrement.
     level = min + (max - min) / 2
     """
     n = len(intensity)
@@ -58,7 +53,7 @@ def locate_center(pos, intensity):
     if hi - med < 8 * max(noise, 1e-12):
         raise RuntimeError("Beam not found in scan (no clear peak above the noise).")
 
-    level = lo + 0.5 * (hi - lo)
+    level = 0.5 * (hi + lo)
     above = intensity >= level
     half = n // 2
 
