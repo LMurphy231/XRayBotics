@@ -42,7 +42,9 @@ class RobotCom(RPC):
         self._end_eff_angle = np.array([0.0, 0.0, 0.0])
         self._internal_position = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self._disable_move_widgets: list[tk.BaseWidget] = []
-        
+
+        self.set_widget_statuses(False)
+
         self._default_options()
         
         threading.Thread(target=self.startup, args=(ip,), daemon=True).start()
@@ -55,6 +57,7 @@ class RobotCom(RPC):
     def startup(self, ip):
         RPC.__init__(self, ip)
         self.set_isocenter(*self._get_tool_position())
+        self.set_widget_statuses(True)
         
     def offset_add(self, reason, x=0.0, y=0.0, z=0.0, drx=0.0, dry=0.0, drz=0.0):
         self.offsets.append((reason, np.array([x, y, z, drx, dry, drz]))) 
@@ -98,18 +101,36 @@ class RobotCom(RPC):
         self._monitor_threads.add(threading.current_thread())
 
     def interrupt_threads(self):
-        self._stop_event.set()
-        threading.Thread(target=self.stop, daemon=True, name='Stop').start()
-        for thread in list(self._monitor_threads):
-            print(f'Waiting on thread: {thread.name}')
-            start_time = time.time()
-            while thread.is_alive() and time.time()-start_time <= 10.0:
-                time.sleep(0.01)
-            #thread.join()
-            self._monitor_threads.remove(thread)
-        self._stop_event.clear()
-        
 
+        current_thread = threading.current_thread()
+        interrupt_self = False
+
+        # Set event to let threads know to stop moving
+        self._stop_event.set()
+
+        threading.Thread(target=self.stop, daemon=True, name='Stop').start()
+
+        for thread in list(self._monitor_threads):
+            # If the current thread that called this function is also being monitored
+            # Interrupt thread at the end of this function instead on waiting on itself
+            if thread is current_thread:
+                interrupt_self = True
+            else:
+                print(f'Waiting on thread: {thread.name}')
+                start_time = time.time()
+                while thread.is_alive() and time.time()-start_time <= 10.0:
+                    time.sleep(0.01)
+        
+            self._monitor_threads.remove(thread)
+
+        # Clear event
+        self._stop_event.clear()
+
+        # If a monitored thread called this function, interrupt it
+        if interrupt_self:
+            raise InterruptedError(f'{current_thread.name} Was interrupted.')
+
+        
     def is_connected(self):
         try:
             err, [mainerr, suberr] = self.GetRobotErrorCode()
@@ -126,14 +147,13 @@ class RobotCom(RPC):
             self.set_widget_statuses(True)
             funct, event = self.action_queue.get()
             self.set_widget_statuses(False)
-            try:
-                result = funct()
-                if result != 0:
-                    self._clear_error()
-                    result = funct()
-            except BaseException as e:
-                logging.error(f'Error in Queue Runner: {e}')
-                result = None
+            #try:
+            result = funct()
+            if result:
+                self._prompt_error_window(funct, event, result)
+            #except BaseException as e:
+            #    logging.error(f'Error in Queue Runner: {e}')
+            #    result = None
 
             print(f'Result: {result}')
             event.set()
@@ -180,7 +200,6 @@ class RobotCom(RPC):
         self.move_joint(self.HOME, in_thread=True)
         self.SetToolCoord(0, [0.0,0.0,0.0, *self.TOOL_RBASE], 0, 0, 0, 0)
 
-
     def _clear_error(self):
         ierr = self.ResetAllError()
         if self.user_input_window:
@@ -213,9 +232,9 @@ class RobotCom(RPC):
         self.logger.debug(f'Queing incremental Movement {offset} from {desc_pos} to {self._internal_position}')
 
         section = 'robot.move'
-        vel = self.opts.get(section, 'vel')
-        acc = self.opts.get(section, 'acc')
-        ovl = self.opts.get(section, 'ovl')
+        vel = self.opts.get(section, 'vel').value
+        acc = self.opts.get(section, 'acc').value
+        ovl = self.opts.get(section, 'ovl').value
 
         if move_type == 'linear':
             funct = lambda: self.MoveL(
@@ -244,11 +263,14 @@ class RobotCom(RPC):
                 acc            = acc,
                 ovl            = ovl,
                 )
+        event = threading.Event()
         if in_thread:
-            event = threading.Event()
             self.action_queue.put((funct, event))
             return event
-        return funct()
+        result = funct()
+        if result:
+            result = self._prompt_error_window(funct, event, result)
+        return result
 
     def move_joint(self, joint_pos, in_thread=False):
         self._check_stop_interrupt()
@@ -256,9 +278,9 @@ class RobotCom(RPC):
         self.logger.debug(f'Queing joint movement to {tuple(joint_pos)}')
 
         section = 'robot.move'
-        vel = self.opts.get(section, 'vel')
-        acc = self.opts.get(section, 'acc')
-        ovl = self.opts.get(section, 'ovl')
+        vel = self.opts.get(section, 'vel').value
+        acc = self.opts.get(section, 'acc').value
+        ovl = self.opts.get(section, 'ovl').value
         
         funct = lambda: self.MoveJ(joint_pos,
                     tool=self.cur_tool,
@@ -272,11 +294,15 @@ class RobotCom(RPC):
                     offset_flag = 0,
                     offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0],
                 )
+        event = threading.Event()
         if in_thread:
-            event = threading.Event()
             self.action_queue.put((funct, event))
             return event
-        return funct()
+        
+        result = funct()
+        if result:
+            result = self._prompt_error_window(funct, event, result)
+        return result
 
     def move_position(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False, move_type='linear'):
         self._check_stop_interrupt()
@@ -298,9 +324,9 @@ class RobotCom(RPC):
         self.logger.debug(f'Queueing Movement to {desc_pos} and {self._internal_position}')
         
         section = 'robot.move'
-        vel = self.opts.get(section, 'vel')
-        acc = self.opts.get(section, 'acc')
-        ovl = self.opts.get(section, 'ovl')
+        vel = self.opts.get(section, 'vel').value
+        acc = self.opts.get(section, 'acc').value
+        ovl = self.opts.get(section, 'ovl').value
 
         if move_type == 'linear':
             funct = lambda: self.MoveL(
@@ -328,11 +354,15 @@ class RobotCom(RPC):
                         acc            = acc,
                         ovl            = ovl,
                         )
+        event = threading.Event()
         if in_thread:
-            event = threading.Event()
             self.action_queue.put((funct, event))
             return event
-        return funct()
+        
+        result = funct()
+        if result:
+            result = self._prompt_error_window(funct, event, result)
+        return result
 
     @property
     def tool_frame(self):
@@ -398,7 +428,6 @@ class RobotCom(RPC):
         #self.SetWObjCoord(0, self.isocenter, 0)
         self.robot_logger.info(f'Done Setting Isocenter to {self.isocenter}')
 
-
     def _update_connection(self):
         self.logger.debug(f'Attempting to reconnect to Farino FR5')
         while True:
@@ -414,20 +443,55 @@ class RobotCom(RPC):
             self.action_queue.get()
         self.StopMove()
 
-def _wait_thread_start(thread:threading.Thread, delay=0.001):
-    while thread.ident is None:
-        time.sleep(delay)
+    def _prompt_error_window(self, funct:object, event=threading.Event, errorcode=None):
+        pkg = self.GetRobotRealTimeState()
+        state = self.GetRobotEmergencyStopState()
 
-def _wait_on_thread(thread:threading.Thread, delay=0.001):
-    while thread.ident is None or thread.is_alive():
-        time.sleep(delay)
+        # Create popup window
+        window = tk.Toplevel()
 
-def _record_thread(thread:threading.Thread, lq:SensorManager, delay=0.001):
-    _wait_thread_start(thread, delay)
-    with lq.record() as (light_data, time_data):
-        _wait_on_thread(thread, delay)
-    return time_data, light_data
+        # Block commands to the main program until this window is closed
+        window.grab_set()
 
+        # Create return variable object that can be used to save values inside lambda function
+        return_var = tk.Variable(value=errorcode)
+        tk.Label(window, text=f'An error occured while trying to run a movement command!\nError code: {errorcode}\nRobot needs to powercycle: {state}').grid(row=0, column=0, sticky=tk.NSEW, columnspan=5)
+        
+        try_again_button = tk.Button(window, text='Retry', state=tk.DISABLED, command=lambda: 
+                                     (
+                                    return_var.set(funct()),
+                                        (clear_error_button.configure(state=tk.NORMAL), )
+                                        if return_var.get() else 
+                                        (clear_error_button.configure(state=tk.DISABLED), window.destroy()), 
+                                    try_again_button.configure(state=tk.DISABLED)
+                                    )
+                                     )
+        
+        clear_error_button = tk.Button(window, text='Clear Error', command=lambda: 
+                                       (self._clear_error(),                            # Clear Error
+                                        try_again_button.configure(state=tk.NORMAL),    # Allow user to try the function again
+                                        clear_error_button.configure(state=tk.DISABLED) # Disable this button, letting the user know that the error was cleared
+                                        ))
+        clear_error_button.grid(row=1, column=1)
+        stop_test_button = tk.Button(window, text='Stop Test', command=lambda: (event.set(),              # Set event so the test thread can be interrupted
+                                                             window.destroy())         # Destroy popup window
+                                                             )
 
+        # Place buttons
+        try_again_button.grid(row=1, column=0)
+        clear_error_button.grid(row=1, column=1)
+        stop_test_button.grid(row=1, column=2)
+
+        window.protocol('WM_DELETE_WINDOW', lambda: (event.set(), window.destroy()))
+        # Wait on user to close window
+        window.wait_window()
+
+        # Set event
+        if event.is_set():
+            # Interrupt test threads.
+            self.interrupt_threads()
+
+        # Return value from the movement function
+        return return_var.get()
 
 

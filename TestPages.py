@@ -783,7 +783,8 @@ class CollimatorTest(TestPage):
         except Exception as e:
             logging.critical(f'Could not start Gantry Test:\n{e}')
             raise e
-    
+
+        self.robot.register_thread()
         test_results = LinacTests.collimator_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, umbra, Navg,
                                                         threshold, step_length, collimator_angle, gantry_angle, couch_angle)
 

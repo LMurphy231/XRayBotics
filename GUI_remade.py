@@ -1,5 +1,3 @@
-from contextlib import contextmanager
-import dataclasses
 import inspect
 import logging
 import os
@@ -72,8 +70,6 @@ class GUI:
         self._create_loggers()
         self._build()
         
-        #self.coms  = com.Communicator(True)
-
         self.gui_logger.debug(f'Running Mainloop')
         self.window.mainloop()
         self.ls.close()
@@ -85,8 +81,12 @@ class GUI:
         self.window.grid_columnconfigure(0, weight=1)
         self.window.grid_rowconfigure(0, weight=1)
 
-        self.root = tk.Frame(self.window)
-        self.root.grid(row=0, column=0, sticky=tk.NSEW)
+
+        self.window_pane = tk.PanedWindow(self.window, orient=tk.HORIZONTAL, sashwidth=15)
+        self.window_pane.grid(row=0, column=0, sticky=tk.NSEW)
+
+        self.root = tk.Frame(self.window_pane)
+        self.window_pane.add(self.root, minsize=600)
 
         self.page_frame = tk.PanedWindow(self.root, orient=tk.VERTICAL, sashwidth=15)
         self.page_frame.pack(expand=True, fill=tk.BOTH)
@@ -102,9 +102,10 @@ class GUI:
         self._create_robot_controller(robot_window_frame)
         self.page_frame.add(robot_window_frame, sticky=tk.NSEW, minsize=250)
 
-        self.text_window_frame = tk.Frame(self.window)
+        self.text_window_frame = tk.Frame(self.window_pane)
         self._create_text_window(self.text_window_frame)
 
+        
         self.settings_frame = tk.Frame(self.window)
     
     def _create_loggers(self):
@@ -126,8 +127,18 @@ class GUI:
         settings_menu.add_command(label="Robot", command=lambda: self._create_option_window(self.settings_frame, ['robot',]).grid(row=0, column=0, pady=1,sticky=tk.NSEW))
 
         # View Menu
+        def add_text_window():
+            # Lock the current size of the window pane
+            frame_width = self.window_pane.winfo_width()
+            frame_height = self.window_pane.winfo_height()
+            self.window_pane.configure(width=frame_width, height=frame_height)
+
+            # Add text window to panes
+            target_width = 250
+            self.window_pane.add(self.text_window_frame, minsize=target_width, height=target_width, sticky=tk.NSEW)
+            
         communications_menu = tk.Menu(self.menubar, tearoff=False)
-        communications_menu.add_command(label="Messages", command=lambda: self.text_window_frame.grid(row=0, column=0, sticky=tk.SE))
+        communications_menu.add_command(label="Messages", command=add_text_window)
 
         self.menubar.add_cascade(label="Settings", menu=settings_menu)
         self.menubar.add_cascade(label="View", menu=communications_menu)
@@ -341,27 +352,31 @@ class GUI:
         
     def _create_text_window(self, frame:tk.Frame):
 
-        frame.configure(relief=tk.GROOVE)
+        # Allow frame to adjust size
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+        
         textbox_notebook = ttk.Notebook(frame, width=450)
-        textbox_notebook.grid(row=0, column=0, sticky=tk.NSEW, padx=5, pady=5)
-        tk.Button(frame, text='Close', command=lambda: frame.grid_forget()).grid(row=0, column=0, sticky=tk.NE)
+        textbox_notebook.grid(row=0, column=0, sticky=tk.NSEW, padx=5, pady=5, columnspan=2)
+
+        tk.Button(frame, text='Close', command=lambda: self.window_pane.remove(frame)).grid(row=0, column=1, sticky=tk.NE)
         textbox_notebook.columnconfigure(0, weight=1, minsize=100)
         debug_frame = tk.Frame(textbox_notebook)
-        textbox_notebook.add(debug_frame, text='Messages')
+        textbox_notebook.add(debug_frame, text='Messages', sticky=tk.NSEW)
 
 
         textbox = scrolledtext.ScrolledText(debug_frame, wrap=None, state=tk.NORMAL)
-        textbox.grid(row=0, column=0, sticky=tk.NSEW)
+        textbox.pack(expand=True, fill=tk.BOTH)#.grid(row=0, column=0, sticky=tk.NSEW)
 
         message_handler = MessageTerminal(textbox, logging.INFO) 
         message_handler.setFormatter(logging.Formatter('[%(user)s] - %(message)s'))
         self.messenger.addHandler(message_handler)
 
         message_frame = tk.Frame(textbox_notebook)
-        textbox_notebook.add(message_frame, text='Debug')
+        textbox_notebook.add(message_frame, text='Debug', sticky=tk.NSEW)
 
         textbox2 = scrolledtext.ScrolledText(message_frame, wrap=None, state=tk.NORMAL)
-        textbox2.grid(row=0, column=0, sticky=tk.NSEW)
+        textbox2.pack(expand=True, fill=tk.BOTH)#.grid(row=0, column=0, sticky=tk.NSEW)
 
         self.debug_textbox = MessageTerminal(textbox2, logging.DEBUG) 
         self.debug_textbox.setFormatter(logging.Formatter('[%(threadName)s][%(levelname)s] - %(message)s'))
