@@ -4,10 +4,6 @@ import RobotCommunicator as RC
 import LightSensor as lq
 import logging
 
-status_logger = logging.getLogger(f'status logger')
-
-import logging
-
 move_logger = logging.getLogger('Moving')
 scan_logger = logging.getLogger('Scanning')
 data_logger = logging.getLogger('Data Storage')
@@ -88,10 +84,9 @@ def execute_path(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, scan_data: 
     scan_data_for_side: list # Store scan data (pos, displ, light) for just 1 side; for segmenting data
     n_movements = len(path)
     for move_index, (move, scan, start_pos) in enumerate(path):
-        status_logger.info(f'Movement ({move_index:>len(str(n_movements))}/{n_movements})')
+        move_logger.info(f'Movement ({move_index:>len(str(n_movements))}/{n_movements})')
         #status_logger.info('Movement ({:>length}/{})'.format(move_index, n_movements, length=len(str(n_movements))))
         #status_logger.info('Movement (%3d /%3d)', move_index, n_movements)
-
 
         if scan:
             path_logger.info(f'Moving and scanning: {move} from {start_pos}')
