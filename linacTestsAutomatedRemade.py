@@ -9,7 +9,7 @@ import dataProcessingGravity as dp
 
 import logging
 
-atl_logger = logging.getLogger('Automated Test Logic Results')
+atl_logger = logging.getLogger('Automated Tests')
 atl_logger.setLevel(logging.INFO-1) # debug, info, warning, critical, error ---> low to high
 logging.INFO # 20 is level for info; above is recorded
 #atl_logger.propagate = False
@@ -102,8 +102,8 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
     
     # STORE: ANGLE BETWEEN Z (TRUE) AND AXIS
-    dr_offset, peaks = dp.calculate_gravity_angle(grav_test_scan_data) # Offset negative theta: CW\
-        
+    #dr_offset, peaks = dp.calculate_gravity_angle(grav_test_scan_data) # Offset negative theta: CW\
+    return grav_test_scan_data
     atl_logger.info(f'GRAVITY TEST RESULTS: Offset angle about axis (CW): {dr_offset:.4f} degrees')
     
     if side == "left":
@@ -151,7 +151,7 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
     fr5._position_move(*est_isocenter)
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
     
-    dr_offset, peaks = dp.calculate_gravity_angle(coll_test_scan_data) # Offset negative theta: CW
+    #dr_offset, peaks = dp.calculate_gravity_angle(coll_test_scan_data) # Offset negative theta: CW
     #fr5.offset_add("Collimator", drz = dr_offset)
     
     return coll_test_scan_data#, dr_offset
@@ -196,7 +196,7 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
     #    gantry_test_light_data.append(light_intensity)
     
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
-    dr_offset, peaks = dp.calculate_gravity_angle(gantry_test_scan_data) # Offset negative theta: CW
+    #dr_offset, peaks = dp.calculate_gravity_angle(gantry_test_scan_data) # Offset negative theta: CW
     #fr5.offset_add("Gantry", drx = dr_offset)
     
     atl_logger.info('GANTRY TEST AUTOMATED COMPLETED')

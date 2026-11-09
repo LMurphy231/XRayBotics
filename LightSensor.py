@@ -30,7 +30,6 @@ class SensorManager:
         while not self.ready_flag.is_set():
             time.sleep(1e-6)
         
-    
     @contextmanager
     def record(self):
         self._ready
@@ -43,7 +42,6 @@ class SensorManager:
         td, ld = self.get()
         time_data[:]  = td[:]
         light_data[:] = ld[:]
-        
  
     def get(self) -> tuple[list, list]: 
         time_data, light_data = self.return_queue.get()
@@ -59,8 +57,7 @@ class SensorManager:
             with np.errstate(all='ignore'):
                 return time_data, float(np.average(light_data))
         else:
-            return time_data, light_data
-
+            return time_data, 0.0
 
     def close(self):
         self.command_queue.put(_CLOSE)

@@ -1,5 +1,4 @@
 import logging
-import configparser
 import threading
 import tkinter as tk
 import time
@@ -10,6 +9,7 @@ import numpy as np
 from Robot import RPC
 from LightSensor import SensorManager
 import settingshandler as settings
+import XRBPlotter as plt
 
 
 class RobotCom(RPC):
@@ -24,19 +24,29 @@ class RobotCom(RPC):
         (-175, 175),
     ]
 
-    def __init__(self, opts=settings.OptionDict(), ip="192.168.58.2", root:tk.Toplevel=None):
-        self.robot_logger = logging.getLogger('robot')
-        self.logger = logging.getLogger('GUI logger')
-        self.logger.info('Connecting to Farino FR5')
+    DH = [
+    plt.DenavitHartenbergParameter(1, 0, 0   , 152,  np.pi/2, 4.64 , np.array([-0.19 , -18.28, 2.26  ])),
+    plt.DenavitHartenbergParameter(2, 0, -425, 0  , 0       , 10.08, np.array([212.47, 0     , 121.2 ])),
+    plt.DenavitHartenbergParameter(3, 0, -395, 0  , 0       , 2.71 , np.array([122.62, 0.17  , 12.59 ])),
+    plt.DenavitHartenbergParameter(4, 0, 0   , 102,  np.pi/2, 1.56 , np.array([0.05  , -2.33 , 14.68 ])),
+    plt.DenavitHartenbergParameter(5, 0, 0   , 102, -np.pi/2, 1.56 , np.array([-0.05 , 2.33  , 14.68 ])),
+    plt.DenavitHartenbergParameter(6, 0, 0   , 102, 0       , 0.36 , np.array([0.93  , 0.81  , -20.05])),
+    ]
+
+    def __init__(self, opts=settings.OptionDict(), ip="192.168.58.2"):
+        self.logger = logging.getLogger('Robot Communication')
         
         self.error_label = self.user_input_window = None
         self.opts = opts
 
+        self.plotters: list[plt.Plotter] = []
+        self.lines   : list[tuple]       = []
+
         self._move_lock = threading.Lock()
         self._stop_event = threading.Event()
-        self._monitor_threads: set[threading.Thread] = set()
+        self.monitored_threads: set[threading.Thread] = set()
+
         self.cur_tool = 0
-        self.isocenter_set = False
         self.isocenter = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self.offsets:list[tuple[str, np.ndarray[float, float]]] = []
         self._end_eff_angle = np.array([0.0, 0.0, 0.0])
@@ -48,18 +58,33 @@ class RobotCom(RPC):
         self._default_options()
         
         threading.Thread(target=self.startup, args=(ip,), daemon=True).start()
-        #threading.Thread(target=self.stop_thread, daemon=True).start()
         #threading.Thread(target=self._status_check, args=(root,), daemon=True).start()
         self.action_queue:queue.Queue[tuple[object, threading.Event]] = queue.Queue()
         
         threading.Thread(target=self._queue_runner, name='robot movement queue',daemon=True).start()
 
     def startup(self, ip):
+        self.logger.info('Connecting to Farino FR5')
         RPC.__init__(self, ip)
+
+        while not self.is_connected():
+            self.reconnect()
+
         self.set_isocenter(*self._get_tool_position())
+
+        end_effector_offset = np.array([0.0, 0.0, 0.0])
+
+        # Change current tool
+        self.cur_tool = 2
+
+        # Set tool coordinate frame to match the 
+        self.SetToolCoord(self.cur_tool, [*end_effector_offset, *self.TOOL_RBASE], 0, 0, 0, 0)
+        self.SetToolList(self.cur_tool , [*end_effector_offset, *self.TOOL_RBASE], 0, 0, 0)
+
         self.set_widget_statuses(True)
         
     def offset_add(self, reason, x=0.0, y=0.0, z=0.0, drx=0.0, dry=0.0, drz=0.0):
+        """Add an offset to future movements"""
         self.offsets.append((reason, np.array([x, y, z, drx, dry, drz]))) 
 
     @property
@@ -86,50 +111,55 @@ class RobotCom(RPC):
         return prev_offsets
 
     def set_end_effector_angle(self, rx, ry, rz):
+        """Sets end effector angle"""
         self._end_eff_angle = np.array([rx, ry, rz])
 
     @property
     def end_effector_angle(self):
+        """Set effector angle + internal offsets"""
         return self._end_eff_angle + self.offset[3:]
 
     def set_widget_statuses(self, state:bool):
+        """Toggle the status of widgets registered to be disabled during movement commands"""
         set_state = tk.NORMAL if state else tk.DISABLED
         for widget in self._disable_move_widgets:
             widget.configure(state=set_state)
 
     def register_thread(self):
-        self._monitor_threads.add(threading.current_thread())
+        """Add current thread to threads that """
+        self.monitored_threads.add(threading.current_thread())
 
     def interrupt_threads(self):
 
-        current_thread = threading.current_thread()
-        interrupt_self = False
+        interrupt_self = threading.current_thread() in self.monitored_threads
 
         # Set event to let threads know to stop moving
-        self._stop_event.set()
+        #self._stop_event.set()
+
+        # Remove all threads allowed to perform movement functions
+        self.monitored_threads.clear()
 
         threading.Thread(target=self.stop, daemon=True, name='Stop').start()
-
-        for thread in list(self._monitor_threads):
-            # If the current thread that called this function is also being monitored
-            # Interrupt thread at the end of this function instead on waiting on itself
-            if thread is current_thread:
-                interrupt_self = True
-            else:
-                print(f'Waiting on thread: {thread.name}')
-                start_time = time.time()
-                while thread.is_alive() and time.time()-start_time <= 10.0:
-                    time.sleep(0.01)
         
-            self._monitor_threads.remove(thread)
+        #for thread in list(self.monitored_threads):
+        #    # If the current thread that called this function is also being monitored
+        #    # Interrupt thread at the end of this function instead on waiting on itself
+        #    if thread is current_thread:
+        #        interrupt_self = True
+        #    else:
+        #        print(f'Waiting on thread: {thread.name}')
+        #        start_time = time.time()
+        #        while thread.is_alive() and time.time()-start_time <= 10.0:
+        #            time.sleep(0.01)
+        #
+        #    self.monitored_threads.remove(thread)
 
         # Clear event
-        self._stop_event.clear()
+        #self._stop_event.clear()
 
         # If a monitored thread called this function, interrupt it
         if interrupt_self:
-            raise InterruptedError(f'{current_thread.name} Was interrupted.')
-
+            raise InterruptedError(f'{threading.current_thread().name} was interrupted.')
         
     def is_connected(self):
         try:
@@ -139,32 +169,26 @@ class RobotCom(RPC):
             return False
 
     def _check_stop_interrupt(self):
-        if self._stop_event.is_set():
-            raise InterruptedError(f'{threading.current_thread().name} stopped from stopped event.')
+        current_thread = threading.current_thread()
+        print()
+        if current_thread.name != 'MainThread' and current_thread not in self.monitored_threads:
+            raise InterruptedError(f'{current_thread.name} stopped from stopped event.')
 
     def _queue_runner(self):
+        """Runs movement commands sent to a queue so that the main thread can """
         while True:
             self.set_widget_statuses(True)
             funct, event = self.action_queue.get()
+            threading.Thread(target=self.update_live_plots_during_movement, args=(event,), daemon=True, name='UpdateLivePlotters').start()
             self.set_widget_statuses(False)
-            #try:
+
             result = funct()
             if result:
                 self._prompt_error_window(funct, event, result)
-            #except BaseException as e:
-            #    logging.error(f'Error in Queue Runner: {e}')
-            #    result = None
 
-            print(f'Result: {result}')
             event.set()
 
-    def stop_thread(self):
-        thread = threading.Thread(target=self.stop, daemon=True, name='Stop')
-        while True:
-            if self._stop_event.is_set():
-                thread.start()
-                thread = threading.Thread(target=self.stop, daemon=True, name='Stop')
-            time.sleep(0.001)
+            self.update_live_plots()
 
     def _default_options(self):
         # Default Variables
@@ -199,6 +223,7 @@ class RobotCom(RPC):
         self.interrupt_threads()
         self.move_joint(self.HOME, in_thread=True)
         self.SetToolCoord(0, [0.0,0.0,0.0, *self.TOOL_RBASE], 0, 0, 0, 0)
+        
 
     def _clear_error(self):
         ierr = self.ResetAllError()
@@ -308,14 +333,12 @@ class RobotCom(RPC):
         self._check_stop_interrupt()
         
         end_effector_angle = self.end_effector_angle
-        
 
         rx = end_effector_angle[0] if rx is None else rx
         ry = end_effector_angle[1] if ry is None else ry
         rz = end_effector_angle[2] if rz is None else rz
-
         
-        desc_pos = self.isocenter if self.isocenter_set else np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        desc_pos = self.isocenter.copy()
         desc_pos[3:] = [0.0, 0.0, 0.0]
         self._internal_position = np.array([x, y, z, rx, ry, rz])
 
@@ -373,12 +396,14 @@ class RobotCom(RPC):
     _joint_move     = move_joint
 
     def move_to_isocenter(self):
-        self.move_position(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        self.logger.info('Moving to isocenter')
+        self.stop()
+        self.move_position(0.0, 0.0, 0.0, in_thread=True)
 
     def move_to_home(self):
         self.logger.debug('Moving to home position')
         self.stop()
-        self.move_joint(self.HOME)
+        self.move_joint(self.HOME, in_thread=True)
 
     def _get_tool_position(self):
         if self.is_connected():
@@ -416,17 +441,11 @@ class RobotCom(RPC):
             print(f'ERROR: {ierr}')
         return join_pos
 
-    def set_isocenter(self, x, y, z, rx, ry, rz):
-        self.isocenter_set = True
-        end_effector_offset = np.array([0.0, 0.0, 0.0])
-        iso_pos = np.array([x, y, z]) #+ end_effector_offset
-        self.isocenter = np.array([*iso_pos,*self.end_effector_angle])
-        self.robot_logger.info(f'Setting Isocenter to {self.isocenter}')
-        self.cur_tool = 2
-        self.SetToolCoord(2, [*end_effector_offset, *self.TOOL_RBASE], 0, 0, 0, 0)
-        self.SetToolList(2 , [*end_effector_offset, *self.TOOL_RBASE], 0, 0, 0)
-        #self.SetWObjCoord(0, self.isocenter, 0)
-        self.robot_logger.info(f'Done Setting Isocenter to {self.isocenter}')
+    def set_isocenter(self, desc_pos):
+        # Save the current isocenter location internally
+        self.isocenter = np.array([*desc_pos[:3],*self.end_effector_angle])
+
+        self.logger.info(f'Setting Isocenter to {self.isocenter}')
 
     def _update_connection(self):
         self.logger.debug(f'Attempting to reconnect to Farino FR5')
@@ -444,6 +463,7 @@ class RobotCom(RPC):
         self.StopMove()
 
     def _prompt_error_window(self, funct:object, event=threading.Event, errorcode=None):
+        return errorcode
         pkg = self.GetRobotRealTimeState()
         state = self.GetRobotEmergencyStopState()
 
@@ -495,3 +515,62 @@ class RobotCom(RPC):
         return return_var.get()
 
 
+    def _get_incriment_pos(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0):
+        desc_pos = self._get_tool_position()
+        angle = list(desc_pos[3:])
+        desc_pos[3:] = [0.0, 0.0, 0.0]
+        offset = np.array([dx, dy, dz, angle[0]+drx, angle[1]+dry, angle[2]+drz])
+        return desc_pos + offset
+
+    def _get_movement_pos(self, x=0.0, y=0.0, z=0.0, rx=0.0, ry=0.0, rz=0.0):
+        desc_pos = self.isocenter.copy()
+        desc_pos[3:] = [0.0, 0.0, 0.0]
+        offset = np.array([x, y, z, rx, ry, rz])
+        return desc_pos + offset
+
+    def register_live_plotter(self, plotter: plt.Plotter):
+        if plotter not in self.plotters:
+            joint_pos = self._get_joint_angles(False)
+            plot_line, scatter_line = plotter.plot_robot(self.DH, joint_pos, clear=False, update=True)
+
+            self.plotters.append(plotter)
+            self.lines.append((plot_line, scatter_line))
+            
+    def unregister_live_plotter(self, plotter: plt.Plotter):
+        if plotter in self.plotters:
+            index = self.plotters.index(plotter)
+            plotter = self.plotters.pop(index)
+            plot_line, scatter_line = self.lines.pop(index)
+
+            try:
+                # Remove lines from figure
+                plot_line.remove()
+                scatter_line.remove()
+            except:
+                pass
+
+            # Update figure
+            plotter.update()
+
+    def update_live_plots_during_movement(self, event:threading.Event):
+        while not event.is_set():
+            time.sleep(0.25)
+            self.update_live_plots()
+
+    def update_live_plots(self):
+        if not self.plotters:
+            return
+        
+        joint_pos = self._get_joint_angles(False)
+        for plotter, (plot_line, scatter_line) in zip(self.plotters, self.lines):
+            plotter.plot_robot(self.DH, joint_pos, plot_line=plot_line, scatter_line=scatter_line, clear=False, update=True,)
+
+    def plot_current_position(self, plotter: plt.Plotter):
+        joint_pos = self._get_joint_angles(False)
+        plotter.plot_robot(self.DH, joint_pos)
+
+    def plot_new_position(self, new_pos, plotter: plt.Plotter):
+        joint_pos = self.GetInverseKin(0, new_pos)
+        if isinstance(joint_pos, int):
+            return 
+        plotter.plot_robot(self.DH, joint_pos)

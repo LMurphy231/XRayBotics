@@ -2,6 +2,7 @@ import os
 import sys
 import inspect
 import logging
+import struct
 
 import threading
 import tkinter as tk
@@ -74,29 +75,43 @@ class TestResultsPage(BasePage):
         self.name = name
         self.type = type_.lower()
         self.kwargs = kwargs
+        self.input_frame = None
+
         self.current_results = None
         self.loaded_results = []
         self.close_button = tk.Button(self.root, text='Close',)
         self.build()
 
-    def add_test(self, test_type, test_name, test_results):
+    def add_test(self, test_type, test_name, test_results, inputs):
         test_type = test_type.lower()
-        self.loaded_results.append((test_type, test_name, test_results))
+        self.loaded_results.append((test_type, test_name, test_results, inputs))
         self.test_selection.insert(tk.END, test_name)
 
     def build(self):
+        self.main_pane = tk.PanedWindow(self.root, orient='horizontal', sashwidth=15)
+        self.main_pane.grid(row=0, column=0, columnspan=2, sticky=tk.NSEW)
+        #self.main_pane.pack(fill=tk.BOTH, expand=True)
+        
+        left_frame   = tk.PanedWindow(self.main_pane, orient='vertical', sashwidth=15)
+        middle_frame = tk.PanedWindow(self.main_pane, orient='vertical', sashwidth=15)
+        right_frame  = tk.PanedWindow(self.main_pane, orient='vertical', sashwidth=15)
 
-        self.test_selection_frame = self._create_test_selection_frame()
+        self.main_pane.add(left_frame , sticky=tk.NSEW, minsize=150)
+        self.main_pane.add(middle_frame , sticky=tk.NSEW, minsize=200)
+        self.main_pane.add(right_frame, sticky=tk.NSEW, minsize=500)
+        
+
+        self.test_selection_frame = self._create_test_selection_frame(left_frame)
         if self.test_selection_frame is not None:
-            self.test_selection_frame.grid(row=0, column=0, sticky=tk.NSEW)
+            left_frame.add(self.test_selection_frame, sticky=tk.NSEW, minsize=125, stretch='never')
 
-        self.comparison_frame = self._create_comparison_frame()
+        self.comparison_frame = self._create_comparison_frame(middle_frame)
         if self.comparison_frame is not None:
-            self.comparison_frame.grid(row=0, column=1, sticky=tk.NSEW)
+            middle_frame.add(self.comparison_frame, sticky=tk.NSEW, minsize=125, stretch='first')
 
-        self.plotter_frame = self._create_plotter_frame()
+        self.plotter_frame = self._create_plotter_frame(right_frame)
         if self.plotter_frame is not None:
-            self.plotter_frame.grid(row=0, column=2, sticky=tk.NSEW)
+            right_frame.add(self.plotter_frame, sticky=tk.NSEW, minsize=400, stretch='first')
 
     def clear_tests(self, indicies=None):
         if indicies is None:
@@ -113,16 +128,11 @@ class TestResultsPage(BasePage):
         self.test_selection.event_generate("<<ListboxSelect>>")
 
     def register_test_page(self, test_page):
-        self.close_button.grid(row=0, column=15, sticky=tk.NE)
+        self.close_button.grid(row=0, column=2, sticky=tk.NE)
         self.close_button.configure(command=lambda: test_page._toggle_results(False))
     
-    def update(self, test_type, *args, **kwargs):
-        self.current_results = args
-        if test_type == 'gravity':
-            test_name, side, result_data = args
-        elif test_type == 'collimator':
-            test_name, result_data = args
-
+    def update(self, test_type, test_name, raw_data, inputs):
+        self.current_results = (test_type, test_name, raw_data, inputs)
         self.plotter2d.clear()
         self.plotter3d.clear()
 
@@ -130,7 +140,8 @@ class TestResultsPage(BasePage):
         xmax = 0.0
         ymin = 0.0
         ymax = 0.0
-        for movement_results in result_data:
+        
+        for movement_results in raw_data:
             position, distance, intensities = map(list, zip(*movement_results))
             
             
@@ -139,15 +150,62 @@ class TestResultsPage(BasePage):
             x, y, z = map(list, zip(*position))
             self.plotter3d.scatter(x, y, z, c=intensities, cmap='viridis')
 
-
             xmin = min(xmin, distance[0])
             xmax = max(xmax, distance[-1])
             ymin = min(ymin, min(intensities))
             ymax = max(ymax, max(intensities))
 
         self.plotter2d._set_axis_limit(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax*1.05)
+
         self.plotter2d.update(keep_axis=False)
         self.plotter3d.update()
+
+        self.update_comparison_frame(**inputs)
+
+    def update_comparison_frame(self, **kwargs):
+    
+        if self.input_frame is not None:
+            self.input_frame.destroy()
+
+        kwargs = {
+                    'Jaw Dimensions': {
+                        'x1'               : 10.0,
+                        'x2'               : 10.0,
+                        'y1'               : 100.0,
+                        'y2'               : 100.0,
+                    },
+                    'LINAC Angles': {
+                        'gantry_angle'     : 45.0,
+                        'collimator_angle' : 276.24,
+                        'couch_angle'      : 15.0,
+                    },
+                    'step_length'      : 0.2,
+                    'umbra'            : 1.0,
+                    'threshold'        : 0.75,
+                    'Navg'             : 5,
+                }
+        
+        self.input_frame = tk.Frame(self.comparison_frame, borderwidth=2, relief=tk.GROOVE)
+        self.input_frame.pack(expand=True, fill=tk.BOTH)
+
+        
+
+        def create_frame(frame:tk.Frame, data):
+            max_rows = 3
+            n_internal_frames = 0
+            for index, (name, value) in enumerate(data.items()):
+                index -= n_internal_frames
+                frame.grid_columnconfigure(index%max_rows, weight=1)
+                if isinstance(value, dict):
+                    n_internal_frames += 1
+                    new_frame = tk.LabelFrame(frame, text=name, labelanchor=tk.N)
+                    new_frame.grid(row=n_internal_frames*max_rows, column=2*(n_internal_frames//max_rows), columnspan=2, sticky=tk.NSEW, pady=15)
+                    create_frame(new_frame, value)
+                    continue
+                tk.Label(frame, text=f'{name}:').grid(row=index%max_rows, column=2*(index//max_rows), sticky=tk.W)
+                tk.Label(frame, text=str(value)).grid(row=index%max_rows, column=1+2*(index//max_rows), sticky=tk.W)
+
+        create_frame(self.input_frame, kwargs)
 
     def save_results(self, filename=None, tests:list=[]):
         
@@ -181,20 +239,22 @@ class TestResultsPage(BasePage):
             filenames = (filenames,)
 
         for filename in filenames:
-            for test_type, test_name, current_results in parse_xrb_file(filename):
-                self.add_test(test_type, test_name, current_results)
+            for test_type, test_name, current_results, inputs in parse_xrb_file(filename):
+                self.add_test(test_type, test_name, current_results, inputs)
 
         self.test_selection.selection_clear(0, tk.END)
         self.test_selection.selection_set(len(self.loaded_results)-1)
         self.test_selection.event_generate("<<ListboxSelect>>")
 
-    def _create_comparison_frame(self) -> tk.Frame:
-        return None
+    def _create_comparison_frame(self, frame:tk.Frame) -> tk.Frame:
+        comparison_frame = tk.Frame(frame)
+        return comparison_frame
     
-    def _create_plotter_frame(self) -> tk.Frame:
-        plotter_frame = tk.Frame(self.root)
+    def _create_plotter_frame(self, frame:tk.Frame) -> tk.Frame:
+        plotter_frame = tk.Frame(frame)
         plotter_notebook = ttk.Notebook(plotter_frame)
-        plotter_notebook.grid(row=0, column=0, sticky=tk.NSEW)
+        plotter_notebook.pack(expand=True, fill=tk.BOTH)
+        #plotter_notebook.grid(row=0, column=0, sticky=tk.NSEW)
 
         plotter_2d_frame = tk.Frame(plotter_notebook)
         plotter_notebook.add(plotter_2d_frame, text='2D Plotter')
@@ -204,13 +264,13 @@ class TestResultsPage(BasePage):
         plotter_3d_frame = tk.Frame(plotter_notebook)
         plotter_notebook.add(plotter_3d_frame, text='3D Plotter')
         self.plotter3d = plt.Plotter(plotter_3d_frame, projection='3d', row=0, column=0)
-        tk.Button(plotter_frame, command=self._test_results, text='Test plotters').grid(row=1, column=0)
+        #tk.Button(plotter_frame, command=self._test_results, text='Test plotters').grid(row=1, column=0)
         #tk.Button(plotter_frame, command=self.save_results, text='Save').grid(row=2, column=0)
         
         return plotter_frame
 
-    def _create_test_selection_frame(self) -> tk.Frame:
-        test_selection_frame = tk.Frame(self.root)
+    def _create_test_selection_frame(self, frame:tk.Frame) -> tk.Frame:
+        test_selection_frame = tk.Frame(frame)
         self.test_selection = tk.Listbox(test_selection_frame, selectmode=tk.SINGLE, exportselection=False)
         self.test_selection.grid(row=0, column=0, sticky=tk.NSEW)
         self.test_selection.bind('<<ListboxSelect>>', self._change_selected_test)
@@ -223,7 +283,7 @@ class TestResultsPage(BasePage):
         tk.Button(test_selection_frame, text='Rename Test', command=self._prompt_test_name_change).grid(row=4, column=0, sticky=tk.NSEW)
         
         return test_selection_frame
-
+    
     def _change_selected_test(self, event:tk.Event):
         if event is None:
             return
@@ -237,9 +297,9 @@ class TestResultsPage(BasePage):
             self.plotter3d.update()
             return 
         
-        test_type, test_name, test_results = self.loaded_results[selections[-1]]
+        test_type, test_name, raw_data, inputs = self.loaded_results[selections[-1]]
         
-        self.update(test_type, *test_results)
+        self.update(test_type, test_name, raw_data, inputs)
 
     def _prompt_save_window(self):
         window = tk.Toplevel(takefocus=True)
@@ -278,12 +338,9 @@ class TestResultsPage(BasePage):
         tk.Button(window, text='Save', command=lambda: self._rename_test(var.get(), index)==window.destroy()).grid(row=1, column=1, sticky=tk.NSEW)
 
     def _rename_test(self, new_name:str, index:int):
-        test_type, test_name, current_results = self.loaded_results[index]
+        test_type, test_name, raw_data, inputs = self.loaded_results[index]
 
-        current_results = list(current_results)
-        current_results[0] = new_name
-
-        self.loaded_results[index] = (test_type, new_name, tuple(current_results))
+        self.loaded_results[index] = (test_type, new_name, tuple(raw_data), inputs)
 
         self.test_selection.delete(index)
 
@@ -294,63 +351,11 @@ class GravityTestResultsPage(TestResultsPage):
     def __init__(self, _root):
         TestResultsPage.__init__(self, 'Gravity Test', 'gravity', tk.Frame(_root))
 
-    def _create_comparison_frame(self) -> tk.Frame:
-        comparison_frame = tk.Frame(self.root)
-        return comparison_frame
-
-    def _test_results(self, angle=0.0):
-        origin = np.array([0.0, 0.0, 0.0], dtype=float)
-        dist = 0.1
-        recorded_data = []
-        angle = np.random.randint(0, 360)
-        position = np.array([0.0, 0.0, 0.0], dtype=float) + origin
-        for j in range(2):
-            data = []
-            for i in range(1000):
-                distance = dist*i
-                position = origin + np.array([distance*np.cos(np.deg2rad(angle)), distance* np.sin(np.deg2rad(angle)), 0.0], dtype=float)
-                intensity = abs(1/max(1,abs(500-i)))
-                
-                data.append((np.array(list(position)), distance, intensity))
-            recorded_data.append(data)
-
-        self.add_test('gravity', 'demo test', ('demo gravity test', 'left', recorded_data))
-        self.test_selection.selection_clear(0, tk.END)
-        self.test_selection.selection_set(len(self.loaded_results)-1)
-        self.test_selection.event_generate("<<ListboxSelect>>")
-
-  
 class CollimatorTestResultsPage(TestResultsPage):
     def __init__(self, _root):
         TestResultsPage.__init__(self, 'Collimator Test', 'collimator', tk.Frame(_root))
 
-    def _create_comparison_frame(self) -> tk.Frame:
-        comparison_frame = tk.Frame(self.root)
-        return comparison_frame
-
-    def _test_results(self, angle=0.0):
-        origin = np.array([0.0, 0.0, 0.0], dtype=float)
-        dist = 0.1
         
-        angle = np.random.randint(0, 360)
-        print(angle)
-        position = np.array([0.0, 0.0, 0.0], dtype=float) + origin
-        recorded_data = []
-        for j in range(2):
-            data = []
-            for i in range(1000):
-                distance = dist*i
-                position = origin + np.array([distance*np.cos(np.deg2rad(angle)), distance* np.sin(np.deg2rad(angle)), 0.0], dtype=float)
-                intensity = abs(1/max(1,abs(500-i)))
-                
-                data.append((np.array(list(position)), distance, intensity))
-
-            recorded_data.append(data)
-
-        self.add_test('collimator', 'demo collimator test', ('demo collimator test', recorded_data))
-        self.test_selection.selection_clear(0, tk.END)
-        self.test_selection.selection_set(len(self.loaded_results)-1)
-        self.test_selection.event_generate("<<ListboxSelect>>")
 
 class TestPage(BasePage):
     def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom=None, ls: lq.SensorManager=None, opts:settings.OptionDict=None, description='', results_page:TestResultsPage=None):
@@ -359,6 +364,8 @@ class TestPage(BasePage):
         self.robot = robot
         self.ls = ls
         self.results_page = results_page
+
+        self.plotter = None
         
         self.description = inspect.cleandoc(description)
         self._root = _root
@@ -491,7 +498,7 @@ class TestPage(BasePage):
 
         if self.results_page is not None:
             tk.Button(header_frame, command=lambda: self._toggle_results(True), text='View Results',).grid(row=0, column=4)
-        
+
         return header_frame
 
     def _create_test_demo_frame(self, frame:tk.Frame=None) -> tk.Frame:
@@ -501,7 +508,14 @@ class TestPage(BasePage):
 
         Default None
         """
-        return None
+        plotter_frame = tk.Frame(frame)
+        
+        self.plotter = plt.Plotter(plotter_frame, projection='3d')
+        if self.robot is not None:
+            live_var = tk.BooleanVar(value=False)
+            tk.Checkbutton(plotter_frame, variable=live_var, command=lambda: self.robot.register_live_plotter(self.plotter) if live_var.get() else self.robot.unregister_live_plotter(self.plotter), text='Show Live Robot Posiiton',).pack(side=tk.BOTTOM)#.grid(row=0, column=5)
+                
+        return plotter_frame
 
     def _toggle_results(self, state=False):
         if state:
@@ -547,15 +561,6 @@ class GravityTest(TestPage):
         self.option_sections.append(section)
         self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
 
-    def _create_test_demo_frame(self, frame:tk.Frame=None) -> tk.Frame:
-        if not frame:
-            frame = self.root
-
-        plotter_frame = tk.Frame(frame)
-
-        self.plotter = plt.Plotter(plotter_frame, projection='3d')
-        return plotter_frame
-
     def _create_parameter_frame(self, frame = None):
         if frame is None:
             frame = self.root
@@ -589,7 +594,7 @@ class GravityTest(TestPage):
             return
 
         isocenter = np.array([0.,0.,0.])
-        points = LinacTests.create_gravity_test_rectangle_points(self.robot, self.robot.isocenter[:3], length, height, side)
+        points = LinacTests.create_gravity_test_path_points(self.robot, self.robot.isocenter[:3], length, height, side)
         #points = pr.calculate_four_points_rectangle(isocenter, length, height, 'y','z')
         #points = pr.rotate_points(points, theta, 'y', 'z')
 
@@ -618,17 +623,21 @@ class GravityTest(TestPage):
             length      = self.opts.get(section, 'length').var.get()
             height      = self.opts.get(section, 'height').var.get()
             side        = self.opts.get(section, 'side').var.get()
-
-            
         except:
             return
         
         self.robot.register_thread()
         test_results = LinacTests.gravity_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, side, step_length=step_length, length=length, width=height)
+
         
         if self.results_page is not None:
+            inputs = {'step_length': step_length,
+                      'length'     : length,
+                      'height'     : height,
+                      'side'       : side,
+                      }
             test_name = f'Gravity_{side}'
-            self.results_page.add_test('gravity', test_name, (test_name, side, test_results))
+            self.results_page.add_test('gravity', test_name, test_results, inputs)
 
 class CollimatorTest(TestPage):
     def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
@@ -659,10 +668,7 @@ class CollimatorTest(TestPage):
         
         section = 'tests.collimator.path'
         self.opts.add_option(section, 'step_length', 1.0  , tk.DoubleVar()   , display_name='Step length', units='mm' , description='Distance between data recordings.')
-        #self.opts.add_option(section, 'length'     , 100.0, tk.DoubleVar(), display_name='Length'     , units='mm' , description='Length of rectangular path.')
-        #self.opts.add_option(section, 'height'     , 100.0, tk.DoubleVar(), display_name='Height'     , units='mm' , description='Height of rectangular path.')
         self.opts.add_option(section, 'umbra'      , 10   , tk.DoubleVar(), display_name='Umbra'      , units='mm' , description='Distance past x1/x2 that robot will scan')
-        #self.opts.add_option(section, 'theta'      , 100.0, tk.DoubleVar(), display_name='Theta'      , units='deg', description='Angle of overall path in relation to the Z axis.')
 
         section = 'tests.collimator.variables'
         self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
@@ -671,14 +677,6 @@ class CollimatorTest(TestPage):
 
         self.option_sections.append('linac')
         self.option_sections.append('tests.collimator')
-
-    def _create_test_demo_frame(self, frame:tk.Frame=None) -> tk.Frame:
-        if not frame:
-            frame = self.root
-
-        test_demo_frame = tk.Frame(frame)
-        self.plotter = plt.Plotter(test_demo_frame, projection='3d')
-        return test_demo_frame
     
     def _create_parameter_frame(self, frame = None):
         if frame is None:
@@ -744,7 +742,7 @@ class CollimatorTest(TestPage):
         except:
             return
         isocenter = self.robot.isocenter[:3]
-        points = LinacTests.create_collimator_test_rectangle_points(self.robot, isocenter, x1, x2, y1, y2, umbra, gantry_angle, collimator_angle, couch_angle)
+        points = LinacTests.create_collimator_test_path_points(self.robot, isocenter, x1, x2, y1, y2, umbra, gantry_angle, collimator_angle, couch_angle)
         
         self.plotter.clear()
         self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle-couch_angle)
@@ -788,9 +786,22 @@ class CollimatorTest(TestPage):
         test_results = LinacTests.collimator_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, umbra, Navg,
                                                         threshold, step_length, collimator_angle, gantry_angle, couch_angle)
 
+        inputs = {
+            'x1'               : x1,
+            'x2'               : x2,
+            'y1'               : y1,
+            'y2'               : y2,
+            'step_length'      : step_length,
+            'umbra'            : umbra,
+            'gantry_angle'     : gantry_angle,
+            'collimator_angle' : collimator_angle,
+            'couch_angle'      : couch_angle,
+            'threshold'        : threshold,
+            'Navg'             : Navg,
+        }
         if self.results_page is not None:
             test_name = f'Collimator_{collimator_angle}Deg'
-            self.results_page.add_test('collimator', test_name, (test_name, test_results))
+            self.results_page.add_test('collimator', test_name, test_results, inputs)
 
 class GantryTest(TestPage):
     def __init__(self, name, root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
@@ -830,15 +841,6 @@ class GantryTest(TestPage):
 
         self.option_sections.append('linac')
         self.option_sections.append('tests.gantry')
-
-    def _create_test_demo_frame(self, frame:tk.Frame=None) -> tk.Frame:
-        if not frame:
-            frame = self.root
-
-        test_demo_frame = tk.Frame(frame)
-        self.plotter = plt.Plotter(test_demo_frame, projection='3d')
-
-        return test_demo_frame
 
     def _create_parameter_frame(self, frame = None):
         if frame is None:
@@ -903,7 +905,7 @@ class GantryTest(TestPage):
             return
         
         isocenter = self.robot.isocenter[:3]
-        points = LinacTests.create_gantry_test_rectangle_points(self.robot, isocenter, x1, x2, y1, y2, height, umbra, gantry_angle, collimator_angle, couch_angle)
+        points = LinacTests.create_gantry_test_path_points(self.robot, isocenter, x1, x2, y1, y2, height, umbra, gantry_angle, collimator_angle, couch_angle)
 
         self.plotter.clear()
         self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle)
@@ -950,13 +952,257 @@ class GantryTest(TestPage):
         test_results = LinacTests.gantry_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, height, umbra, 
                                                         threshold, step_length, Navg, collimator_angle, gantry_angle, couch_angle)
 
+        inputs = {
+                'x1'               : x1,
+                'x2'               : x2,
+                'y1'               : y1,
+                'y2'               : y2,
+                'step_length'      : step_length,
+                'umbra'            : umbra,
+                'gantry_angle'     : gantry_angle,
+                'collimator_angle' : collimator_angle,
+                'couch_angle'      : couch_angle,
+                'threshold'        : threshold,
+                'Navg'             : Navg,
+            }
+        
         test_name = f'Gantry_{gantry_angle}Deg'
         if self.results_page is not None:
-            self.results_page.add_test('gantry', test_name, (test_name, test_results))
+            self.results_page.add_test('gantry', test_name, test_results, inputs)
     
 
 INDENT = '\t'
+
 def parse_xrb_file(filename):
+    with open(filename, 'rb') as f:
+        arr = f.read()
+
+    tests = []
+    while arr:
+        byte_length, arr = _decode_int(arr)
+        test_bytes = arr[:byte_length]
+        arr = arr[byte_length:]
+        test_type, test_name, current_results, inputs = _results_file_read(test_bytes)
+        tests.append((test_type, test_name, current_results, inputs))
+
+    return tests
+
+
+# region Test Save
+
+__VERSION__ = '1.0'
+
+def _results_file_text(test_type, test_name, raw_data, inputs):
+    byte_data = b''
+    # Current version
+    byte_data += _encode_string(__VERSION__)
+
+    # Test info
+    byte_data += _encode_string(test_type)
+    byte_data += _encode_string(test_name)
+
+    # Parse through single level dictionary of inputs
+    byte_data += _encode_int(len(inputs))
+    for name, value in inputs.items():
+        byte_data += _encode_string(name)
+        byte_data += _encode_unique_type(value)
+
+    # total number of movements
+    byte_data += _encode_int(len(raw_data))
+    
+    # Create numpy array of data
+    for movement_results in raw_data:
+        
+        positions, distance, intensities = map(list, zip(*movement_results))
+        arr = np.column_stack((positions, distance, intensities))
+        movement_bytes = b''
+        movement_bytes += np.array(list(arr.shape), dtype=np.int64).tobytes()
+        movement_bytes += arr.tobytes()
+        byte_data += _encode_int(len(movement_bytes)) + movement_bytes
+    
+    return _encode_int(len(byte_data)) + byte_data
+
+def _results_file_read(arr:bytearray):
+
+    test_version, arr = _decode_string(arr)
+    test_type, arr    = _decode_string(arr)
+    test_name, arr    = _decode_string(arr)
+
+    inputs = {}
+    n_inputs, arr = _decode_int(arr)
+    for i in range(n_inputs):
+        name, arr  = _decode_string(arr)
+        value, arr = _decode_unique_type(arr)
+        inputs[name] = value
+    
+    raw_data = []
+    nmovements, arr = _decode_int(arr)
+    
+    for i in range(nmovements):
+        nbytes, arr = _decode_int(arr)
+        movement_arr = arr[:nbytes]
+        arr = arr[nbytes:]
+        
+        shape_arr = movement_arr[:16]
+        result_data_arr = movement_arr[16:]
+
+        shape = tuple(np.frombuffer(shape_arr, dtype=np.int64))
+        restored_1d = np.frombuffer(result_data_arr, dtype=np.float64)
+        raw_result_data = restored_1d.reshape(*shape)
+        movement_data = [raw_result_data[:, :3], raw_result_data[:,3], raw_result_data[:,4]]
+        raw_data.append(tuple(zip(*movement_data)))
+
+    return test_type, test_name, raw_data, inputs
+
+def _wrap_test_bytes(test_type, test_name, arr):
+    return _encode_string(test_type) + _encode_string(test_name) + _encode_int(len(arr)) + arr
+
+def _encode_string(text:str):
+    byte_arr = b''
+    byte_arr += _encode_int(len(text))
+    byte_arr += text.encode()
+    return byte_arr
+
+def _encode_int(value:int):
+    return np.array([value], dtype=np.int64).tobytes()
+
+def _encode_unique_type(data: str | int | float | dict):
+    b_data = b''
+    if isinstance(data, str):
+        b_data += _encode_string('s')
+        b_data += _encode_string(data)
+    elif isinstance(data, int):
+        b_data += _encode_string('i')
+        b_data += _encode_int(data)
+    elif isinstance(data, float):
+        b_data += _encode_string('d')
+        b_data += struct.pack('d', data)
+    elif isinstance(data, dict):
+        b_data += _encode_string('D')
+        b_data += _encode_int(len(data))
+        for name, value in data.items():
+            b_data += _encode_string(name)
+            b_data += _encode_unique_type(value)
+    else:
+        raise NotImplementedError(f'Data type {type(data)} for "{data}" not implimented')
+    return b_data
+
+def _decode_unique_type(arr):
+    _type, arr = _decode_string(arr)
+    if _type == 's':
+        value, arr = _decode_string(arr)
+    elif _type == 'i':
+        value, arr = _decode_int(arr)
+    elif _type == 'd':
+        float_bytes = arr[:8]
+        arr = arr[8:]
+        value = struct.unpack('d', float_bytes)[0]
+    elif _type == 'D':
+        n_entries, arr = _decode_int(arr)
+        value = {}
+        for i in range(n_entries):
+            name, arr = _decode_string(arr)
+            data, arr = _decode_unique_type(arr)
+            value[name] = data
+    else:
+        raise NotImplementedError(f'Data type {_type} not implimented for decoding')
+    return value, arr
+
+def _decode_string(arr:bytearray):
+    length, arr = _decode_int(arr)
+    return arr[:length].decode(), arr[length:]
+
+def _decode_int(arr:bytearray):
+    value = int().from_bytes(arr[0:8], byteorder='little')
+    return value, arr[8:]
+
+def save_tests_to_xrb(xrb_file:str, tests):
+    with open(xrb_file, 'wb') as f:
+                    
+        for test_type, test_name, raw_data, inputs in tests:
+            byte_data = _results_file_text(test_type, test_name, raw_data, inputs)
+            
+            f.write(byte_data)
+
+def save_tests_to_xlsx(xlsx: str, tests):
+
+    if not xlsx or not tests:
+        return
+    
+    with xlsxwriter.Workbook(xlsx) as wb:
+        
+        for test_type, test_name, raw_data, inputs in tests:
+            test_name = test_name.strip().replace(' ', '_')
+            counter = 0
+            sheet_name = test_name
+            while sheet_name in wb.sheetnames:
+                counter += 1
+                sheet_name = f'{test_name}({counter})'
+            
+            ws = wb.add_worksheet(sheet_name)
+            _write_test_page(wb, ws, test_type, test_name, raw_data, inputs)
+
+def _write_test_page(wb:xlsxwriter.Workbook, ws:worksheet.Worksheet, test_type, test_name, raw_data, inputs):
+
+
+    n_row = 3
+    n_col = 0
+
+    chart = wb.add_chart({'type': 'scatter',})
+
+    headers = ['x (mm)', 'y (mm)', 'z (mm)', 'Distance (mm)', 'Light Intensity (lumen)']
+    colors = ['red', 'blue', 'green', 'purple', 'orange', 'yellow']
+    for i, movement_results in enumerate(raw_data):
+        position, distance, intensities = map(list, zip(*movement_results))
+        x, y, z = map(list, zip(*position))
+
+        
+        ws.merge_range(n_row-2, n_col, n_row-2, n_col+len(headers)-1, f'Movement {i}')
+        ws.write_row(n_row-1, n_col, headers)
+        
+
+        ws.write_column(n_row, n_col  , x)
+        ws.write_column(n_row, n_col+1, y)
+        ws.write_column(n_row, n_col+2, z)
+
+        ws.write_column(n_row, n_col+3, distance)
+        ws.write_column(n_row, n_col+4, intensities)
+
+        chart.add_series({
+                'categories': [ws.name, n_row, n_col+3, n_row+len(intensities)-1, n_col+3],
+                'values': [ws.name, n_row, n_col+4, n_row+len(distance)-1, n_col+4],
+                'name': f'Movement {i}',
+                'color': colors.pop(0) if colors else '',
+                'marker': {'type': 'circle'},
+                          })
+
+        n_col += len(headers)
+
+    chart.set_x_axis({
+        'name': headers[3],
+        'major_gridlines': {
+            'visible': True, 
+            'line': {'width': 1, 'color':'silver'}
+        },
+    })
+    chart.set_y_axis({
+        'name': headers[4],
+        'major_gridlines': {
+            'visible': True, 
+            'line': {'width': 1, 'color':'silver'}
+        },
+    })
+    chart.set_legend({
+        'position': 'bottom',
+    })
+    
+
+    ws.merge_range(0, 0, 0, n_col, f'{test_name}')
+    ws.insert_chart(n_row, n_col+2, chart)
+        
+# region OLD
+
+def parse_xrb_file1(filename):
     with open(filename, 'rb') as f:
         arr = f.read()
 
@@ -969,18 +1215,17 @@ def parse_xrb_file(filename):
         arr = arr[byte_length:]
 
         if test_type == 'gravity':
-            current_results = _gravity_test_results_file_read(test_bytes)
+            current_results, inputs = _gravity_test_results_file_read(test_bytes)
         elif test_type == 'collimator':
-            current_results = _collimator_test_results_file_read(test_bytes)
+            current_results, inputs = _collimator_test_results_file_read(test_bytes)
         else:
             raise ValueError(f'Test type {test_type} not supported!')
         
-        tests.append((test_type, test_name, current_results))
+        tests.append((test_type, test_name, current_results, inputs))
 
     return tests
 
-
-def _gravity_test_results_file_text(test_name, side, result_data):
+def _gravity_test_results_file_text(test_name, result_data, inputs):
     
     byte_data = b''
     byte_data += _encode_string(test_name)
@@ -1021,17 +1266,17 @@ def _gravity_test_results_file_read(arr:bytearray):
         movement_data = [raw_result_data[:, :3], raw_result_data[:,3], raw_result_data[:,4]]
         result_data.append(tuple(zip(*movement_data)))
 
-    return test_name, side, result_data
+    return result_data, {}
 
-def _collimator_test_results_file_text(test_name, result_data):
+def _collimator_test_results_file_text(test_type, test_name, raw_data, inputs):
     
     byte_data = b''
     byte_data += _encode_string(test_name)
 
-    byte_data += _encode_int(len(result_data))
+    byte_data += _encode_int(len(raw_data))
     
     # Create numpy array of data
-    for movement_results in result_data:
+    for movement_results in raw_data:
         
         positions, distance, intensities = map(list, zip(*movement_results))
         arr = np.column_stack((positions, distance, intensities))
@@ -1062,138 +1307,12 @@ def _collimator_test_results_file_read(arr:bytearray):
         movement_data = [raw_result_data[:, :3], raw_result_data[:,3], raw_result_data[:,4]]
         result_data.append(tuple(zip(*movement_data)))
 
-    return test_name, result_data
+    return result_data, {}
 
-
-def _wrap_test_bytes(test_type, test_name, arr):
-    return _encode_string(test_type) + _encode_string(test_name) + _encode_int(len(arr)) + arr
-
-def _encode_string(text:str):
-    byte_arr = b''
-    byte_arr += _encode_int(len(text))
-    byte_arr += text.encode()
-    return byte_arr
-
-def _encode_int(value:int):
-    return np.array([value], dtype=np.int64).tobytes()
-
-def _decode_string(arr:bytearray):
-    length, arr = _decode_int(arr)
-    return arr[:length].decode(), arr[length:]
-
-def _decode_int(arr:bytearray):
-    value = int().from_bytes(arr[0:8], byteorder='little')
-    return value, arr[8:]
-
-
-def save_tests_to_xrb(xrb_file:str, tests):
-    with open(xrb_file, 'wb') as f:
-                    
-        for test_type, test_name, test_results in tests:
-
-            if test_type.lower() == 'gravity':
-                byte_data = _gravity_test_results_file_text(*test_results)
-
-            elif test_type.lower() == 'collimator':
-                byte_data = _collimator_test_results_file_text(*test_results)
-
-            else:
-                raise ValueError(f'Test type {test_type} not supported to save!')
-            
-            f.write(byte_data)
-def save_tests_to_xlsx(xlsx: str, tests):
-
-    if not xlsx or not tests:
-        return
-    
-    with xlsxwriter.Workbook(xlsx) as wb:
-        
-        for (test_type, test_name, test_results) in tests:
-            test_name = test_name.strip().replace(' ', '_')
-            counter = 0
-            sheet_name = test_name
-            while sheet_name in wb.sheetnames:
-                counter += 1
-                sheet_name = f'{test_name}({counter})'
-            
-            ws = wb.add_worksheet(sheet_name)
-            _write_test_page(wb, ws, test_name, test_type, test_results)
-
-def _write_test_page(wb:xlsxwriter.Workbook, ws:worksheet.Worksheet, test_name, test_type, test_results):
-
-    if test_type.lower() == 'gravity':
-        test_name, side, result_data = test_results
-    elif test_type.lower() == 'collimator':
-        test_name, result_data = test_results
-
-
-    n_row = 3
-    n_col = 0
-
-    chart = wb.add_chart({'type': 'scatter',})
-
-    headers = ['x (mm)', 'y (mm)', 'z (mm)', 'Distance (mm)', 'Light Intensity (lumen)']
-    colors = ['red', 'blue', 'green', 'purple', 'orange', 'yellow']
-    for i, movement_results in enumerate(result_data):
-        position, distance, intensities = map(list, zip(*movement_results))
-        x, y, z = map(list, zip(*position))
-
-        
-        ws.merge_range(n_row-2, n_col, n_row-2, n_col+len(headers)-1, f'Movement {i}')
-        ws.write_row(n_row-1, n_col, headers)
-        
-
-        ws.write_column(n_row, n_col  , x)
-        ws.write_column(n_row, n_col+1, y)
-        ws.write_column(n_row, n_col+2, z)
-
-        ws.write_column(n_row, n_col+3, distance)
-        ws.write_column(n_row, n_col+4, intensities)
-
-        chart.add_series({
-                'categories': [ws.name, n_row, n_col+3, n_row+len(intensities)-1, n_col+3],
-                'values': [ws.name, n_row, n_col+4, n_row+len(distance)-1, n_col+4],
-                'name': f'Movement {i}',
-                'color': colors.pop(0) if colors else '',
-                'marker': {'type': 'circle'},
-                          })
-
-        n_col += len(headers)
-
-    chart.set_x_axis({
-        'name': headers[3],
-        'major_gridlines': {
-            'visible': True, 
-            'line': {'width': 1, 'color':'silver'}
-        },
-    #    'minor_gridlines': {
-    #        'visible': True, 
-    #        'line': {'width': 1, 'color':"#F8F8F8"}
-    #    }
-    })
-    chart.set_y_axis({
-        'name': headers[4],
-        'major_gridlines': {
-            'visible': True, 
-            'line': {'width': 1, 'color':'silver'}
-        },
-    #    'minor_gridlines': {
-    #        'visible': True, 
-    #        'line': {'width': 1, 'color':"#F8F8F8"}
-    #    }
-    })
-    chart.set_legend({
-        'position': 'bottom',
-    })
-    
-
-    ws.merge_range(0, 0, 0, n_col, f'{test_name}')
-    ws.insert_chart(n_row, n_col+2, chart)
-        
 
 def alan_function(filename, index):
     tests = list(parse_xrb_file(filename))
-    test_type, test_name, test_results = tests[index]
+    test_type, test_name, test_results, inputs = tests[index]
     print(f'Picking {test_type} test: "{test_name}"')
     if test_type == 'gravity':
         current_results = _gravity_test_results_file_read(test_results)

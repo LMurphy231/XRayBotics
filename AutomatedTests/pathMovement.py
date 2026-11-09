@@ -22,7 +22,7 @@ def absolute_move_path(fr5: RC.RobotCom, path: list):
         z: float = position[2]
 
         # Robot's/GUI move function here
-        print(f'Moving to {[x, y, z]}')
+        move_logger.debug(f'Moving to {position}')
         event = fr5.move_position(x, y, z)     # Absolute Position
 
     return
@@ -67,8 +67,8 @@ def increment_move_and_scan(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, 
             current_position = current_position + movement
             total_displacement += np.linalg.norm(movement)
             
-            move_logger.info(f'Step {i+1}/{n_steps}')
-            scan_logger.info(f'Light Intensity: {light_intensity:.2f}')
+            move_logger.debug(f'Step {i+1:>{len(str(n_steps))}}/{n_steps}: {current_position}')
+            scan_logger.debug(f'Light Intensity: {light_intensity:.2f}')
             
             store_data(scan_data, current_position, total_displacement, light_intensity)
             
@@ -84,7 +84,7 @@ def execute_path(fr5: RC.RobotCom, ls: lq.SensorManager, path: list, scan_data: 
     scan_data_for_side: list # Store scan data (pos, displ, light) for just 1 side; for segmenting data
     n_movements = len(path)
     for move_index, (move, scan, start_pos) in enumerate(path):
-        move_logger.info(f'Movement ({move_index:>len(str(n_movements))}/{n_movements})')
+        move_logger.info(f'Movement ({move_index:>{len(str(n_movements))}}/{n_movements})')
         #status_logger.info('Movement ({:>length}/{})'.format(move_index, n_movements, length=len(str(n_movements))))
         #status_logger.info('Movement (%3d /%3d)', move_index, n_movements)
 

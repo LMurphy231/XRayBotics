@@ -80,10 +80,6 @@ def transformation_matrix(DH:DenavitHartenbergParameter, set_angle=None):
             [C,D]
            ])
 
-
-
-
-
 class Plotter:
     def __init__(self, _root, projection=None, row=0, column=0, sticky=tk.NSEW, **options):
         self._root = _root
@@ -171,24 +167,50 @@ class Plotter:
                 self.z_label = zlabel
             self.ax.set_zlabel(self.z_label)
 
-    def plot_robot(self, angles, color='red'):
-        plotter.clear()
+    def plot_robot(self, robot:list[DenavitHartenbergParameter], angles, color='red', clear=True, update=True, scatter_line=None, plot_line=None):
+        if clear:
+            self.clear()
 
         prev_coord= [0.0, 0.0, 0.0]
-        T = transformation_matrix(FR5Joints[0], angles[0])
+        T = transformation_matrix(robot[0], angles[0])
+
+        x = []
+        y = []
+        z = []
+        
         current_coord = T[0:3, -1]
-        self.scatter(*prev_coord)
-        self.scatter(*current_coord)
-        self.plot([current_coord[0], prev_coord[0]], [current_coord[1], prev_coord[1]], [current_coord[2], prev_coord[2]], color=color)
+        points = [prev_coord, current_coord]
+        x.extend([prev_coord[0], current_coord[0]])
+        y.extend([prev_coord[1], current_coord[1]])
+        z.extend([prev_coord[2], current_coord[2]])
+        
         prev_coord = current_coord
-        for i, (DH, angle) in enumerate(zip(FR5Joints[1:], angles[1:])):
+        for i, (DH, angle) in enumerate(zip(robot[1:], angles[1:])):
             T = rotate(T, transformation_matrix(DH, angle))
             current_coord = T[0:3, -1]
-            self.scatter(*current_coord)
-            plotter.plot([current_coord[0], prev_coord[0]], [current_coord[1], prev_coord[1]], [current_coord[2], prev_coord[2]], color=color)
+            points.append(current_coord)
+
+            x.extend([current_coord[0]])
+            y.extend([current_coord[1]])
+            z.extend([current_coord[2]])
+
             prev_coord = current_coord
 
-        self._update()
+        if scatter_line is None:
+            scatter_line = self.scatter(*zip(*points), color=color)
+        else:
+            x, y, z = zip(*points)
+            scatter_line.set(x=x, y=y, z=z)
+
+        if plot_line is None:
+            plot_line = self.plot(x, y, z, color=color)
+        else:
+            plot_line.set(x=x, y=y, z=z)
+        
+        if update:
+            self._update()
+
+        return plot_line[0], scatter_line
 
     def plot_shape(self, points):
         points = [[tuple(point) for point in points],]
