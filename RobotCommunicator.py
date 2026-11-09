@@ -463,7 +463,6 @@ class RobotCom(RPC):
         self.StopMove()
 
     def _prompt_error_window(self, funct:object, event=threading.Event, errorcode=None):
-        return errorcode
         pkg = self.GetRobotRealTimeState()
         state = self.GetRobotEmergencyStopState()
 
