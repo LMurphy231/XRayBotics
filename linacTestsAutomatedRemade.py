@@ -1,6 +1,7 @@
 from os import path
 
 import numpy as np
+from wcwidth import width
 import RobotCommunicator as RC
 import LightSensor as lq
 import AutomatedTests.pathMovement as move
@@ -26,7 +27,7 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
                            Navg: int = 4, step_length: float = 0.5, 
                            length: float = 100.0, width:float = 100.0):
     '''
-    gravity_test_automated
+    gravity_test_automated()
     Perform the gravity test: Scan laser to find true z (gravity)
         Returns: offset for angle needed to adjust about an axis (X or Y) to align robot z-axis with true z-axis (gravity)
     step_length in mm
@@ -45,64 +46,33 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
     
     np.eye(n): Create n x n identity matrix
     '''
-    
-    # ============================================================
-    # START INITIALIZATION STATE: INITIALIZE DATA COLLECTION
-    # ============================================================
+
     atl_logger.info('STARTING GRAVITY TEST AUTOMATED') 
     grav_path_points: list = []
     grav_path: list = []
     
     grav_test_scan_data: list = []   # [ [ [(x,y,z), d, l], [...] ] , [ [(x,y,z), d, l], [...] ] ] 
-    grav_test_pos_data: list = []    # List of position vectors (x,y,z) as np.ndarray
-    grav_test_distance: list = []    # Distance from start of the current movement
-    grav_test_light_data: list = [] 
     
     dr_offset: float            # Store angle offset about an axis (not Z)
     peaks: tuple [int, int]     # Peaks from Data Processing
-
-    # ============================================================
-    # END INITIALIZATION STATE: INITIALIZE DATA COLLECTION
-    # ============================================================
-
-
-
-    # ============================================================
-    # START MOTION PLANNING STATE: ROTATE ROBOT TO CORRECT SIDE, RETURN TO ISOCENTER, DEFINE MOVEMENT PATH
-    # ============================================================
-        
+  
     atl_logger.info('MOVING TO ESTIMATED ISOCENTER')     
     est_isocenter: np.ndarray = np.array([x, y, z])
-    fr5._position_move(*est_isocenter) # Start/return to estimated isocenter ("origin")
+    fr5._position_move(*est_isocenter)
 
-    grav_path_points = create_gravity_test_path_points(fr5, est_isocenter, length, width, side)
+    grav_path_points = create_gravity_test_path_points(fr5, est_isocenter, length, width, side, w_umbra, l_umbra)
     grav_path = paths.rectangle_path(est_isocenter, grav_path_points)
     
-    # ============================================================
-    # END MOTION PLANNING STATE: ROTATE ROBOT TO CORRECT SIDE, RETURN TO ISOCENTER, DEFINE MOVEMENT PATH
-    # ============================================================
-    
-            
-            
-    # ============================================================        
-    # START CONTROL LOGIC: MOVE IN XZ ----> GET ANGLE ABOUT (WRT) Y AXIS
-    # ===========================================================
-
     # Move the robot and scan in the defined path
     atl_logger.info('PERFORMING MOVEMENT AND SCAN IN PATH') 
     move.execute_path(fr5, ls, grav_path, grav_test_scan_data, Navg, step_length)
     fr5._position_move(*est_isocenter)
     
-    # Process scan data
-    #for position, distance, light_intensity in grav_test_scan_data:
-        #grav_test_pos_data.append(position)
-        #grav_test_distance.append(distance)
-        #grav_test_light_data.append(light_intensity)
-
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
     
     # STORE: ANGLE BETWEEN Z (TRUE) AND AXIS
-    #dr_offset, peaks = dp.calculate_gravity_angle(grav_test_scan_data) # Offset negative theta: CW\
+    #dr_offset, peaks = dp.calculate_angle(grav_test_scan_data, "gravity") # Offset negative theta: CW\
+    
     return grav_test_scan_data
     atl_logger.info(f'GRAVITY TEST RESULTS: Offset angle about axis (CW): {dr_offset:.4f} degrees')
     
@@ -117,32 +87,23 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
     return grav_test_scan_data#, dr_offset
 
 def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: float, z: float, 
-                              x1:float, x2:float, y1:float, y2:float, umbra:float,
+                              x1:float, x2:float, y1:float, y2:float, w_umbra: float = 1.0, l_umbra: float = 0.75,
                               Navg = 4, threshold: float = 0.75, step_length: float = 1.0, 
                               collimator_angle: float = 0.0, gantry_angle: float = 0.0, couch_angle: float = 0.0):
     '''
-    collimator_test_automated
+    collimator_test_automated()
     Perform the Collimator Test: Scan laser to find true z
     '''
-
     atl_logger.info('STARTING COLLIMATOR TEST AUTOMATED')
-    
-    # Define data to collect
     coll_test_scan_data: list = []   # Tuple of both position data & light: (position, light)
-    coll_test_pos_data: list = []    # Position Vectors (x,y,z)
-    coll_test_distance: list = []    # Distance from start of the current movement
-    coll_test_light_data: list = []  # Light intensity values
-    
     dr_offset: float            # Store angle offset about an axis (not Z)
     peaks: tuple [int, int]     # Peaks from Data Processing
 
-    # Return to "home" pos ---> isocenter
     atl_logger.info('MOVING TO ESTIMATED ISOCENTER')
     est_isocenter: np.ndarray = np.array([x, y, z])
-    fr5._position_move(*est_isocenter)  # Start test at estimated isocenter ("origin")
+    fr5._position_move(*est_isocenter)
 
-    #collimator_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
-    collimator_path_points = create_collimator_test_path_points(fr5, est_isocenter, x1, x2, y1, y2, umbra, gantry_angle, collimator_angle, couch_angle)
+    collimator_path_points = create_collimator_test_path_points(fr5, est_isocenter, x1, x2, y1, y2, gantry_angle, collimator_angle, couch_angle, w_umbra, l_umbra)
     #collimator_path = paths.rectangle_path(est_isocenter, collimator_path_points) 
     collimator_path = paths.zigzag_path(est_isocenter, collimator_path_points) 
 
@@ -151,12 +112,13 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
     fr5._position_move(*est_isocenter)
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
     
-    #dr_offset, peaks = dp.calculate_gravity_angle(coll_test_scan_data) # Offset negative theta: CW
+    #dr_offset, peaks = dp.calculate_gravity_angle(coll_test_scan_data, "collimator") # Offset negative theta: CW
     #fr5.offset_add("Collimator", drz = dr_offset)
     
     return coll_test_scan_data#, dr_offset
 
-def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:float, x2:float, y1:float, y2:float, height:float, umbra:float,
+def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:float, x2:float, y1:float, y2:float, 
+                          height: float = 0.0, w_umbra: float = 1.0, l_umbra: float = 0.75,
                           threshold: float= .75, step_length:float = 1.0,  Navg=4, 
                           collimator_angle:float=0.0, gantry_angle:float=0.0, couch_angle:float=0.0):
     '''
@@ -165,38 +127,24 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
     '''
 
     atl_logger.info('STARTING GANTRY TEST AUTOMATED')
-    
-    # Define data to collect
-    gantry_test_scan_data: list = []   # Tuple of both position data & light: (position, light)
-    gantry_test_pos_data: list = []    # Position Vectors (x,y,z)
-    gantry_test_distance: list = []    # Distance from start of the current movement
-    gantry_test_light_data: list = []  # Light intensity values
-    
-    dr_offset: float            # Store angle offset about an axis (not Z)
-    peaks: tuple [int, int]     # Peaks from Data Processing
+    gantry_test_scan_data: list = []    # Tuple of both position data & light: (position, light)
+    dr_offset: float                    # Store angle offset about an axis (not Z)
+    peaks: tuple [int, int]             # Peaks from Data Processing
 
     atl_logger.info('MOVING TO ESTIMATED ISOCENTER')
-   # Return to "home" pos ---> isocenter
     est_isocenter: np.ndarray = np.array([x, y, z])
-    fr5._position_move(*est_isocenter)  # Start test at estimated isocenter ("origin")
+    fr5._position_move(*est_isocenter)
 
-    #gantry_rectangle_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
-    gantry_path_points = create_gantry_test_path_points(fr5, est_isocenter, x1, x2, y1, y2, height, umbra, gantry_angle, collimator_angle, couch_angle)
-    #gantry_path = paths.rectangle_path(est_isocenter, gantry_path_points) 
-    gantry_path = paths.zigzag_path(est_isocenter, gantry_path_points) 
-
+    gantry_path_points = create_gantry_test_path_points(fr5, est_isocenter, x1, x2, y1, y2, gantry_angle, collimator_angle, couch_angle, w_umbra, l_umbra, height)
+    gantry_path = paths.rectangle_path(est_isocenter, gantry_path_points) 
+    #gantry_path = paths.zigzag_path(est_isocenter, gantry_path_points) 
 
     atl_logger.info('PERFORMING MOVEMENT AND SCAN IN PATH')
-    move.execute_path(fr5, ls, gantry_path, gantry_test_scan_data, Navg, step_length) # Move and scan in path according
+    move.execute_path(fr5, ls, gantry_path, gantry_test_scan_data, Navg, step_length)
     fr5._position_move(*est_isocenter)
         
-    #for position, distance, light_intensity in gantry_test_scan_data:
-    #    gantry_test_pos_data.append(position)
-    #    gantry_test_distance.append(distance)
-    #    gantry_test_light_data.append(light_intensity)
-    
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
-    #dr_offset, peaks = dp.calculate_gravity_angle(gantry_test_scan_data) # Offset negative theta: CW
+    #dr_offset, peaks = dp.calculate_gravity_angle(gantry_test_scan_data, "gantry") # Offset negative theta: CW
     #fr5.offset_add("Gantry", drx = dr_offset)
     
     atl_logger.info('GANTRY TEST AUTOMATED COMPLETED')
@@ -224,6 +172,9 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
         grav_test_pos_data.append(position)
         grav_test_light_data.append(light_intensity)
 '''
+
+
+# ===================== CREATING PATH POINTS FOR EACH LINAC TEST =======================
 
 def create_gravity_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray, 
                                          length: float, width: float, side: str):
@@ -271,18 +222,27 @@ def create_gravity_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray,
     return grav_path_points
 
 def create_collimator_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray, 
-                                            x1: float, x2: float, y1: float, y2: float, umbra: float, 
-                                            gantry_angle: float, collimator_angle: float, couch_angle: float, margin: float = 1.0):
-
+                                            x1: float, x2: float, y1: float, y2: float, 
+                                            gantry_angle: float, collimator_angle: float, couch_angle: float, 
+                                            w_umbra: float = 1.0, l_umbra: float = 0.75):
+    '''
+    create_collimator_test_path_points()
+    Create path points for collimator test
+    
+    '''
     collimator_path_points: list = [] # OUTPUT OF THIS FUNCTION
     collimator_rot_matrix: np.ndarray
-
-    length: float = x1 + x2 + umbra
-    width: float = (y1 + y2 - umbra)/2
     
-    # Define path to move in (rectangle)
-    basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)  # Calculate rectangle points in basis plane: XY
-    #basis_plane_path: list = paths.rectangle_path(est_isocenter, basis_points)                  # Create path with points in basis plane: XY
+    # Actual light field dimensions
+    field_width: float = x1 + x2
+    field_length: float = y1 + y2
+
+    # Define path to move in based on extra umbras
+    width: float = field_width + 2*w_umbra
+    length: float = field_length * abs(2*l_umbra-1)
+    
+    basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)
+    #basis_plane_path: list = paths.rectangle_path(est_isocenter, basis_points)
 
     # Get axis offsets found from previous tests.
     rx_offset, ry_offset, rz_offset = fr5.offset[3:] # Floats
@@ -303,21 +263,31 @@ def create_collimator_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarr
     return collimator_path_points
 
 def create_gantry_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray, 
-                                        x1: float, x2: float, y1: float, y2: float, height: float, umbra: float, 
-                                        gantry_angle: float, collimator_angle: float, couch_angle: float, margin: float = 1.0):
-
+                                        x1: float, x2: float, y1: float, y2: float, 
+                                        gantry_angle: float, collimator_angle: float, couch_angle: float, 
+                                        w_umbra: float = 1.0, l_umbra: float = 0.75, height: float = 0.0):
+    '''
+    create_gantry_test_path_points()
+    CReate path points for gantry test
+    '''
     gantry_path_points: list = [] # OUTPUT OF THIS FUNCTION
     gantry_rot_matrix: np.ndarray
 
-    length: float = x1 + x2 + umbra
-    #height: float = y1 + y2 + umbra
+    # Actual light field dimensions
+    field_width: float = x1 + x2
+    field_length: float = y1 + y2
+
+    # Define path to move in based on extra umbras
+    width: float = field_width + 2*w_umbra
+    length: float = field_length * abs(2*l_umbra-1)
 
     #est_isocenter = est_isocenter + np.array([0.0, 0.0, y1+umbra/2])
+    
+    #basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, height, dy=height/2) # Liam's old code
+    basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width, dy=height/2)
 
-    # Define path to move in (rectangle)
-    basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, height, dy=height/2)  # Calculate rectangle points in basis plane: XY
-
-    rx_offset, ry_offset, rz_offset = fr5.offset[3:] # Get axis offsets found from previous tests
+    # Get axis offsets found from previous tests
+    rx_offset, ry_offset, rz_offset = fr5.offset[3:] # Floats
 
     # Set end effector sensor to face upwards (base direction is forward)
     end_effector_direction: float = -90
@@ -338,7 +308,24 @@ def create_gantry_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray,
 
     return gantry_path_points
 
+# ====================================================================================== 
 
+# ===================== ROTATION MATRICES FOR EACH LINAC TEST ==========================
+
+def gravity_test_rotation_matrix(grav_angle: float):
+    return paths.rotation_matricies(paths.Ry(np.deg2rad(-90)), ) #TODO:
+
+def collimator_test_rotation_matrix(col_angle, gan_angle):
+    # start in YZ
+    # rotate about y
+    return paths.rotation_matrices(paths.Ry(np.deg2rad(-90)), )#TODO:
+
+def gantry_test_rotation_matrix(gantry_angle, gan_angle):
+    # start in YZ
+    # rotate about y
+    return paths.rotation_matricies(paths.Rx(np.deg2rad(-90)), )#TODO:
+
+# =================================================================================  
 
 
 

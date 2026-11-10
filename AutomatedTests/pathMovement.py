@@ -9,7 +9,6 @@ scan_logger = logging.getLogger('Scanning')
 data_logger = logging.getLogger('Data Storage')
 path_logger = logging.getLogger('Path Movement')
 
-# TODO: Complete functions
 def absolute_move_path(fr5: RC.RobotCom, path: list):
     """
     absolute move_path()

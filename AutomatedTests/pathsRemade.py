@@ -117,7 +117,7 @@ def basis_plane_calculate_four_points(isocenter: np.ndarray, length: float, widt
         
         Center will be user-defined "isocenter" (origin)
         
-        If isoceneter = (0,0,0) -> pointsa are both abs pos and displacement
+        If isoceneter = (0,0,0) -> points are both abs pos and displacement
         If isoceneter != (0,0,0) -> points are only abs pos
         
         ASSUMES: Rectangle in XY plane (basis)
@@ -181,24 +181,6 @@ def rotation_matricies(matrix1: np.ndarray, *rotation_matricies: list[np.ndarray
    
  # =================================================================================  
 
-   
-# ===================== ROTATION MATRICES FOR EACH LINAC TEST ==========================
-
-def gravity_test_rotation_matrix(grav_angle: float):
-    return rotation_matricies(Ry(np.deg2rad(-90)), ) #TODO:
-
-def collimator_test_rotation_matrix(col_angle, gan_angle):
-    # start in YZ
-    # rotate about y
-    return rotation_matricies(Ry(np.deg2rad(-90)), )#TODO:
-
-def gantry_test_rotation_matrix(gantry_angle, gan_angle):
-    # start in YZ
-    # rotate about y
-    return rotation_matricies(Rx(np.deg2rad(-90)), )#TODO:
-
-# =================================================================================  
-
 # ===================== ROTATION MATRICES FOR EACH AXIS ==========================
 def Rx(angle: float): 
     # type: (float) -> int
@@ -224,6 +206,22 @@ def Rz(angle: float):
 
 # =================================================================================  
 
+# ===================== ROTATION MATRICES FOR EACH LINAC TEST ==========================
+
+def gravity_test_rotation_matrix(grav_angle: float):
+    return rotation_matricies(Ry(np.deg2rad(-90)), ) #TODO:
+
+def collimator_test_rotation_matrix(col_angle, gan_angle):
+    # start in YZ
+    # rotate about y
+    return rotation_matricies(Ry(np.deg2rad(-90)), )#TODO:
+
+def gantry_test_rotation_matrix(gantry_angle, gan_angle):
+    # start in YZ
+    # rotate about y
+    return rotation_matricies(Rx(np.deg2rad(-90)), )#TODO:
+
+# =================================================================================  
 
 # ===================== HELPER FUNCTIONS ==========================================
 def get_rotation_matrix(axis: str, angle: float, offset: float):
