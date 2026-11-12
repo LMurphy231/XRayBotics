@@ -22,37 +22,12 @@ if os.path.basename(sys.executable) == 'pythonw.exe':
 
 # Styles
 def _create_styles(root):
-   
-
     style = ttk.Style()
     #style.theme_use("clam")
     style.configure('Warning.TButton', bordercolor="#FF0000", lightcolor='red', background="white",)
     style.configure('Default.TButton', background="white",)
 
 INI = 'xrb.ini'
-class MessageTerminal(logging.Handler):
-    def __init__(self, text:tk.Text, level, handlers=[]):
-        self.text = text
-        self.handlers = handlers
-        super().__init__(level)
-
-    def write(self, line):
-        for handler in self.handlers:
-            handler.write(line)
-
-    def writelines(self, lines):
-        for handler in self.handlers:
-            handler.writelines(lines)
-
-    def emit(self, record:logging.LogRecord):
-        if record.levelno < self.level:
-            return
-        try:
-            msg = self.format(record)
-            _write_to_textbox(self.text, msg)
-        except Exception:
-            self.handleError(record)
-
 class MovementLogHandler(logging.Handler):
     def __init__(self, level):
         self.log_text: list[tuple[float, int, str]] = []
@@ -135,7 +110,7 @@ class GUI:
         robot_window_frame = tk.LabelFrame(self.page_frame, text='Robot Controller')
         
         self._create_robot_controller(robot_window_frame)
-        self.page_frame.add(robot_window_frame, sticky=tk.NSEW, minsize=250)
+        self.page_frame.add(robot_window_frame, sticky=tk.NSEW, minsize=150)
 
         self.text_window_frame = tk.Frame(self.window_pane)
         self._create_text_window(self.text_window_frame)
@@ -145,7 +120,7 @@ class GUI:
     
     def _create_loggers(self):
         self.movement_handlers: dict[str, MovementLogHandler] = {}
-        for logger_name in ('Automated Tests', 'Moving', 'Scanning', 'Data Storage', 'Path Movement', 'Robot Communication'):
+        for logger_name in ('Automated Tests', 'Moving', 'Scanning', 'Data Storage', 'Path Movement', 'Robot Communication', 'Joint Positions'):
             handler = MovementLogHandler(logging.DEBUG)
             handler.setFormatter(logging.Formatter('[%(levelname)-8s][%(asctime)s] - %(message)s', datefmt='%H:%M:%S'))
             logger = logging.getLogger(logger_name)
@@ -222,7 +197,7 @@ class GUI:
                     )
 
 
-        var_name = ['dx', 'dy', 'dz', 'drx', 'dry', 'drz']
+        var_names = ['dx', 'dy', 'dz', 'drx', 'dry', 'drz']
 
         sub_frame = tk.Frame(move_type_notebook)
         move_type_notebook.add(sub_frame, text='Incrimental Movement')
@@ -264,7 +239,7 @@ class GUI:
                             **{var_name.lower(): self.robot_vars[var_name.lower()]['var'].get() for var_name in var_names},
                             in_thread=True,
                         ),
-                        lambda var_names=var_names: (_reset_var(0.0, *(self.robot_vars[f'd{var_name.lower()}']['var'] for var_name in var_names)), incriment_function)
+                        lambda var_names=var_names: (_reset_var(0.0, *(self.robot_vars[var_name.lower()]['var'] for var_name in var_names)), incriment_function)
                     )
 
         sub_frame = tk.Frame(move_type_notebook)
@@ -455,8 +430,6 @@ class GUI:
         self.logging_textbox = scrolledtext.ScrolledText(message_frame, wrap=None, state=tk.NORMAL)
         self.logging_textbox.pack(expand=True, fill=tk.BOTH)
         self._display_log(self.logging_textbox, [self.logger_selection.get()])
-        
-
 
     def _change_test_page(self, event:tk.Event):
         if event is None:

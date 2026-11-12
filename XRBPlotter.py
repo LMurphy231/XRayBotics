@@ -2,6 +2,9 @@ import dataclasses
 import logging
 import os
 import tkinter as tk
+from functools import wraps
+from collections.abc import Callable
+from typing import Any, ParamSpec, TypeVar
 
 import numpy as np
 import matplotlib as mpl
@@ -10,6 +13,13 @@ from matplotlib.lines import Line2D
 import matplotlib.axes as axes
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+P = ParamSpec("P")
+R = TypeVar("R")
+def copy_params(source: Callable[P, Any]) -> Callable[[Callable[..., R]], Callable[P, R]]:
+    def decorator(target: Callable[..., R]) -> Callable[P, R]:
+        return target
+    return decorator
 
 global Rz
 global Ry
@@ -81,6 +91,12 @@ def transformation_matrix(DH:DenavitHartenbergParameter, set_angle=None):
            ])
 
 class Plotter:
+    def _artist_create(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            return func(self, *args, **kwargs)
+        return wrapper
+    
     def __init__(self, _root, projection=None, row=0, column=0, sticky=tk.NSEW, **options):
         self._root = _root
         self.root = tk.Frame(self._root)
@@ -104,25 +120,62 @@ class Plotter:
         self.ax.grid(True)
         self.x_label = self.y_label = self.z_label = ''
 
-        self.zmin = self.zmax = self._user_zmin = self._user_zmax = 0
+        self.zmin = self.zmax = self._user_zmin = self._user_zmax = None
+        self.lines = {}
         self.canvas_widget = self.canvas.get_tk_widget()
         self.canvas_widget.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
 
         self.clear()
         self.label_axis('X (mm)', 'Y (mm)', 'Z (mm)')
-        self._set_axis_limit(-500, 500, -500, 500, -500, 500)
+        #self._set_axis_limit(-500, 500, -500, 500, -500, 500)
+        self._set_axis_limit()
         self.canvas.draw()
 
         # Copycat functions
-        self.scatter = self.ax.scatter
-        self.plot    = self.ax.plot
+        @copy_params(self.ax.scatter)
+        def scatter(*args, existing_line=None, **kwargs):
+            new_artist = self.ax.scatter(*args, **kwargs)
+            if existing_line is not None and existing_line.axes is not None:
+                new_artist.update_from(existing_line)
+                existing_line.remove()
+            return new_artist
+
+        @copy_params(self.ax.plot)
+        def plot(*args, existing_line=None, **kwargs):
+            new_artists = self.ax.plot(*args, **kwargs)
+            if existing_line is not None and existing_line.axes is not None:
+                for artist in new_artists:
+                    artist.update_from(existing_line)
+                existing_line.remove()
+            return new_artists
+
+        if self._projection == '3d':
+            @copy_params(self.ax.add_collection3d)
+            def add_collection3d(*args, existing_line=None, **kwargs):
+                new_artist = self.ax.add_collection3d(*args, **kwargs)
+                if existing_line is not None and existing_line.axes is not None:
+                    new_artist.update_from(existing_line)
+                    existing_line.remove()
+                return new_artist
+            
+            self.add_collection3d = add_collection3d
+            
+        self.scatter = scatter
+        self.plot    = plot
+        self.grid    = self.ax.grid
+        self.legend  = self.ax.legend
+        self.autoscale_view = self.ax.autoscale_view
+   
 
 
-    def _update(self, keep_axis=True):
-        if keep_axis:
-            self._set_axis_limit(self._user_xmin, self._user_xmax, self._user_ymin, self._user_ymax, self._user_zmin, self._user_zmax)
+    def _update(self, keep_axis=True, autoscale=False):
+        if autoscale:
+            self.autoscale_view()
         else:
-            self._set_axis_limit(self.xmin, self.xmax, self.ymin, self.ymax, self.zmin, self.zmax)
+            if keep_axis:
+                self._set_axis_limit(self._user_xmin, self._user_xmax, self._user_ymin, self._user_ymax, self._user_zmin, self._user_zmax)
+            else:
+                self._set_axis_limit(self.xmin, self.xmax, self.ymin, self.ymax, self.zmin, self.zmax)
         self.canvas.draw()
         
     update = _update
@@ -132,23 +185,65 @@ class Plotter:
         self.xmax = xmax if xmax is not None else self.ax.get_xlim()[1]
         self.ymin = ymin if ymin is not None else self.ax.get_ylim()[0]
         self.ymax = ymax if ymax is not None else self.ax.get_ylim()[1]
-        
+
         self.ax.set_xlim(self.xmin, self.xmax)
         self.ax.set_ylim(self.ymin, self.ymax)
         if self._projection == '3d':
             self.zmin = zmin if zmin is not None else self.ax.get_zlim()[0]
             self.zmax = zmax if zmax is not None else self.ax.get_zlim()[1]
             self.ax.set_zlim(self.zmin, self.zmax)
+        
 
-    
-    def clear(self):
-        self._user_xmin = self.ax.get_xlim()[0]
-        self._user_xmax = self.ax.get_xlim()[1]
-        self._user_ymin = self.ax.get_ylim()[0]
-        self._user_ymax = self.ax.get_ylim()[1]
+    def _focus_view(self, x, y, z, x_dist, y_dist, z_dist):
+
+        xmin = x - x_dist/2
+        xmax = x + x_dist/2
+
+        ymin = y - y_dist/2
+        ymax = y + y_dist/2
+
+        zmin = None
+        zmax = None
+        
         if self._projection == '3d':
+            zmin = z - z_dist/2
+            zmax = z + z_dist/2
+
+        abs_min = min([data for data in (xmin, ymin, zmin) if data is not None])
+        abs_max = max([data for data in (xmax, ymax, zmax) if data is not None])
+
+        x_min = xmin if abs(xmax - xmin) >= 1e-3 else  abs_min
+        y_min = ymin if abs(ymax - ymin) >= 1e-3 else  abs_min
+        if self._projection == '3d':
+            z_min = zmin if abs(zmax - zmin) >= 1e-3 else  abs_min
+
+        x_max = xmax if abs(xmax - xmin) >= 1e-3 else abs_max
+        y_max = ymax if abs(ymax - ymin) >= 1e-3 else abs_max
+        max_ = max(x_max, y_max)
+        min_ = min(x_min, y_min)
+        if self._projection == '3d':
+            z_max = zmax if abs(zmax - zmin) >= 1e-3 else abs_max
+            max_ = max(max_, z_max)
+            min_ = min(min_, z_min)
+        #self._set_axis_limit(x_min, x_max, y_min, y_max, z_min, z_max)
+        self._set_axis_limit(min_+x, max_+x, min_+y, max_+y, min_+z, max_+z)
+        self.save_user_view()
+        self.update(False)
+
+
+    def save_user_view(self):
+        self._user_xmin = self.ax.get_xlim()[0]    
+        self._user_xmax = self.ax.get_xlim()[1]    
+        self._user_ymin = self.ax.get_ylim()[0]            
+        self._user_ymax = self.ax.get_ylim()[1]    
+        if self._projection == '3d':               
             self._user_zmin = self.ax.get_zlim()[0]
             self._user_zmax = self.ax.get_zlim()[1]
+
+
+
+    def clear(self):
+        self.save_user_view()
         self.ax.clear()
         self.label_axis()
         
@@ -196,26 +291,46 @@ class Plotter:
 
             prev_coord = current_coord
 
-        if scatter_line is None:
-            scatter_line = self.scatter(*zip(*points), color=color)
-        else:
-            x, y, z = zip(*points)
-            scatter_line.set(x=x, y=y, z=z)
 
-        if plot_line is None:
-            plot_line = self.plot(x, y, z, color=color)
-        else:
-            plot_line.set(x=x, y=y, z=z)
+        (plot_line, scatter_line) = self.lines.get('robot', (None, None))
+
+        scatter_line = self.scatter(*zip(*points), color=color, existing_line=scatter_line)
+        plot_line = self.plot(x, y, z, color=color, existing_line=plot_line)[0]
+
+        self.lines['robot'] = (plot_line, scatter_line)
         
         if update:
-            self._update()
+            self.update()
 
-        return plot_line[0], scatter_line
+        return plot_line, scatter_line
 
-    def plot_shape(self, points):
+    def plot_shape(self, points, existing_line=None):
         points = [[tuple(point) for point in points],]
         square = Poly3DCollection(points)
-        self.ax.add_collection3d(square)
+        return self.add_collection3d(square, existing_line=existing_line)
+
+    def plot_path(self, path_name, points, origin=np.array([0.0, 0.0, 0.0])):
+        x, y, z = [np.array(data) for data in zip(*points)]
+
+        origin_scatter, plot_line, scatter_line = self.lines.get(path_name, (None, None, None))
+        origin_scatter = self.scatter(*origin, existing_line=origin_scatter)
+        
+        plot_line = self.plot(x, y, z, existing_line=plot_line)[0]
+
+        scatter_line = self.scatter(x, y, z, existing_line=scatter_line)
+
+        self.lines[path_name] = (origin_scatter, plot_line, scatter_line)
+
+        xdist = (max(x)-min(x))*2
+        ydist = (max(y)-min(y))*2
+        zdist = (max(z)-min(z))*2
+        
+        self._focus_view(*origin, xdist, ydist, zdist)
+        self.canvas.draw_idle()
+
+    
+        
+    #def _artist_create(self, artist, creation_function, *args, **kwargs):
 
     def display_light_field(self, x1, x2, y1, y2, gantry_angle, collimator_angle, origin=np.array([0,0,0])):
 
@@ -225,7 +340,11 @@ class Plotter:
         p3 = rotate_point(np.array([x2, y2, 0.0])  , rotation_matrix) + origin
         p4 = rotate_point(np.array([-x1, y2, 0.0]) , rotation_matrix) + origin
 
-        self.plot_shape([p1, p2, p3, p4])
+        light_field_artist = self.lines.get('light field', None)
+        
+        light_field_artist = self.plot_shape([p1, p2, p3, p4], existing_line=light_field_artist)
+
+        self.lines['light field'] = light_field_artist
 
 
 

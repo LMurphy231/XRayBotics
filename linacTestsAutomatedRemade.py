@@ -1,7 +1,6 @@
 from os import path
 
 import numpy as np
-from wcwidth import width
 import RobotCommunicator as RC
 import LightSensor as lq
 import AutomatedTests.pathMovement as move
@@ -60,8 +59,8 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
     est_isocenter: np.ndarray = np.array([x, y, z])
     fr5._position_move(*est_isocenter)
 
-    grav_path_points = create_gravity_test_path_points(fr5, est_isocenter, length, width, side, w_umbra, l_umbra)
-    grav_path = paths.rectangle_path(est_isocenter, grav_path_points)
+    grav_path_points = create_gravity_test_path_points(fr5, est_isocenter, length, width, side)
+    grav_path = paths.zigzag_path(est_isocenter, grav_path_points)
     
     # Move the robot and scan in the defined path
     atl_logger.info('PERFORMING MOVEMENT AND SCAN IN PATH') 
@@ -103,7 +102,7 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
     est_isocenter: np.ndarray = np.array([x, y, z])
     fr5._position_move(*est_isocenter)
 
-    collimator_path_points = create_collimator_test_path_points(fr5, est_isocenter, x1, x2, y1, y2, gantry_angle, collimator_angle, couch_angle, w_umbra, l_umbra)
+    collimator_path_points = create_collimator_test_path_points(fr5, est_isocenter, x1, x2, y1, y2,  w_umbra, l_umbra, gantry_angle, collimator_angle, couch_angle)
     #collimator_path = paths.rectangle_path(est_isocenter, collimator_path_points) 
     collimator_path = paths.zigzag_path(est_isocenter, collimator_path_points) 
 
@@ -136,7 +135,7 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
     fr5._position_move(*est_isocenter)
 
     gantry_path_points = create_gantry_test_path_points(fr5, est_isocenter, x1, x2, y1, y2, gantry_angle, collimator_angle, couch_angle, w_umbra, l_umbra, height)
-    gantry_path = paths.rectangle_path(est_isocenter, gantry_path_points) 
+    gantry_path = paths.zigzag_path(est_isocenter, gantry_path_points) 
     #gantry_path = paths.zigzag_path(est_isocenter, gantry_path_points) 
 
     atl_logger.info('PERFORMING MOVEMENT AND SCAN IN PATH')
@@ -222,9 +221,9 @@ def create_gravity_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray,
     return grav_path_points
 
 def create_collimator_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray, 
-                                            x1: float, x2: float, y1: float, y2: float, 
-                                            gantry_angle: float, collimator_angle: float, couch_angle: float, 
-                                            w_umbra: float = 1.0, l_umbra: float = 0.75):
+                                            x1: float, x2: float, y1: float, y2: float, w_umbra: float, l_umbra: float,
+                                            gantry_angle: float, collimator_angle: float, couch_angle: float
+                                            ):
     '''
     create_collimator_test_path_points()
     Create path points for collimator test
@@ -234,12 +233,12 @@ def create_collimator_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarr
     collimator_rot_matrix: np.ndarray
     
     # Actual light field dimensions
-    field_width: float = x1 + x2
-    field_length: float = y1 + y2
+    field_length: float = x1 + x2
+    field_width: float = y1 + y2
 
     # Define path to move in based on extra umbras
-    width: float = field_width + 2*w_umbra
-    length: float = field_length * abs(2*l_umbra-1)
+    length: float = field_length + 2*w_umbra
+    width: float = field_width * abs(2*l_umbra-1)
     
     basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width)
     #basis_plane_path: list = paths.rectangle_path(est_isocenter, basis_points)
@@ -274,12 +273,12 @@ def create_gantry_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray,
     gantry_rot_matrix: np.ndarray
 
     # Actual light field dimensions
-    field_width: float = x1 + x2
-    field_length: float = y1 + y2
+    field_length: float = x1 + x2
+    field_width: float = y1 + y2
 
     # Define path to move in based on extra umbras
-    width: float = field_width + 2*w_umbra
-    length: float = field_length * abs(2*l_umbra-1)
+    length: float = field_length + 2*w_umbra
+    width: float = field_width * abs(2*l_umbra-1)
 
     #est_isocenter = est_isocenter + np.array([0.0, 0.0, y1+umbra/2])
     
@@ -367,7 +366,7 @@ def comments():
     #    coll_test_distance.append(distance)
     #    coll_test_light_data.append(light_intensity)
 
-    dr_offset, peaks = dp.calculate_gravity_angle(coll_test_scan_data) # Offset negative theta: CW
+    #dr_offset, peaks = dp.calculate_gravity_angle(coll_test_scan_data) # Offset negative theta: CW
 
     ## Rotate rectangle if needed
     #if angle != 0.0:
