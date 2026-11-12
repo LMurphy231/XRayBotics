@@ -6,8 +6,7 @@ import numpy as np
 FIT_HALF_WIDTH = 0.75
 
 # Sanity check that a beam is present: (max - min) of the scan must be at least this many times the
-# sample-to-sample noise. Gravity beams are a narrow bright spike (>100 in the data so far); the dimmer, wider
-# collimator beams come out at about 7-14, so they need a lower threshold.
+# sample-to-sample noise. 
 MIN_SNR = {"gravity": 15.0, "collimator": 6.0, "gantry": 6.0}
 
 
@@ -47,8 +46,7 @@ def _crossing(pos, s, intensity, a, b, decrement):
     Absolute position [x, y, z] where the intensity crosses the 50% decrement between adjacent samples a and b.
     Local line fit: a straight line is fitted (least squares) through the samples within FIT_HALF_WIDTH of the
     two-point crossing (always including a and b) and solved for the decrement. Falls back to the two-point
-    linear interpolation if the window holds only a and b, or if the fit is flat / reversed / lands outside
-    the bracket.
+    linear interpolation if the window holds only a and b
     """
     sc = s[a] + (decrement - intensity[a]) / (intensity[b] - intensity[a]) * (s[b] - s[a])
     idx = np.union1d(np.flatnonzero(np.abs(s - sc) <= FIT_HALF_WIDTH), [a, b])
@@ -95,7 +93,7 @@ def _split_index(intensity, test):
     raise ValueError("test must be 'gravity', 'collimator' or 'gantry'")
 
 
-def locate_center(pos, intensity, test="gravity"):
+def locate_center(pos, intensity, test):
     """
     Beam center [x, y, z] of one scan using the 50% decrement.
     The scan is split in two (see _split_index). In each half the 50% decrement comes from that half's own
@@ -130,7 +128,7 @@ def locate_center(pos, intensity, test="gravity"):
     return 0.5 * (rise + fall), rise, fall
 
 
-def calculate_angle(data, test="gravity"):
+def calculate_angle(data, test):
     """
     data : [side1, side2]
     test : 'gravity', 'collimator' or 'gantry' (selects how each scan is split, see _split_index)
