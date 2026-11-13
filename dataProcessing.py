@@ -132,7 +132,8 @@ def calculate_angle(data, test):
     """
     data : [side1, side2]
     test : 'gravity', 'collimator' or 'gantry' (selects how each scan is split, see _split_index)
-    Returns (theta_deg, [[left50,right50,center],[left50,right50,center]]),
+    Returns (theta_deg, [[left50,right50,center],[left50,right50,center]], ...
+    [[left50_distance,right50_distance,center_distance],[left50_distance,right50_distance,center_distance]]),
     where each 50% decrement and center is the absolute position [x, y, z]
     """
     pos1, I1 = unpack_side(data[0])
@@ -142,5 +143,16 @@ def calculate_angle(data, test):
     c1, rise1, fall1 = locate_center(pos1, I1, test)
     c2, rise2, fall2 = locate_center(pos2, I2, test)
 
-    theta = np.rad2deg(np.arctan((c1[axis2] - c2[axis2]) / (c1[axis1] - c2[axis1])))
-    return theta, ([rise1,fall1,c1],[rise2,fall2,c2])
+    c1_distance = np.linalg.norm(c1-pos1[0])
+    rise1_distance = np.linalg.norm(rise1-pos1[0])
+    fall1_distance = np.linalg.norm(fall1-pos1[0])
+    c2_distance = np.linalg.norm(c2-pos2[0])
+    rise2_distance = np.linalg.norm(rise2-pos2[0])
+    fall2_distance = np.linalg.norm(fall2-pos2[0])
+
+    if test == "gravity":
+        theta = np.rad2deg(np.arctan((c1[axis2] - c2[axis2]) / (c1[axis1] - c2[axis1])))
+    else: # test == collimator or gantry
+        theta = np.rad2deg(np.arctan2(c1[axis1] - c2[axis1],c1[axis2] - c2[axis2]))
+    return theta, ([rise1,fall1,c1],[rise2,fall2,c2]),([rise1_distance,fall1_distance,c1_distance],
+                                                       [rise2_distance,fall2_distance,c2_distance])
