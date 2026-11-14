@@ -79,9 +79,14 @@ class GUI:
         
         self._create_loggers()
         self.build()
-        
+
+        self._root.protocol('WM_DELETE_WINDOW', self._on_close)
         self._root.mainloop()
         self.ls.close()
+
+    def _on_close(self):
+        self.ls.close()
+        self._root.destroy()
 
     def build(self):
 

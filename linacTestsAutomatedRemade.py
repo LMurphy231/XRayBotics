@@ -70,18 +70,19 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
     
     # STORE: ANGLE BETWEEN Z (TRUE) AND AXIS
-    #dr_offset, peaks = dp.calculate_angle(grav_test_scan_data, "gravity") # Offset negative theta: CW\
-    
-    return grav_test_scan_data
-    atl_logger.info(f'GRAVITY TEST RESULTS: Offset angle about axis (CW): {dr_offset:.4f} degrees')
-    
-    if side == "left":
-        fr5.offset_add("Gravity", drx = dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)    
-    elif side == "right":
-        fr5.offset_add("Gravity", drx = -dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)  
-    elif side == "front":
-        fr5.offset_add("Gravity", dry = dr_offset) # Store offset for angle needed to adjust about x to align robot z-axis with true z-axis (gravity)  
-
+    try:
+        dr_offset, peaks = dp.calculate_angle(grav_test_scan_data, "gravity") # Offset negative theta: CW\
+        
+        atl_logger.info(f'GRAVITY TEST RESULTS: Offset angle about axis (CW): {dr_offset:.4f} degrees')
+        
+        if side == "left":
+            fr5.offset_add("Gravity", drx = dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)    
+        elif side == "right":
+            fr5.offset_add("Gravity", drx = -dr_offset) # Store offset for angle needed to adjust about Y to align robot z-axis with true z-axis (gravity)  
+        elif side == "front":
+            fr5.offset_add("Gravity", dry = dr_offset) # Store offset for angle needed to adjust about x to align robot z-axis with true z-axis (gravity)  
+    except BaseException as e:
+        print(f'ERROR IN GRAVITY TEST: {e}')
     atl_logger.info('GRAVITY TEST AUTOMATED COMPLETED')
     return grav_test_scan_data#, dr_offset
 
@@ -100,7 +101,7 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
 
     atl_logger.info('MOVING TO ESTIMATED ISOCENTER')
     est_isocenter: np.ndarray = np.array([x, y, z])
-    fr5._position_move(*est_isocenter)
+    fr5.move_to_isocenter()
 
     collimator_path_points = create_collimator_test_path_points(fr5, est_isocenter, x1, x2, y1, y2,  w_umbra, l_umbra, gantry_angle, collimator_angle, couch_angle)
     #collimator_path = paths.rectangle_path(est_isocenter, collimator_path_points) 
@@ -108,7 +109,7 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
 
     atl_logger.info('PERFORMING MOVEMENT AND SCAN IN PATH')
     move.execute_path(fr5, ls, collimator_path, coll_test_scan_data, Navg, step_length) # Move and scan in path according
-    fr5._position_move(*est_isocenter)
+    fr5.move_to_isocenter()
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
     
     #dr_offset, peaks = dp.calculate_gravity_angle(coll_test_scan_data, "collimator") # Offset negative theta: CW
@@ -130,9 +131,16 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
     dr_offset: float                    # Store angle offset about an axis (not Z)
     peaks: tuple [int, int]             # Peaks from Data Processing
 
+    rx_offset, ry_offset, rz_offset = fr5.offset[3:] # Floats
+    
+    # Set end effector sensor to face upwards (base direction is forward)
+    end_effector_direction: float = 90
+    fr5.set_end_effector_angle(end_effector_direction, gantry_angle, 0.0)
+    #fr5.set_end_effector_angle(end_effector_direction, gantry_angle + rx_offset, ry_offset, collimator_angle - couch_angle + rz_offset)
+    
     atl_logger.info('MOVING TO ESTIMATED ISOCENTER')
     est_isocenter: np.ndarray = np.array([x, y, z])
-    fr5._position_move(*est_isocenter)
+    fr5.move_to_isocenter()
 
     gantry_path_points = create_gantry_test_path_points(fr5, est_isocenter, x1, x2, y1, y2, gantry_angle, collimator_angle, couch_angle, w_umbra, l_umbra, height)
     gantry_path = paths.zigzag_path(est_isocenter, gantry_path_points) 
@@ -140,7 +148,7 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
 
     atl_logger.info('PERFORMING MOVEMENT AND SCAN IN PATH')
     move.execute_path(fr5, ls, gantry_path, gantry_test_scan_data, Navg, step_length)
-    fr5._position_move(*est_isocenter)
+    fr5.move_to_isocenter()
         
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
     #dr_offset, peaks = dp.calculate_gravity_angle(gantry_test_scan_data, "gantry") # Offset negative theta: CW
@@ -289,12 +297,13 @@ def create_gantry_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray,
     rx_offset, ry_offset, rz_offset = fr5.offset[3:] # Floats
 
     # Set end effector sensor to face upwards (base direction is forward)
-    end_effector_direction: float = -90
-    fr5.set_end_effector_angle(gantry_angle + rx_offset, end_effector_direction + ry_offset, collimator_angle - couch_angle + rz_offset)
+    end_effector_direction: float = 90
+    fr5.set_end_effector_angle(end_effector_direction, gantry_angle, 0.0)
+    #fr5.set_end_effector_angle(gantry_angle + rx_offset, end_effector_direction + ry_offset, collimator_angle - couch_angle + rz_offset)
     
-    rx_matrix = paths.get_rotation_matrix("x", gantry_angle, rx_offset)                     # Rotate path about x axis (Rotation about x axis to match with true z)
-    ry_matrix = paths.get_rotation_matrix("y", 0.0, ry_offset)                              # Rotate path about y axis (Rotation about y axis to match with true z)
-    rz_matrix = paths.get_rotation_matrix("z", collimator_angle - couch_angle, rz_offset)   # Rotate path about z axis (Rotation about z axis to match with couch angle)
+    rx_matrix = paths.get_rotation_matrix("x", 0.0, rx_offset)                                       # Rotate path about x axis (Rotation about x axis to match with true z)
+    ry_matrix = paths.get_rotation_matrix("y", gantry_angle, ry_offset)                              # Rotate path about y axis (Rotation about y axis to match with true z)
+    rz_matrix = paths.get_rotation_matrix("z", collimator_angle - couch_angle, rz_offset)            # Rotate path about z axis (Rotation about z axis to match with couch angle)
 
     gantry_path_offset_matrix = paths.get_rotation_matrix("y", 90, 0.0)     # Rotate path about y axis (main rotation about gantry)
     gantry_path_offset_matrix2 = paths.get_rotation_matrix("x", 90, 0.0)    # Rotate path about x axis (main rotation about gantry)

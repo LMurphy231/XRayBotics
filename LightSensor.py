@@ -49,29 +49,38 @@ class SensorManager:
 
     def read(self, navg=1):
         self._ready
+        print(f'Getting data!')
         with _record_lock:
             self.command_queue.put((_SINGLE, navg))
 
         time_data, light_data = self.return_queue.get()
         if light_data:
             with np.errstate(all='ignore'):
-                return time_data, float(np.average(light_data))
+                data =  float(np.average(light_data))
+                print(f'Data Recieved {data}')
+                return time_data, data
         else:
             return time_data, 0.0
 
     def close(self):
-        self.command_queue.put(_CLOSE)
-        self.process.join()
+        print()
+        if self.process.is_alive():
+            print(f'Closing')
+            self.command_queue.put(_CLOSE)
+            self.process.join()
+            
     
 @contextmanager
 def open_labquest():
     try:
         ls = lq.LabQuest()
-        ls.open()
+        state = ls.open()
+        print(f'Lab quest state {state}')
         ls.select_sensors(ch1="lq_sensor")
         ls.start(period = 0.01)
         yield ls
     finally:
+        print(f'Closing LabQuest')
         ls.stop()
         ls.close()
 
@@ -103,7 +112,9 @@ def _lq_process(command_queue:multiprocessing.Queue, return_queue:multiprocessin
                 command = None
 
             elif command == _SINGLE:
-                return_queue.put((time.time(), ls.read_multi_pt('ch1', navg) or []))
+                data = ls.read_multi_pt('ch1', navg) or []
+                print(f'DATA: {data}')
+                return_queue.put((time.time(), data))
                 command = None
 
             elif command == _CLOSE:

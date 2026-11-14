@@ -69,7 +69,7 @@ class RobotCom(RPC):
 
         while not self.is_connected():
             self.reconnect()
-        self.SingularAvoidEnd()
+        
         self.set_isocenter(self._get_tool_position())
 
         end_effector_offset = np.array([0.0, 0.0, 0.0])
@@ -285,7 +285,10 @@ class RobotCom(RPC):
 
     def move_position(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False, move_type='linear'):
         self._check_stop_interrupt()
-        self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
+        try:
+            self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
+        except BaseException as e:
+            print(e)
         #self.SingularAvoidStart(1, 0, 0, 10)
         
         end_effector_angle = self.end_effector_angle
@@ -575,6 +578,7 @@ class RobotCom(RPC):
             plotter.update()
 
     def update_live_plots_during_movement(self, event:threading.Event):
+        self.update_live_plots()
         while not event.is_set():
             time.sleep(0.25)
             self.update_live_plots()

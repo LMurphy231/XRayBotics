@@ -16,8 +16,8 @@ import RobotCommunicator as rc
 import LightSensor as lq
 import XRBPlotter as plt
 import settingshandler as settings
-from AutomatedTests import pathsRemade as pr
 import linacTestsAutomatedRemade as LinacTests
+import dataProcessing as dp
 
 
 class BasePage:
@@ -159,6 +159,17 @@ class TestResultsPage(BasePage):
             ymax = max(ymax, max(intensities))
 
         self.plotter2d._set_axis_limit(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax*1.05)
+        found_angle = None
+
+        try:
+            found_angle, notable_data = dp.calculate_angle(raw_data, test_type)
+
+            rise1, fall1, c1 = zip(*notable_data)
+            self.plotter3d.scatter(*zip(*rise1), marker = 'x', s=100, c='orange', label='Rise')
+            self.plotter3d.scatter(*zip(*fall1), marker = 'x', s=100, c='pink', label='Fall')
+            self.plotter3d.scatter(*zip(*c1)   , marker = 'x', s=100, c='red', label='Center')
+        except BaseException as e:
+            print(e)
 
         self.plotter2d.legend()
         self.plotter3d.legend()
@@ -167,9 +178,9 @@ class TestResultsPage(BasePage):
         self.plotter3d.update(autoscale=True)
         
 
-        self.update_comparison_frame(**inputs)
+        self.update_comparison_frame(found_angle, **inputs)
 
-    def update_comparison_frame(self, **kwargs):
+    def update_comparison_frame(self, found_angle=None, **kwargs):
     
         if self.input_frame is not None:
             self.input_frame.destroy()
@@ -193,6 +204,8 @@ class TestResultsPage(BasePage):
                 tk.Label(frame, text=str(value)).grid(row=index%max_rows, column=1+2*(index//max_rows), sticky=tk.W)
 
         create_frame(self.input_frame, kwargs)
+        if found_angle:
+            tk.Label(self.input_frame, text=f'Found Angle: {found_angle:.3f} Degrees').grid()
 
     def save_results(self, filename=None, tests:list=[]):
         
@@ -543,7 +556,9 @@ class GravityTest(TestPage):
 
         section = 'tests.gravity.variables'
         self.option_sections.append(section)
+        self.opts.add_option(section, 'navg'     , 5, tk.IntVar()      , display_name='Sensor Average Readings', units=''  , description='Number of data points recorded at a single point. The average of these points will be returned.')
         self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
+        
 
     def _create_parameter_frame(self, frame = None):
         if frame is None:
@@ -608,11 +623,16 @@ class GravityTest(TestPage):
             length      = self.opts.get(section, 'length').var.get()
             height      = self.opts.get(section, 'height').var.get()
             side        = self.opts.get(section, 'side').var.get()
+
+            section = 'tests.gravity.variables'
+            threshold = self.opts.get(section, 'threshold').var.get()
+            Navg = self.opts.get(section, 'navg').var.get()
+
         except:
             return
         
         self.robot.register_thread()
-        test_results = LinacTests.gravity_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, side, step_length=step_length, length=length, width=height)
+        test_results = LinacTests.gravity_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, side, step_length=step_length, length=length, width=height, Navg=Navg)
 
         
         if self.results_page is not None:
@@ -796,7 +816,7 @@ class CollimatorTest(TestPage):
             self.results_page.add_test('collimator', test_name, test_results, inputs)
 
 class GantryTest(TestPage):
-    def __init__(self, name, root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
+    def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
         description = """
         Description
         ___________
@@ -807,7 +827,8 @@ class GantryTest(TestPage):
 
         Press start.
         """
-        TestPage.__init__(self, name, root, robot, ls, opts, description=description)
+        results_page = CollimatorTestResultsPage(_root)
+        TestPage.__init__(self, name, _root, robot, ls, opts, description=description, results_page=results_page)
     
     def _default_settings(self):
         section = 'linac.jaws'
