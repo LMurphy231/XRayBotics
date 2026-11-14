@@ -5,7 +5,7 @@ import RobotCommunicator as RC
 import LightSensor as lq
 import AutomatedTests.pathMovement as move
 import AutomatedTests.pathsRemade as paths
-import dataProcessingGravity as dp
+import archive.dataProcessingGravity as dp
 
 import logging
 

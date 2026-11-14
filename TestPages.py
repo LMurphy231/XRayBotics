@@ -1,5 +1,4 @@
 import os
-import sys
 import inspect
 import logging
 import struct
@@ -191,39 +190,39 @@ class TestResultsPage(BasePage):
         self.update_comparison_frame(found_angle, **inputs)
 
     def update_comparison_frame(self, found_angle=None, **kwargs):
+
+        def create_frame(data, current_id=''):
+            for name, value in data.items():
+
+                if isinstance(value, dict):
+                    new_id = self.results_tree.insert(current_id, tk.END, text=name, open=True)
+                    create_frame(value, new_id)
+                else:
+                    self.results_tree.insert(current_id, tk.END, text=name, values=[value,], open=True)
+
+        if self.input_frame is not None:
+            self.input_frame.destroy()
         
-            if self.input_frame is not None:
-                self.input_frame.destroy()
-            
-            self.input_frame = tk.Frame(self.comparison_frame, borderwidth=2, relief=tk.GROOVE)
-            self.input_frame.pack(expand=True, fill=tk.BOTH)
+        self.input_frame = tk.Frame(self.comparison_frame, borderwidth=2, relief=tk.GROOVE)
+        self.input_frame.pack(expand=True, fill=tk.BOTH)
 
-            tk.Label(self.input_frame, text='Parameters used').pack(side=tk.TOP, expand=False, fill=tk.X)
-            self.results_tree = ttk.Treeview(self.input_frame, columns=('Value',), show='tree headings')
-            
-            self.results_tree.heading("#0", text="Input", anchor="w")
-            self.results_tree.column("#0", minwidth=200)
-            self.results_tree.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
+        tk.Label(self.input_frame, text='Parameters used').pack(side=tk.TOP, expand=False, fill=tk.X)
+        self.results_tree = ttk.Treeview(self.input_frame, columns=('Value',), show='tree headings')
+        
+        self.results_tree.heading("#0", text="Input", anchor="w")
+        self.results_tree.column("#0", minwidth=200)
+        self.results_tree.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
 
-            for i, header in enumerate(('Value',)):
-                self.results_tree.heading(header, text=header)
-                self.results_tree.column(i, width=100, minwidth=100)
-            
-            def create_frame(data, current_id=''):
-                
-                for name, value in data.items():
+        for i, header in enumerate(('Value',)):
+            self.results_tree.heading(header, text=header)
+            self.results_tree.column(i, width=100, minwidth=100)
 
-                    if isinstance(value, dict):
-                        new_id = self.results_tree.insert(current_id, tk.END, text=name, open=True)
-                        create_frame(value, new_id)
-                    else:
-                        index = self.results_tree.insert(current_id, tk.END, text=name, values=[value,], open=True)
-                    
-            create_frame(kwargs)
-            if isinstance(found_angle, float):
-                tk.Label(self.input_frame, text=f'Found Angle: {found_angle:.3f} Degrees').pack()
-            else:
-                tk.Label(self.input_frame, text=f'Unable to calculate angle due to:\n{found_angle}').pack()
+        create_frame(kwargs)
+
+        if isinstance(found_angle, float):
+            tk.Label(self.input_frame, text=f'Found Angle: {found_angle:.3f} Degrees').pack()
+        else:
+            tk.Label(self.input_frame, text=f'Unable to calculate angle due to:\n{found_angle}').pack()
                 
     def save_results(self, filename=None, tests:list=[]):
         
@@ -286,14 +285,16 @@ class TestResultsPage(BasePage):
 
     def _create_test_selection_frame(self, frame:tk.Frame) -> tk.Frame:
         test_selection_frame = tk.Frame(frame)
+
+        tk.Label(test_selection_frame, text='Test Result Selection').pack(side=tk.TOP, expand=False, fill=tk.X)
         self.test_selection = tk.Listbox(test_selection_frame, selectmode=tk.SINGLE, exportselection=False)
         self.test_selection.pack(side=tk.TOP, expand=True, fill=tk.X)
         self.test_selection.bind('<<ListboxSelect>>', self._change_selected_test)
 
         tk.Button(test_selection_frame, width=20, text='Open'              ,command=self.load_results,).pack(side=tk.TOP, expand=False, fill=None)
         tk.Button(test_selection_frame, width=20, text='Save Tests'        , command=self._prompt_save_window).pack(side=tk.TOP, expand=False, fill=None)
-        tk.Button(test_selection_frame, width=20, text='Clear Current Test', command=lambda: self.clear_tests(self.test_selection.curselection())).pack(side=tk.TOP, expand=False, fill=None)
         tk.Button(test_selection_frame, width=20, text='Rename Test'       , command=self._prompt_test_name_change).pack(side=tk.TOP, expand=False, fill=None)
+        tk.Button(test_selection_frame, width=20, text='Clear Current Test', command=lambda: self.clear_tests(self.test_selection.curselection())).pack(side=tk.TOP, expand=False, fill=None)
         
         return test_selection_frame
     

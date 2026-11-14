@@ -11,10 +11,12 @@ import numpy as np
 
 import RobotCommunicator as rc
 import LightSensor as ls
-import communications as com
 import XRBPlotter as plt
 import settingshandler as settings
 import TestPages as tp
+
+import PackageInstaller
+PackageInstaller.install_required()
 
 if os.path.basename(sys.executable) == 'pythonw.exe':
     sys.stdout = open(os.devnull, 'w')
@@ -28,7 +30,7 @@ def _create_styles(root):
     style.configure('Default.TButton', background="white",)
 
 INI = 'xrb.ini'
-class MovementLogHandler(logging.Handler):
+class GUILogHandler(logging.Handler):
     def __init__(self, level):
         self.log_text: list[tuple[float, int, str]] = []
         self.texts: list[tk.Text] = []
@@ -124,9 +126,9 @@ class GUI:
         self.settings_frame = tk.Frame(self._root)
     
     def _create_loggers(self):
-        self.movement_handlers: dict[str, MovementLogHandler] = {}
+        self.movement_handlers: dict[str, GUILogHandler] = {}
         for logger_name in ('Automated Tests', 'Moving', 'Scanning', 'Data Storage', 'Path Movement', 'Robot Communication', 'Joint Positions'):
-            handler = MovementLogHandler(logging.DEBUG)
+            handler = GUILogHandler(logging.DEBUG)
             handler.setFormatter(logging.Formatter('[%(levelname)-8s][%(asctime)s] - %(message)s', datefmt='%H:%M:%S'))
             logger = logging.getLogger(logger_name)
             logger.setLevel(logging.DEBUG)
@@ -485,25 +487,6 @@ def _write_to_textbox(textbox:tk.Text, message, endswith='\n', end_state=tk.DISA
 def _reset_var(value, *vars: tk.Variable):
     for var in vars:
         var.set(value)
-
-# region Logging setup
-def _create_debug_logger(log_file=None):
-    debug_logger = logging.getLogger('Debug Logger')
-    debug_logger.setLevel(logging.DEBUG)
-    if log_file:
-        log_handler = logging.FileHandler(log_file, mode='w' if __name__ == '__main__' else 'a')
-        log_handler.setFormatter(logging.Formatter('%(threadName)s - %(name)s - %(levelname)s - %(message)s'))
-        debug_logger.addHandler(log_handler)
-
-    stdout = logging.StreamHandler(sys.stdout)
-    stdout.setFormatter(logging.Formatter('%(threadName)s - %(name)s - %(levelname)s - %(message)s'))
-    debug_logger.addHandler(stdout)
-
-_create_debug_logger()
-    
-debug_logger = logging.getLogger('Debug Logger')
-debug_logger.propagate = False
-
 
 if __name__ == '__main__':
     GUI()

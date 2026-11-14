@@ -16,6 +16,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
 def copy_params(source: Callable[P, Any]) -> Callable[[Callable[..., R]], Callable[P, R]]:
     def decorator(target: Callable[..., R]) -> Callable[P, R]:
         return target

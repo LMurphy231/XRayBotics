@@ -1,5 +1,3 @@
-import atexit
-import os
 import multiprocessing
 import threading
 import time
@@ -22,7 +20,8 @@ class SensorManager:
         self.command_queue = multiprocessing.Queue()
         self.return_queue  = multiprocessing.Queue()
         self.ready_flag    = multiprocessing.Event()
-        self.process = multiprocessing.Process(target=_lq_process, args=(self.command_queue, self.return_queue, self.ready_flag, freq), daemon=True)
+        self.exit_flag     = multiprocessing.Event()
+        self.process = multiprocessing.Process(target=_lq_process, args=(self.command_queue, self.return_queue, self.ready_flag, self.exit_flag, freq), daemon=True)
         self.process.start()
 
     @property
@@ -49,7 +48,6 @@ class SensorManager:
 
     def read(self, navg=1):
         self._ready
-        print(f'Getting data!')
         with _record_lock:
             self.command_queue.put((_SINGLE, navg))
 
@@ -57,35 +55,39 @@ class SensorManager:
         if light_data:
             with np.errstate(all='ignore'):
                 data =  float(np.average(light_data))
-                print(f'Data Recieved {data}')
                 return time_data, data
         else:
             return time_data, 0.0
 
     def close(self):
-        print()
+        self.exit_flag.set()
         if self.process.is_alive():
-            print(f'Closing')
             self.command_queue.put(_CLOSE)
             self.process.join()
             
     
 @contextmanager
-def open_labquest():
+def open_labquest(exit_flag: threading.Event):
     try:
         ls = lq.LabQuest()
         state = ls.open()
-        print(f'Lab quest state {state}')
+        while state:
+            if exit_flag.is_set():
+                break
+            ls = lq.LabQuest()
+            state = ls.open()
+            time.sleep(0.1)
         ls.select_sensors(ch1="lq_sensor")
         ls.start(period = 0.01)
         yield ls
     finally:
-        print(f'Closing LabQuest')
         ls.stop()
         ls.close()
 
-def _lq_process(command_queue:multiprocessing.Queue, return_queue:multiprocessing.Queue, ready_flag:threading.Event, freq=5000):
-    with open_labquest() as ls:
+def _lq_process(command_queue:multiprocessing.Queue, return_queue:multiprocessing.Queue, ready_flag:threading.Event, exit_flag: threading.Event, freq=5000):
+    with open_labquest(exit_flag) as ls:
+        if exit_flag.is_set():
+            return
         command = None
         light_data = []
         time_data  = []
@@ -113,7 +115,6 @@ def _lq_process(command_queue:multiprocessing.Queue, return_queue:multiprocessin
 
             elif command == _SINGLE:
                 data = ls.read_multi_pt('ch1', navg) or []
-                print(f'DATA: {data}')
                 return_queue.put((time.time(), data))
                 command = None
 
