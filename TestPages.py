@@ -3,6 +3,7 @@ import sys
 import inspect
 import logging
 import struct
+import traceback
 
 import threading
 import tkinter as tk
@@ -162,51 +163,68 @@ class TestResultsPage(BasePage):
         found_angle = None
 
         try:
-            found_angle, notable_data = dp.calculate_angle(raw_data, test_type)
+            found_angle, notable_data_3d, notable_data_2d = dp.calculate_angle(raw_data, test_type)
 
-            rise1, fall1, c1 = zip(*notable_data)
+            rise1, fall1, c1 = zip(*notable_data_3d)
             self.plotter3d.scatter(*zip(*rise1), marker = 'x', s=100, c='orange', label='Rise')
             self.plotter3d.scatter(*zip(*fall1), marker = 'x', s=100, c='pink', label='Fall')
             self.plotter3d.scatter(*zip(*c1)   , marker = 'x', s=100, c='red', label='Center')
+
+            rise1, fall1, c1 = zip(*notable_data_2d)
+            self.plotter2d.scatter(*rise1, marker = 'x', s=100, c='orange', label='Rise')
+            self.plotter2d.scatter(*fall1, marker = 'x', s=100, c='pink'  , label='Fall')
+            self.plotter2d.scatter(*c1   , marker = 'x', s=100, c='red'   , label='Center')
+
         except BaseException as e:
-            print(e)
+            print(traceback.print_exception(e))
+            found_angle = str(e)
 
         self.plotter2d.legend()
+        self.plotter2d.label_axis(xlabel='Movement Distance (mm)', ylabel='Light Intensity (lumen)')
+
         self.plotter3d.legend()
-        
+        self.plotter3d.label_axis(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
+
         self.plotter2d.update(keep_axis=False)
         self.plotter3d.update(autoscale=True)
-        
 
         self.update_comparison_frame(found_angle, **inputs)
 
     def update_comparison_frame(self, found_angle=None, **kwargs):
-    
-        if self.input_frame is not None:
-            self.input_frame.destroy()
         
-        self.input_frame = tk.Frame(self.comparison_frame, borderwidth=2, relief=tk.GROOVE)
-        self.input_frame.pack(expand=True, fill=tk.BOTH)
+            if self.input_frame is not None:
+                self.input_frame.destroy()
+            
+            self.input_frame = tk.Frame(self.comparison_frame, borderwidth=2, relief=tk.GROOVE)
+            self.input_frame.pack(expand=True, fill=tk.BOTH)
 
-        def create_frame(frame:tk.Frame, data):
-            max_rows = 3
-            n_internal_frames = 0
-            for index, (name, value) in enumerate(data.items()):
-                index -= n_internal_frames
-                frame.grid_columnconfigure(index%max_rows, weight=1)
-                if isinstance(value, dict):
-                    n_internal_frames += 1
-                    new_frame = tk.LabelFrame(frame, text=name, labelanchor=tk.N)
-                    new_frame.grid(row=n_internal_frames*max_rows, column=2*(n_internal_frames//max_rows), columnspan=2, sticky=tk.NSEW, pady=15)
-                    create_frame(new_frame, value)
-                    continue
-                tk.Label(frame, text=f'{name}:').grid(row=index%max_rows, column=2*(index//max_rows), sticky=tk.W)
-                tk.Label(frame, text=str(value)).grid(row=index%max_rows, column=1+2*(index//max_rows), sticky=tk.W)
+            tk.Label(self.input_frame, text='Parameters used').pack(side=tk.TOP, expand=False, fill=tk.X)
+            self.results_tree = ttk.Treeview(self.input_frame, columns=('Value',), show='tree headings')
+            
+            self.results_tree.heading("#0", text="Input", anchor="w")
+            self.results_tree.column("#0", minwidth=200)
+            self.results_tree.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
 
-        create_frame(self.input_frame, kwargs)
-        if found_angle:
-            tk.Label(self.input_frame, text=f'Found Angle: {found_angle:.3f} Degrees').grid()
+            for i, header in enumerate(('Value',)):
+                self.results_tree.heading(header, text=header)
+                self.results_tree.column(i, width=100, minwidth=100)
+            
+            def create_frame(data, current_id=''):
+                
+                for name, value in data.items():
 
+                    if isinstance(value, dict):
+                        new_id = self.results_tree.insert(current_id, tk.END, text=name, open=True)
+                        create_frame(value, new_id)
+                    else:
+                        index = self.results_tree.insert(current_id, tk.END, text=name, values=[value,], open=True)
+                    
+            create_frame(kwargs)
+            if isinstance(found_angle, float):
+                tk.Label(self.input_frame, text=f'Found Angle: {found_angle:.3f} Degrees').pack()
+            else:
+                tk.Label(self.input_frame, text=f'Unable to calculate angle due to:\n{found_angle}').pack()
+                
     def save_results(self, filename=None, tests:list=[]):
         
         if filename is None:
@@ -269,15 +287,13 @@ class TestResultsPage(BasePage):
     def _create_test_selection_frame(self, frame:tk.Frame) -> tk.Frame:
         test_selection_frame = tk.Frame(frame)
         self.test_selection = tk.Listbox(test_selection_frame, selectmode=tk.SINGLE, exportselection=False)
-        self.test_selection.grid(row=0, column=0, sticky=tk.NSEW)
+        self.test_selection.pack(side=tk.TOP, expand=True, fill=tk.X)
         self.test_selection.bind('<<ListboxSelect>>', self._change_selected_test)
 
-        tk.Button(test_selection_frame, command=self.load_results, text='Open').grid(row=1, column=0, sticky=tk.NSEW)
-        tk.Button(test_selection_frame, text='Save Tests', command=self._prompt_save_window).grid(row=2, column=0, sticky=tk.NSEW)
-
-        tk.Button(test_selection_frame, text='Clear Current Test', command=lambda: self.clear_tests(self.test_selection.curselection())).grid(row=3, column=0, sticky=tk.NSEW)
-
-        tk.Button(test_selection_frame, text='Rename Test', command=self._prompt_test_name_change).grid(row=4, column=0, sticky=tk.NSEW)
+        tk.Button(test_selection_frame, width=20, text='Open'              ,command=self.load_results,).pack(side=tk.TOP, expand=False, fill=None)
+        tk.Button(test_selection_frame, width=20, text='Save Tests'        , command=self._prompt_save_window).pack(side=tk.TOP, expand=False, fill=None)
+        tk.Button(test_selection_frame, width=20, text='Clear Current Test', command=lambda: self.clear_tests(self.test_selection.curselection())).pack(side=tk.TOP, expand=False, fill=None)
+        tk.Button(test_selection_frame, width=20, text='Rename Test'       , command=self._prompt_test_name_change).pack(side=tk.TOP, expand=False, fill=None)
         
         return test_selection_frame
     
