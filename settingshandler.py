@@ -275,11 +275,6 @@ class OptionTree:
 
         widget.focus()
         
-        
-        # Pre-populate entry with the current value
-        #current_val = self.tree.item(row_id, "values")[col_index]
-        #entry.insert(0, current_val)
-        
 
         # Inner function to save the new value
         def save_edit(widget, event_obj:tk.Event=None, var:tk.Variable=None):

@@ -37,8 +37,8 @@ class RobotCom(RPC):
         self.logger = logging.getLogger('Robot Communication')
         self.joint_logger = logging.getLogger('Joint Positions')
         
-        self.error_label = self.user_input_window = None
         self.opts = opts
+        self.is_conect = False
 
         self.plotters: list[plt.Plotter] = []
         self.lines   : list[tuple]       = []
@@ -143,6 +143,7 @@ class RobotCom(RPC):
             raise InterruptedError(f'{threading.current_thread().name} was interrupted.')
         
     def is_connected(self):
+        return self.is_conect
         try:
             err, [mainerr, suberr] = self.GetRobotErrorCode()
             return True
@@ -191,10 +192,6 @@ class RobotCom(RPC):
 
     def _clear_error(self):
         ierr = self.ResetAllError()
-        if self.user_input_window:
-            self.user_input_window.destroy()
-        self.user_input_window = None
-        self.error_label = None
     
     def move_increment(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, in_thread=False, move_type='linear'):
         '''
@@ -398,15 +395,15 @@ class RobotCom(RPC):
 
         return joint_path
 
-    def move_to_isocenter(self):
+    def move_to_isocenter(self, in_thread=True):
         self.logger.info('Moving to isocenter')
         self.stop()
-        self.move_position(0.0, 0.0, 0.0, in_thread=True)
+        self.move_position(0.0, 0.0, 0.0, in_thread=in_thread)
 
-    def move_to_home(self):
+    def move_to_home(self, in_thread=True):
         self.logger.debug('Moving to home position')
         self.stop()
-        self.move_joint(self.HOME, in_thread=True)
+        self.move_joint(self.HOME, in_thread=in_thread)
 
     def _get_tool_position(self):
         if self.is_connected():
@@ -417,10 +414,13 @@ class RobotCom(RPC):
 
     def _get_joint_angles(self, degrees=True, flag=1):
         try:
-            if degrees:
-                joint_pos = self.GetActualJointPosDegree(flag)
+            if self.is_connected():
+                if degrees:
+                    joint_pos = self.GetActualJointPosDegree(flag)
+                else:
+                    joint_pos = self.GetActualJointPosRadian(flag)
             else:
-                joint_pos = self.GetActualJointPosRadian(flag)
+                joint_pos = -4
             if isinstance(joint_pos, int):
                 return 0, 0, 0, 0, 0, 0
         except:
@@ -556,7 +556,7 @@ class RobotCom(RPC):
     def register_live_plotter(self, plotter: plt.Plotter):
         if plotter not in self.plotters:
             joint_pos = self._get_joint_angles(False)
-            plot_line, scatter_line = plotter.plot_robot(self.DH, joint_pos, clear=False, update=True)
+            plot_line, scatter_line = plotter.plot_robot(self.DH, joint_pos, update=True)
 
             self.plotters.append(plotter)
             self.lines.append((plot_line, scatter_line))
@@ -571,6 +571,8 @@ class RobotCom(RPC):
                 # Remove lines from figure
                 plot_line.remove()
                 scatter_line.remove()
+                del plot_line
+                del scatter_line
             except:
                 pass
 
@@ -590,14 +592,14 @@ class RobotCom(RPC):
         joint_pos = self._get_joint_angles(False)
         self.joint_logger.debug(f'Joint Position: {", ".join([f"{angle:>.3f}" for angle in joint_pos])}')
         for plotter, (plot_line, scatter_line) in zip(self.plotters, self.lines):
-            plotter.plot_robot(self.DH, joint_pos,plot_line=plot_line, scatter_line=scatter_line, clear=False, update=True,)
+            plotter.plot_robot(self.DH, joint_pos,plot_line=plot_line, scatter_line=scatter_line, update=True,)
 
     def plot_current_position(self, plotter: plt.Plotter):
         joint_pos = self._get_joint_angles(False)
         plotter.plot_robot(self.DH, joint_pos)
 
-    def plot_new_position(self, new_pos, plotter: plt.Plotter):
+    def plot_new_position(self, new_pos, plotter: plt.Plotter, name='Estimated Next Position', color='orange'):
         joint_pos = self.GetInverseKin(0, new_pos)
         if isinstance(joint_pos, int):
             return 
-        plotter.plot_robot(self.DH, joint_pos)
+        plotter.plot_robot(self.DH, joint_pos, name=name, color=color)

@@ -76,10 +76,12 @@ class TestResultsPage(BasePage):
         self.type = type_.lower()
         self.kwargs = kwargs
         self.input_frame = None
-
+        self.lines = {}
         self.current_results = None
         self.loaded_results = []
         self.close_button = tk.Button(self.root, text='Close',)
+        self.show_edge_var = tk.BooleanVar(value=True)
+        self.show_center_var = tk.BooleanVar(value=True)
         self.build()
 
     def add_test(self, test_type, test_name, test_results, inputs):
@@ -133,8 +135,8 @@ class TestResultsPage(BasePage):
     
     def update(self, test_type, test_name, raw_data, inputs):
         self.current_results = (test_type, test_name, raw_data, inputs)
-        self.plotter2d.clear()
-        self.plotter3d.clear()
+        #self.plotter2d.clear()
+        #self.plotter3d.clear()
 
         self.plotter2d.grid(True)
         self.plotter3d.grid(True)
@@ -147,11 +149,11 @@ class TestResultsPage(BasePage):
         for i, movement_results in enumerate(raw_data):
             position, distance, intensities = map(list, zip(*movement_results))
             
-            
-            self.plotter2d.scatter(x=distance, y=intensities, label=f'Movement {i}')
+            label = f'Movement {i}'
+            self.lines[label+'2d'] = self.plotter2d.plot(distance, intensities, label=label, existing_line=self.lines.get(label+'2d', None))[0]
 
             x, y, z = map(list, zip(*position))
-            self.plotter3d.scatter(x, y, z, c=intensities, cmap='viridis', label=f'Movement {i}')
+            self.lines[label+'3d'] = self.plotter3d.scatter(x, y, z, c=intensities, cmap='viridis', label=label, existing_line=self.lines.get(label+'3d', None))
 
             xmin = min(xmin, distance[0])
             xmax = max(xmax, distance[-1])
@@ -162,17 +164,26 @@ class TestResultsPage(BasePage):
         found_angle = None
 
         try:
-            found_angle, notable_data_3d, notable_data_2d = dp.calculate_angle(raw_data, test_type)
+            found_angle, notable_data_3d, notable_data_2d, intensities = dp.calculate_angle(raw_data, test_type)
 
-            rise1, fall1, c1 = zip(*notable_data_3d)
-            self.plotter3d.scatter(*zip(*rise1), marker = 'x', s=100, c='orange', label='Rise')
-            self.plotter3d.scatter(*zip(*fall1), marker = 'x', s=100, c='pink', label='Fall')
-            self.plotter3d.scatter(*zip(*c1)   , marker = 'x', s=100, c='red', label='Center')
+            if self.show_edge_var.get():
+                rise1, fall1, c1 = zip(*notable_data_3d)
+                label='Rise'
+                self.lines[label] = self.plotter3d.scatter(*zip(*rise1), marker = 'x', s=100, c='orange', label=label, existing_line=self.lines.get(label, None))
+                label='Fall'  
+                self.lines[label] = self.plotter3d.scatter(*zip(*fall1), marker = 'x', s=100, c='pink'  , label=label, existing_line=self.lines.get(label, None))
+                label='Center'
+                self.lines[label] = self.plotter3d.scatter(*zip(*c1)   , marker = 'x', s=100, c='red'   , label=label, existing_line=self.lines.get(label, None))
 
             rise1, fall1, c1 = zip(*notable_data_2d)
-            self.plotter2d.scatter(*rise1, marker = 'x', s=100, c='orange', label='Rise')
-            self.plotter2d.scatter(*fall1, marker = 'x', s=100, c='pink'  , label='Fall')
-            self.plotter2d.scatter(*c1   , marker = 'x', s=100, c='red'   , label='Center')
+            for i, (x, center, intensity) in enumerate(zip(zip(rise1, fall1), c1, intensities)):
+                label = f'Edges {i}'
+                self.lines[label] = self.plotter2d.plot(x, intensity, marker = 'x', markersize=10, label=f'Edges {i}', linewidth=0.0, existing_line=self.lines.get(label, None))[0]
+                self.lines[label].set_visible(self.show_edge_var.get())
+
+                label = f'Center {i}'
+                self.lines[label] = self.plotter2d.axvline(center, linestyle='--', label=label, existing_line=self.lines.get(label, None))
+                self.lines[label].set_visible(self.show_center_var.get())
 
         except BaseException as e:
             print(traceback.print_exception(e))
@@ -275,12 +286,16 @@ class TestResultsPage(BasePage):
         plotter_2d_frame = tk.Frame(plotter_notebook)
         plotter_notebook.add(plotter_2d_frame, text='2D Plotter')
         self.plotter2d = plt.Plotter(plotter_2d_frame, row=0, column=0)
-        
+
+        self.plotter2d.add_menu_option(label='Show Edges', command=lambda: self.update(*self.current_results) if self.current_results else None, var=self.show_edge_var)
+        self.plotter2d.add_menu_option(label='Show Centers', command=lambda: self.update(*self.current_results) if self.current_results else None, var=self.show_center_var)
 
         plotter_3d_frame = tk.Frame(plotter_notebook)
         plotter_notebook.add(plotter_3d_frame, text='3D Plotter')
         self.plotter3d = plt.Plotter(plotter_3d_frame, projection='3d', row=0, column=0)
-        
+
+        self.plotter3d.add_menu_option(label='Show Edges', command=lambda: self.update(*self.current_results) if self.current_results else None, var=self.show_edge_var)
+        self.plotter3d.add_menu_option(label='Show Centers', command=lambda: self.update(*self.current_results) if self.current_results else None, var=self.show_center_var)
         return plotter_frame
 
     def _create_test_selection_frame(self, frame:tk.Frame) -> tk.Frame:
@@ -295,7 +310,7 @@ class TestResultsPage(BasePage):
         tk.Button(test_selection_frame, width=20, text='Save Tests'        , command=self._prompt_save_window).pack(side=tk.TOP, expand=False, fill=None)
         tk.Button(test_selection_frame, width=20, text='Rename Test'       , command=self._prompt_test_name_change).pack(side=tk.TOP, expand=False, fill=None)
         tk.Button(test_selection_frame, width=20, text='Clear Current Test', command=lambda: self.clear_tests(self.test_selection.curselection())).pack(side=tk.TOP, expand=False, fill=None)
-        
+
         return test_selection_frame
     
     def _change_selected_test(self, event:tk.Event):
@@ -523,10 +538,12 @@ class TestPage(BasePage):
         Default None
         """
         plotter_frame = tk.Frame(frame)
+        
+        self.plotter = plt.Plotter(plotter_frame, projection='3d')
+
         if self.robot is not None:
             live_var = tk.BooleanVar(value=True)
-            tk.Checkbutton(plotter_frame, variable=live_var, command=lambda: self.robot.register_live_plotter(self.plotter) if live_var.get() else self.robot.unregister_live_plotter(self.plotter), text='Show Live Robot Posiiton',).pack(side=tk.TOP)#.grid(row=0, column=5)
-        self.plotter = plt.Plotter(plotter_frame, projection='3d')
+            self.plotter.add_menu_option(label='Show Live Robot Posiiton', var=live_var, command=lambda: self.robot.register_live_plotter(self.plotter) if live_var.get() else self.robot.unregister_live_plotter(self.plotter))
         
                 
         return plotter_frame
@@ -575,7 +592,6 @@ class GravityTest(TestPage):
         self.option_sections.append(section)
         self.opts.add_option(section, 'navg'     , 5, tk.IntVar()      , display_name='Sensor Average Readings', units=''  , description='Number of data points recorded at a single point. The average of these points will be returned.')
         self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
-        
 
     def _create_parameter_frame(self, frame = None):
         if frame is None:
@@ -609,29 +625,9 @@ class GravityTest(TestPage):
         except:
             return
 
-        isocenter = np.array([0.,0.,0.])
         points = LinacTests.create_gravity_test_path_points(self.robot, self.robot.isocenter[:3], length, height, side)
-        #points = pr.calculate_four_points_rectangle(isocenter, length, height, 'y','z')
-        #points = pr.rotate_points(points, theta, 'y', 'z')
-
-        #self.plotter.clear()
-
-        self.plotter.plot_path('gravity path', points, isocenter)
-        #self.plotter.scatter(*isocenter)
-#
-#
-        #try:
-        #    prev_point = points[0]
-        #except BaseException as e:
-        #    logging.critical(f'{e}')
-        #    return
-        #self.plotter.scatter(*prev_point)
-        #for point in points[1:]:
-        #    self.plotter.scatter(*point)
-        #    self.plotter.plot(*zip(prev_point, point))
-        #    prev_point = point
-
-        self.plotter._update()
+        self.plotter.plot_path('gravity path', points, self.robot.isocenter[:3], label='Gravity Path')
+        self.plotter.update()
         
     def start(self):
         try:
@@ -769,19 +765,8 @@ class CollimatorTest(TestPage):
             return
         isocenter = self.robot.isocenter[:3]
         points = LinacTests.create_collimator_test_path_points(self.robot, isocenter, x1, x2, y1, y2, w_umbra, l_umbra, gantry_angle, collimator_angle, couch_angle)
-        
-        #self.plotter.clear()
         self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle-couch_angle)
-        self.plotter.plot_path('collimator path', points, isocenter)
-        #self.plotter.scatter(*isocenter)
-#
-        #prev_point = points[0]
-        #self.plotter.scatter(*prev_point)
-        #for point in points[1:]:
-        #    self.plotter.scatter(*point)
-        #    self.plotter.plot(*zip(prev_point, point))
-        #    prev_point = point
-
+        self.plotter.plot_path('Collimator Path', points, isocenter)
         self.plotter._update()
 
     def start(self):
@@ -938,20 +923,8 @@ class GantryTest(TestPage):
         
         isocenter = self.robot.isocenter[:3]
         points = LinacTests.create_gantry_test_path_points(self.robot, isocenter, x1, x2, y1, y2, gantry_angle, collimator_angle, couch_angle, w_umbra, l_umbra, height)
-
-        #self.plotter.clear()
-        self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle)
-
-        self.plotter.plot_path('gantry path', points, isocenter)
-        #self.plotter.scatter(*isocenter)
-#
-        #prev_point = points[0]
-        #self.plotter.scatter(*prev_point)
-        #for point in points[1:]:
-        #    self.plotter.scatter(*point)
-        #    self.plotter.plot(*zip(prev_point, point))
-        #    prev_point = point
-
+        self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle, origin=isocenter)
+        self.plotter.plot_path('Gantry Path', points, isocenter)
         self.plotter._update()
 
     def start(self):

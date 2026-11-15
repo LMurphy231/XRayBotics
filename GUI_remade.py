@@ -179,6 +179,11 @@ class GUI:
         plotter_frame = tk.Frame(frame)
         plotter_frame.grid(row=0, column=2, sticky=tk.NSEW)
         self.robot_plotter = plt.Plotter(plotter_frame, '3d')
+        self.robot_plotter._set_axis_limit(-500,500,-500,500,-500,500)
+        self.robot.register_live_plotter(self.robot_plotter)
+
+        estimated_name = 'Estimated Next Position'
+        estimated_color = 'orange'
 
 
         var_names = ['x', 'y', 'z', 'rx', 'ry', 'rz']
@@ -211,7 +216,7 @@ class GUI:
         minior_frames = (tk.Frame(sub_frame), tk.Frame(sub_frame))
         
         incriment_vars = []
-        incriment_function = lambda e=None: self.robot.plot_new_position(self.robot._get_incriment_pos(*[var.get() for var in incriment_vars]), self.robot_plotter)
+        incriment_function = lambda e=None: self.robot.plot_new_position(self.robot._get_incriment_pos(*[var.get() for var in incriment_vars]), self.robot_plotter, name=estimated_name, color=estimated_color)
 
         for index, var_name in enumerate(var_names):
             var = tk.DoubleVar(value=0.0)
@@ -253,7 +258,7 @@ class GUI:
         move_type_notebook.add(sub_frame, text='Joint Movement')
         minior_frames = (tk.Frame(sub_frame), tk.Frame(sub_frame))
         joint_vars = []
-        joint_function = lambda e=None: self.robot_plotter.plot_robot(self.robot.DH, [np.deg2rad(var.get()) for var in joint_vars])
+        joint_function = lambda e=None: self.robot_plotter.plot_robot(self.robot.DH, [np.deg2rad(var.get()) for var in joint_vars], name=estimated_name, color=estimated_color)
         for index, (set_angle, (min_, max_)) in enumerate(zip(self.robot.HOME, self.robot.AXIS_LIMIT)):
             var_name = f'joint{index}'
             var = tk.DoubleVar(value=set_angle)
@@ -300,8 +305,6 @@ class GUI:
         reset_var_button = tk.Button(button_frame, text='Reset Position')
         reset_var_button.grid(row=1, column=0, sticky=tk.NSEW)
         
-        
-
         tk.Button(button_frame, text='Stop Robot'   , command = self.robot.interrupt_threads).grid(row=0, column=1, sticky=tk.NSEW)
         tk.Button(button_frame, text='Clear Error'  , command = lambda: print(self.robot.ResetAllError())).grid(row=4, column=1, sticky=tk.NSEW)
         tk.Button(button_frame, text='Got to isocenter'  , command = self.robot.move_to_isocenter).grid(row=1, column=2, sticky=tk.NSEW)

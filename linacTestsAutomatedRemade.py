@@ -57,7 +57,7 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
   
     atl_logger.info('MOVING TO ESTIMATED ISOCENTER')     
     est_isocenter: np.ndarray = np.array([x, y, z])
-    fr5._position_move(*est_isocenter)
+    fr5.move_to_isocenter(False)
 
     grav_path_points = create_gravity_test_path_points(fr5, est_isocenter, length, width, side)
     grav_path = paths.zigzag_path(est_isocenter, grav_path_points)
@@ -65,7 +65,7 @@ def gravity_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, y: 
     # Move the robot and scan in the defined path
     atl_logger.info('PERFORMING MOVEMENT AND SCAN IN PATH') 
     move.execute_path(fr5, ls, grav_path, grav_test_scan_data, Navg, step_length)
-    fr5._position_move(*est_isocenter)
+    fr5.move_to_isocenter(False)
     
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
     
@@ -101,7 +101,7 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
 
     atl_logger.info('MOVING TO ESTIMATED ISOCENTER')
     est_isocenter: np.ndarray = np.array([x, y, z])
-    fr5.move_to_isocenter()
+    fr5.move_to_isocenter(False)
 
     collimator_path_points = create_collimator_test_path_points(fr5, est_isocenter, x1, x2, y1, y2,  w_umbra, l_umbra, gantry_angle, collimator_angle, couch_angle)
     #collimator_path = paths.rectangle_path(est_isocenter, collimator_path_points) 
@@ -109,7 +109,7 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
 
     atl_logger.info('PERFORMING MOVEMENT AND SCAN IN PATH')
     move.execute_path(fr5, ls, collimator_path, coll_test_scan_data, Navg, step_length) # Move and scan in path according
-    fr5.move_to_isocenter()
+    fr5.move_to_isocenter(False)
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
     
     #dr_offset, peaks = dp.calculate_gravity_angle(coll_test_scan_data, "collimator") # Offset negative theta: CW
@@ -140,7 +140,7 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
     
     atl_logger.info('MOVING TO ESTIMATED ISOCENTER')
     est_isocenter: np.ndarray = np.array([x, y, z])
-    fr5.move_to_isocenter()
+    fr5.move_to_isocenter(False)
 
     gantry_path_points = create_gantry_test_path_points(fr5, est_isocenter, x1, x2, y1, y2, gantry_angle, collimator_angle, couch_angle, w_umbra, l_umbra, height)
     gantry_path = paths.zigzag_path(est_isocenter, gantry_path_points) 
@@ -148,7 +148,7 @@ def gantry_test_automated(fr5: RC.RobotCom, ls:lq.SensorManager, x, y, z, x1:flo
 
     atl_logger.info('PERFORMING MOVEMENT AND SCAN IN PATH')
     move.execute_path(fr5, ls, gantry_path, gantry_test_scan_data, Navg, step_length)
-    fr5.move_to_isocenter()
+    fr5.move_to_isocenter(False)
         
     atl_logger.info('MOVEMENT COMPLETED, PROCESSING SCAN DATA')
     #dr_offset, peaks = dp.calculate_gravity_angle(gantry_test_scan_data, "gantry") # Offset negative theta: CW
