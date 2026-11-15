@@ -99,7 +99,8 @@ def locate_center(pos, intensity, test):
     The scan is split in two (see _split_index). In each half the 50% decrement comes from that half's own
     max and min: decrement = (max + min) / 2. The first half gives the rising edge, the second half the falling
     edge, each located by the local line fit in _crossing. The center is the midpoint of the two crossings.
-    Returns (center, rise, fall), each an absolute position [x, y, z].
+    Returns (center, rise, fall, rise_intensity, fall_intensity)
+    center, rise, and fall are [x, y, z] absolute position
     """
     n = len(intensity)
     if test not in MIN_SNR:
@@ -125,7 +126,7 @@ def locate_center(pos, intensity, test):
 
     rise = _crossing(pos, s, intensity, i - 1, i, decrement1)
     fall = _crossing(pos, s, intensity, j, j + 1, decrement2)
-    return 0.5 * (rise + fall), rise, fall
+    return 0.5 * (rise + fall), rise, fall, decrement1, decrement2
 
 
 def calculate_angle(data, test):
@@ -133,15 +134,15 @@ def calculate_angle(data, test):
     data : [side1, side2]
     test : 'gravity', 'collimator' or 'gantry' (selects how each scan is split, see _split_index)
     Returns (theta_deg, [[left50,right50,center],[left50,right50,center]], ...
-    [[left50_distance,right50_distance,center_distance],[left50_distance,right50_distance,center_distance]]),
-    where each 50% decrement and center is the absolute position [x, y, z]
+    [[left50_distance,right50_distance,center_distance],[left50_distance,right50_distance,center_distance]], ...
+    [left50_intensity, right50_intensity], [left50_intensity, right50_intensity]),
     """
     pos1, I1 = unpack_side(data[0])
     pos2, I2 = unpack_side(data[1])
 
     axis1, axis2 = find_test_axis(np.vstack([pos1, pos2]))
-    c1, rise1, fall1 = locate_center(pos1, I1, test)
-    c2, rise2, fall2 = locate_center(pos2, I2, test)
+    c1, rise1, fall1, rise_intensity1, fall_intensity1 = locate_center(pos1, I1, test)
+    c2, rise2, fall2, rise_intensity2, fall_intensity2 = locate_center(pos2, I2, test)
 
     c1_distance = np.linalg.norm(c1-pos1[0])
     rise1_distance = np.linalg.norm(rise1-pos1[0])
@@ -155,4 +156,4 @@ def calculate_angle(data, test):
     else: # test == collimator or gantry
         theta = np.rad2deg(np.arctan2(c1[axis1] - c2[axis1],c1[axis2] - c2[axis2]))
     return theta, ([rise1,fall1,c1],[rise2,fall2,c2]),([rise1_distance,fall1_distance,c1_distance],
-                                                       [rise2_distance,fall2_distance,c2_distance])
+                                                       [rise2_distance,fall2_distance,c2_distance]), ([rise_intensity1,fall_intensity1],[rise_intensity2,fall_intensity2])
