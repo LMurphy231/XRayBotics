@@ -206,23 +206,6 @@ def Rz(angle: float):
 
 # =================================================================================  
 
-# ===================== ROTATION MATRICES FOR EACH LINAC TEST ==========================
-
-def gravity_test_rotation_matrix(grav_angle: float):
-    return rotation_matricies(Ry(np.deg2rad(-90)), ) #TODO:
-
-def collimator_test_rotation_matrix(col_angle, gan_angle):
-    # start in YZ
-    # rotate about y
-    return rotation_matricies(Ry(np.deg2rad(-90)), )#TODO:
-
-def gantry_test_rotation_matrix(gantry_angle, gan_angle):
-    # start in YZ
-    # rotate about y
-    return rotation_matricies(Rx(np.deg2rad(-90)), )#TODO:
-
-# =================================================================================  
-
 # ===================== HELPER FUNCTIONS ==========================================
 def get_rotation_matrix(axis: str, angle: float, offset: float):
     '''
