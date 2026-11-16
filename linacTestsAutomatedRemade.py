@@ -200,22 +200,25 @@ def create_gravity_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray,
     matrix_2: np.ndarray
     
     if side == "left":                  # Rotate basis place about x (CCW, +angle)
-        grav_plane_angle = 90.0
+        grav_plane_angle = -90.0
         fr5.set_end_effector_angle(0.0, 0.0, 90)
              
     elif side == "right":               # Rotate basis place about x (CW, -angle)
-        grav_plane_angle = -90.0
+        grav_plane_angle = 90.0
         fr5.set_end_effector_angle(0.0, 0.0, -90)
         
     elif side == "front":
-        grav_plane_angle = 90.0
+        grav_plane_angle = -90.0
         fr5.set_end_effector_angle(0.0, 0.0, 0)
 
     if side == "left" or side == "right":
         matrix_1 = paths.get_rotation_matrix("x", grav_plane_angle, rx_offset)
-        matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, ry_offset)   
+        matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, ry_offset)  
+        
+        matrix_3 = paths.get_rotation_matrix("z", 90, rz_offset) 
 
-        grav_rot_matrix = paths.rotation_matricies(matrix_2, matrix_1)
+        #grav_rot_matrix = paths.rotation_matricies(matrix_2, matrix_1) # Original
+        grav_rot_matrix = paths.rotation_matricies(matrix_3, matrix_2, matrix_1)
         grav_path_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
         
     elif side == "front":
@@ -223,7 +226,10 @@ def create_gravity_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray,
         matrix_1 = paths.get_rotation_matrix("x", 0, rx_offset)   
         matrix_2 = paths.get_rotation_matrix("y", grav_plane_angle, ry_offset)
         
-        grav_rot_matrix = paths.rotation_matricies(matrix_1, matrix_2)
+        matrix_3 = paths.get_rotation_matrix("z", 90, rz_offset)
+        
+        #grav_rot_matrix = paths.rotation_matricies(matrix_1, matrix_2)
+        grav_rot_matrix = paths.rotation_matricies(matrix_3, matrix_1, matrix_2)
         grav_path_points = paths.rotate_basis_plane_points(est_isocenter, basis_points, grav_rot_matrix)
 
     return grav_path_points
