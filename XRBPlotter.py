@@ -31,21 +31,24 @@ global Rz
 global Ry
 global Rx
 
-Rz = lambda angle: np.array([
-    [np.cos(angle), -np.sin(angle), 0],
-    [np.sin(angle),  np.cos(angle), 0],
-    [0          ,  0          , 1],
-])
-Ry = lambda angle: np.array([
-    [np.cos(angle)  ,   0 , np.sin(angle)],
-    [0              ,   1 , 0          ],
-    [-np.sin(angle) ,   0 , np.cos(angle)],
-])
-Rx = lambda angle: np.array([
-    [1, 0            ,   0           ],
-    [0, np.cos(angle), -np.sin(angle)],
-    [0, np.sin(angle),  np.cos(angle)],
-])
+def Rz(angle): 
+    return np.array([
+        [np.cos(angle), -np.sin(angle), 0],
+        [np.sin(angle),  np.cos(angle), 0],
+        [0          ,  0          , 1],
+    ])
+def Ry(angle): 
+    return np.array([
+        [np.cos(angle)  ,   0 , np.sin(angle)],
+        [0              ,   1 , 0          ],
+        [-np.sin(angle) ,   0 , np.cos(angle)],
+    ])
+def Rx(angle): 
+    return np.array([
+        [1, 0            ,   0           ],
+        [0, np.cos(angle), -np.sin(angle)],
+        [0, np.sin(angle),  np.cos(angle)],
+    ])
 
 @dataclasses.dataclass
 class DenavitHartenbergParameter:
@@ -57,6 +60,7 @@ class DenavitHartenbergParameter:
     mass: float
     center_of_mass:np.ndarray[float]
     set_angle:float = 0.0
+    type:str = 'rotational'
 
 
 global FR5Joints 
@@ -95,6 +99,82 @@ def transformation_matrix(DH:DenavitHartenbergParameter, set_angle=None):
             [A,B], 
             [C,D]
            ])
+
+
+def deltaTheta(Jacobian, deltaX, damping_factor):
+    [U, S, Vh] = np.linalg.svd(Jacobian, full_matrices=False,)
+    #print(f'U:\n{U}\nS:\n{S}\nV:\n{V}')
+    
+    #sigma = np.diag(S)
+
+    sigma_inv = S / (S**2 + damping_factor**2)
+    #J_plus = np.matmul(np.matmul(V.T, np.diag(sigma_inv)), U.T)
+    
+    dTheta = Vh.T @ np.diag(sigma_inv) @ U.T @ deltaX
+    return dTheta
+    return np.matmul(J_plus, deltaX)
+
+def ForwardKinematics(DHArray:list[DenavitHartenbergParameter], set_values:list[float]):
+    T = np.eye(4)
+    for i in range(len(DHArray)):
+        arr = transformation_matrix(DHArray[i], set_values[i])
+        T = np.matmul(T, arr)
+
+    return T
+
+def JacobianMatrix(DHArray:list[DenavitHartenbergParameter], set_values):
+    Z = np.full((3, len(DHArray)+1), 0.0)
+    O = np.full((3, len(DHArray)+1), 0.0)
+    Z[:, 0] = np.array([0,0,1], dtype=float).T
+    O[:, 0] = np.array([0,0,0], dtype=float).T
+    n = len(DHArray)
+    Jacobian = np.full((6,n), 0.0)
+    
+    for i in range(n):
+        T = ForwardKinematics(DHArray[:i+1], set_values[:i+1])
+        Z[:, i+1] = T[:-1, 2]
+        O[:, i+1] = T[:-1, 3]
+
+    
+    On = O[:, -1]
+    for i in range(n):
+        
+        if DHArray[i].type == "rotational":
+            Jacobian[:3,i] = np.linalg.cross(Z[:, i], On-O[:, i])
+            Jacobian[3:6,i] = Z[:, i]
+        else:
+            Jacobian[:3,i] = Z[:, i]
+            Jacobian[3:6,i] = np.array([0,0,0], dtype=float).T
+    
+    return Jacobian
+
+def IterativeInvK(DHArray:list[DenavitHartenbergParameter], current_values, target_position, damping_factor):
+    max_iterations = 1000
+    alpha=0.5
+    target_position = np.transpose(target_position)
+    
+    for i in range(max_iterations):
+        T = ForwardKinematics(DHArray, current_values)
+        n = len(T)-1
+        X_A = T[:-1, -1]
+        deltaX = target_position - X_A
+
+        Jacobian = JacobianMatrix(DHArray, current_values)
+        Jacobian_pos = Jacobian[:n, :]
+        dTheta = deltaTheta(Jacobian_pos, deltaX, damping_factor)
+        
+        current_values = current_values + alpha * dTheta
+
+        T = ForwardKinematics(DHArray, current_values)
+        n = len(T)-1
+        X_A = T[:-1, -1]
+        
+        if np.linalg.norm(dTheta) <= 1e-3:
+            return current_values
+        
+        
+    return None
+
 
 class Plotter:
     def _artist_create(func):
@@ -224,8 +304,6 @@ class Plotter:
         self.axvline = axvline
         self.autoscale_view = self.ax.autoscale_view
    
-
-
     def _update(self, keep_axis=True, autoscale=False, change_view=True):
         if change_view:
             if autoscale:

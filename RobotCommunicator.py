@@ -599,7 +599,57 @@ class RobotCom(RPC):
         plotter.plot_robot(self.DH, joint_pos)
 
     def plot_new_position(self, new_pos, plotter: plt.Plotter, name='Estimated Next Position', color='orange'):
-        joint_pos = self.GetInverseKin(0, new_pos)
+        
+        joint_pos = self._get_joint_angles(False)
+        new_joint_pos = plt.IterativeInvK(self.DH, joint_pos, np.array(new_pos[:3], dtype=float), 0.5)
+        
+        #joint_pos = self.GetInverseKin(0, new_pos)
         if isinstance(joint_pos, int):
             return 
-        plotter.plot_robot(self.DH, joint_pos, name=name, color=color)
+        plotter.plot_robot(self.DH, new_joint_pos, name=name, color=color)
+    
+
+if __name__ == '__main__':
+    
+
+    joints = []
+    for i in range(4):
+        joints.append(plt.DenavitHartenbergParameter(i, 0, 10, 0, 0.0, 0, [], 0))
+    
+    trajectory = np.array([
+        [40.000000,  0.000001, 0.0],
+        [40.000000,  1.177778, 0.0],
+        [39.822224,  2.355556, 0.0],
+        [39.822224,  0.711111, 0.0],
+        [39.822224,  0.888889, 0.0],
+        [39.644444,  1.244444, 0.0],
+        [39.644444,  1.600000, 0.0],
+        [39.644444,  1.955556, 0.0],
+        [39.644444,  2.133333, 0.0],
+        [39.466667,  2.133333, 0.0],
+        [39.244444,  2.133333, 0.0],
+        [39.000000,  2.000000, 0.0],
+        [38.244444,  2.133333, 0.0],
+        [38.000000,  2.000000, 0.0],
+        [37.244444,  2.133333, 0.0],
+        [37.000000,  2.000000, 0.0],
+        [40.000000, -0.000001, 0.0],
+        [40.000000, -1.177778, 0.0],
+        [39.822224, -2.355556, 0.0],
+        [39.822224, -0.711111, 0.0],
+        [39.822224, -0.888889, 0.0],
+        [39.644444, -1.244444, 0.0],
+        [39.644444, -1.600000, 0.0],
+        [39.644444, -1.955556, 0.0],
+        [39.644444, -2.133333, 0.0],
+        [39.466667, -2.133333, 0.0],
+        [39.244444, -2.133333, 0.0],
+        [39.000000, -2.000000, 0.0],
+        [38.244444, -2.133333, 0.0],
+        [38.000000, -2.000000, 0.0],
+        [37.244444, -2.133333, 0.0],
+        [37.000000, -2.000000, 0.0],
+    ])
+    current_values = np.array([0.0, 0.0, 0.0, 0.0])
+    for target_pos in trajectory:
+        current_values = plt.IterativeInvK(joints, current_values, target_pos, 0.54)

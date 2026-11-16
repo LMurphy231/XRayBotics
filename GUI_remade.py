@@ -191,11 +191,15 @@ class GUI:
 
         sub_frame = tk.Frame(move_type_notebook)
         move_type_notebook.add(sub_frame, text='Coordinate Movement')
+        position_vars = []
+        position_function = lambda e=None: self.robot.plot_new_position(self.robot._get_movement_pos(*[var.get() for var in position_vars]), self.robot_plotter, name=estimated_name, color=estimated_color)
         for index, var_name in enumerate(var_names):
             tk.Label(sub_frame, text=f'{var_name}:').grid(row=index%3, column=2*(index//3),sticky=tk.NSEW)
             var = tk.DoubleVar(value=0.0)
             entry = tk.Entry(sub_frame, textvariable=var)
+            var.trace_add('write', lambda *args: position_function())
             entry.grid(row=index%3,column=1+2*(index//3),sticky=tk.NSEW)
+            position_vars.append(var)
             self.robot_vars[var_name.lower()] = {
                 'var'   : var,
                 'widget': entry,
@@ -205,7 +209,7 @@ class GUI:
                             **{var_name.lower(): self.robot_vars[var_name.lower()]['var'].get() for var_name in var_names},
                             in_thread=True,
                         ),
-                        lambda var_names=var_names: _reset_var(0.0, *(self.robot_vars[var_name.lower()]['var'] for var_name in var_names))
+                        lambda var_names=var_names: (_reset_var(0.0, *(self.robot_vars[var_name.lower()]['var'] for var_name in var_names),incriment_function()))
                     )
 
 
