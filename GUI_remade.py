@@ -11,10 +11,12 @@ import numpy as np
 
 import RobotCommunicator as rc
 import LightSensor as ls
-import communications as com
 import XRBPlotter as plt
 import settingshandler as settings
 import TestPages as tp
+
+import PackageInstaller
+PackageInstaller.install_required()
 
 if os.path.basename(sys.executable) == 'pythonw.exe':
     sys.stdout = open(os.devnull, 'w')
@@ -22,38 +24,13 @@ if os.path.basename(sys.executable) == 'pythonw.exe':
 
 # Styles
 def _create_styles(root):
-   
-
     style = ttk.Style()
     #style.theme_use("clam")
     style.configure('Warning.TButton', bordercolor="#FF0000", lightcolor='red', background="white",)
     style.configure('Default.TButton', background="white",)
 
 INI = 'xrb.ini'
-class MessageTerminal(logging.Handler):
-    def __init__(self, text:tk.Text, level, handlers=[]):
-        self.text = text
-        self.handlers = handlers
-        super().__init__(level)
-
-    def write(self, line):
-        for handler in self.handlers:
-            handler.write(line)
-
-    def writelines(self, lines):
-        for handler in self.handlers:
-            handler.writelines(lines)
-
-    def emit(self, record:logging.LogRecord):
-        if record.levelno < self.level:
-            return
-        try:
-            msg = self.format(record)
-            _write_to_textbox(self.text, msg)
-        except Exception:
-            self.handleError(record)
-
-class MovementLogHandler(logging.Handler):
+class GUILogHandler(logging.Handler):
     def __init__(self, level):
         self.log_text: list[tuple[float, int, str]] = []
         self.texts: list[tk.Text] = []
@@ -104,9 +81,14 @@ class GUI:
         
         self._create_loggers()
         self.build()
-        
+
+        self._root.protocol('WM_DELETE_WINDOW', self._on_close)
         self._root.mainloop()
         self.ls.close()
+
+    def _on_close(self):
+        self.ls.close()
+        self._root.destroy()
 
     def build(self):
 
@@ -130,12 +112,12 @@ class GUI:
         test_setup_frame = tk.Frame(self.page_frame)
          
         self._create_test_setup(test_setup_frame)
-        self.page_frame.add(test_setup_frame, sticky=tk.NSEW, minsize=500)
+        self.page_frame.add(test_setup_frame, sticky=tk.NSEW, minsize=300)
 
         robot_window_frame = tk.LabelFrame(self.page_frame, text='Robot Controller')
         
         self._create_robot_controller(robot_window_frame)
-        self.page_frame.add(robot_window_frame, sticky=tk.NSEW, minsize=250)
+        self.page_frame.add(robot_window_frame, sticky=tk.NSEW, minsize=150)
 
         self.text_window_frame = tk.Frame(self.window_pane)
         self._create_text_window(self.text_window_frame)
@@ -144,9 +126,9 @@ class GUI:
         self.settings_frame = tk.Frame(self._root)
     
     def _create_loggers(self):
-        self.movement_handlers: dict[str, MovementLogHandler] = {}
-        for logger_name in ('Automated Tests', 'Moving', 'Scanning', 'Data Storage', 'Path Movement', 'Robot Communication'):
-            handler = MovementLogHandler(logging.DEBUG)
+        self.movement_handlers: dict[str, GUILogHandler] = {}
+        for logger_name in ('Automated Tests', 'Moving', 'Scanning', 'Data Storage', 'Path Movement', 'Robot Communication', 'Joint Positions'):
+            handler = GUILogHandler(logging.DEBUG)
             handler.setFormatter(logging.Formatter('[%(levelname)-8s][%(asctime)s] - %(message)s', datefmt='%H:%M:%S'))
             logger = logging.getLogger(logger_name)
             logger.setLevel(logging.DEBUG)
@@ -197,6 +179,11 @@ class GUI:
         plotter_frame = tk.Frame(frame)
         plotter_frame.grid(row=0, column=2, sticky=tk.NSEW)
         self.robot_plotter = plt.Plotter(plotter_frame, '3d')
+        self.robot_plotter._set_axis_limit(-500,500,-500,500,-500,500)
+        self.robot.register_live_plotter(self.robot_plotter)
+
+        estimated_name = 'Estimated Next Position'
+        estimated_color = 'orange'
 
 
         var_names = ['x', 'y', 'z', 'rx', 'ry', 'rz']
@@ -204,11 +191,15 @@ class GUI:
 
         sub_frame = tk.Frame(move_type_notebook)
         move_type_notebook.add(sub_frame, text='Coordinate Movement')
+        position_vars = []
+        position_function = lambda e=None: self.robot.plot_new_position(self.robot._get_movement_pos(*[var.get() for var in position_vars]), self.robot_plotter, name=estimated_name, color=estimated_color)
         for index, var_name in enumerate(var_names):
             tk.Label(sub_frame, text=f'{var_name}:').grid(row=index%3, column=2*(index//3),sticky=tk.NSEW)
             var = tk.DoubleVar(value=0.0)
             entry = tk.Entry(sub_frame, textvariable=var)
+            var.trace_add('write', lambda *args: position_function())
             entry.grid(row=index%3,column=1+2*(index//3),sticky=tk.NSEW)
+            position_vars.append(var)
             self.robot_vars[var_name.lower()] = {
                 'var'   : var,
                 'widget': entry,
@@ -218,18 +209,18 @@ class GUI:
                             **{var_name.lower(): self.robot_vars[var_name.lower()]['var'].get() for var_name in var_names},
                             in_thread=True,
                         ),
-                        lambda var_names=var_names: _reset_var(0.0, *(self.robot_vars[var_name.lower()]['var'] for var_name in var_names))
+                        lambda var_names=var_names: (_reset_var(0.0, *(self.robot_vars[var_name.lower()]['var'] for var_name in var_names),incriment_function()))
                     )
 
 
-        var_name = ['dx', 'dy', 'dz', 'drx', 'dry', 'drz']
+        var_names = ['dx', 'dy', 'dz', 'drx', 'dry', 'drz']
 
         sub_frame = tk.Frame(move_type_notebook)
         move_type_notebook.add(sub_frame, text='Incrimental Movement')
         minior_frames = (tk.Frame(sub_frame), tk.Frame(sub_frame))
         
         incriment_vars = []
-        incriment_function = lambda e=None: self.robot.plot_new_position(self.robot._get_incriment_pos(*[var.get() for var in incriment_vars]), self.robot_plotter)
+        incriment_function = lambda e=None: self.robot.plot_new_position(self.robot._get_incriment_pos(*[var.get() for var in incriment_vars]), self.robot_plotter, name=estimated_name, color=estimated_color)
 
         for index, var_name in enumerate(var_names):
             var = tk.DoubleVar(value=0.0)
@@ -264,14 +255,14 @@ class GUI:
                             **{var_name.lower(): self.robot_vars[var_name.lower()]['var'].get() for var_name in var_names},
                             in_thread=True,
                         ),
-                        lambda var_names=var_names: (_reset_var(0.0, *(self.robot_vars[f'd{var_name.lower()}']['var'] for var_name in var_names)), incriment_function)
+                        lambda var_names=var_names: (_reset_var(0.0, *(self.robot_vars[var_name.lower()]['var'] for var_name in var_names)), incriment_function)
                     )
 
         sub_frame = tk.Frame(move_type_notebook)
         move_type_notebook.add(sub_frame, text='Joint Movement')
         minior_frames = (tk.Frame(sub_frame), tk.Frame(sub_frame))
         joint_vars = []
-        joint_function = lambda e=None: self.robot_plotter.plot_robot(self.robot.DH, [np.deg2rad(var.get()) for var in joint_vars])
+        joint_function = lambda e=None: self.robot_plotter.plot_robot(self.robot.DH, [np.deg2rad(var.get()) for var in joint_vars], name=estimated_name, color=estimated_color)
         for index, (set_angle, (min_, max_)) in enumerate(zip(self.robot.HOME, self.robot.AXIS_LIMIT)):
             var_name = f'joint{index}'
             var = tk.DoubleVar(value=set_angle)
@@ -318,8 +309,6 @@ class GUI:
         reset_var_button = tk.Button(button_frame, text='Reset Position')
         reset_var_button.grid(row=1, column=0, sticky=tk.NSEW)
         
-        
-
         tk.Button(button_frame, text='Stop Robot'   , command = self.robot.interrupt_threads).grid(row=0, column=1, sticky=tk.NSEW)
         tk.Button(button_frame, text='Clear Error'  , command = lambda: print(self.robot.ResetAllError())).grid(row=4, column=1, sticky=tk.NSEW)
         tk.Button(button_frame, text='Got to isocenter'  , command = self.robot.move_to_isocenter).grid(row=1, column=2, sticky=tk.NSEW)
@@ -455,8 +444,6 @@ class GUI:
         self.logging_textbox = scrolledtext.ScrolledText(message_frame, wrap=None, state=tk.NORMAL)
         self.logging_textbox.pack(expand=True, fill=tk.BOTH)
         self._display_log(self.logging_textbox, [self.logger_selection.get()])
-        
-
 
     def _change_test_page(self, event:tk.Event):
         if event is None:
@@ -507,25 +494,6 @@ def _write_to_textbox(textbox:tk.Text, message, endswith='\n', end_state=tk.DISA
 def _reset_var(value, *vars: tk.Variable):
     for var in vars:
         var.set(value)
-
-# region Logging setup
-def _create_debug_logger(log_file=None):
-    debug_logger = logging.getLogger('Debug Logger')
-    debug_logger.setLevel(logging.DEBUG)
-    if log_file:
-        log_handler = logging.FileHandler(log_file, mode='w' if __name__ == '__main__' else 'a')
-        log_handler.setFormatter(logging.Formatter('%(threadName)s - %(name)s - %(levelname)s - %(message)s'))
-        debug_logger.addHandler(log_handler)
-
-    stdout = logging.StreamHandler(sys.stdout)
-    stdout.setFormatter(logging.Formatter('%(threadName)s - %(name)s - %(levelname)s - %(message)s'))
-    debug_logger.addHandler(stdout)
-
-_create_debug_logger()
-    
-debug_logger = logging.getLogger('Debug Logger')
-debug_logger.propagate = False
-
 
 if __name__ == '__main__':
     GUI()

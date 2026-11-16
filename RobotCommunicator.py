@@ -35,9 +35,10 @@ class RobotCom(RPC):
 
     def __init__(self, opts=settings.OptionDict(), ip="192.168.58.2"):
         self.logger = logging.getLogger('Robot Communication')
+        self.joint_logger = logging.getLogger('Joint Positions')
         
-        self.error_label = self.user_input_window = None
         self.opts = opts
+        self.is_conect = False
 
         self.plotters: list[plt.Plotter] = []
         self.lines   : list[tuple]       = []
@@ -58,8 +59,7 @@ class RobotCom(RPC):
         self._default_options()
         
         threading.Thread(target=self.startup, args=(ip,), daemon=True).start()
-        #threading.Thread(target=self._status_check, args=(root,), daemon=True).start()
-        self.action_queue:queue.Queue[tuple[object, threading.Event]] = queue.Queue()
+        self.action_queue:queue.Queue[tuple[object, np.ndarray, threading.Event, tk.Variable]] = queue.Queue()
         
         threading.Thread(target=self._queue_runner, name='robot movement queue',daemon=True).start()
 
@@ -69,8 +69,8 @@ class RobotCom(RPC):
 
         while not self.is_connected():
             self.reconnect()
-
-        self.set_isocenter(*self._get_tool_position())
+        
+        self.set_isocenter(self._get_tool_position())
 
         end_effector_offset = np.array([0.0, 0.0, 0.0])
 
@@ -133,35 +133,17 @@ class RobotCom(RPC):
 
         interrupt_self = threading.current_thread() in self.monitored_threads
 
-        # Set event to let threads know to stop moving
-        #self._stop_event.set()
-
         # Remove all threads allowed to perform movement functions
         self.monitored_threads.clear()
 
         threading.Thread(target=self.stop, daemon=True, name='Stop').start()
-        
-        #for thread in list(self.monitored_threads):
-        #    # If the current thread that called this function is also being monitored
-        #    # Interrupt thread at the end of this function instead on waiting on itself
-        #    if thread is current_thread:
-        #        interrupt_self = True
-        #    else:
-        #        print(f'Waiting on thread: {thread.name}')
-        #        start_time = time.time()
-        #        while thread.is_alive() and time.time()-start_time <= 10.0:
-        #            time.sleep(0.01)
-        #
-        #    self.monitored_threads.remove(thread)
-
-        # Clear event
-        #self._stop_event.clear()
 
         # If a monitored thread called this function, interrupt it
         if interrupt_self:
             raise InterruptedError(f'{threading.current_thread().name} was interrupted.')
         
     def is_connected(self):
+        return self.is_conect
         try:
             err, [mainerr, suberr] = self.GetRobotErrorCode()
             return True
@@ -170,7 +152,6 @@ class RobotCom(RPC):
 
     def _check_stop_interrupt(self):
         current_thread = threading.current_thread()
-        print()
         if current_thread.name != 'MainThread' and current_thread not in self.monitored_threads:
             raise InterruptedError(f'{current_thread.name} stopped from stopped event.')
 
@@ -178,59 +159,39 @@ class RobotCom(RPC):
         """Runs movement commands sent to a queue so that the main thread can """
         while True:
             self.set_widget_statuses(True)
-            funct, event = self.action_queue.get()
-            threading.Thread(target=self.update_live_plots_during_movement, args=(event,), daemon=True, name='UpdateLivePlotters').start()
+            funct, pos, event, variable = self.action_queue.get()
             self.set_widget_statuses(False)
 
-            result = funct()
-            if result:
-                self._prompt_error_window(funct, event, result)
+            threading.Thread(target=self.update_live_plots_during_movement, args=(event,), daemon=True, name='UpdateLivePlotters').start()
+
+            result=None
+
+            try:
+                result = funct()
+                if result:
+                    result = self._prompt_error_window(funct, event, pos, result)
+            except BaseException as e:
+                self.logger.error(f'An error occured in queue runner: {e}')
+                
 
             event.set()
-
-            self.update_live_plots()
+            variable.set(result)
 
     def _default_options(self):
         # Default Variables
         section = 'robot.move'
-        #self.opts.add_option(section, 'tool', 0   , tk.IntVar()   , display_name='Tool'           , units=None, description='Tool number')
-        #self.opts.add_option(section, 'user', 0   , tk.IntVar()   , display_name='User'           , units=None, description='Artifact number')
         self.opts.add_option(section, 'vel' , 10.0 , tk.DoubleVar(), display_name='Velocity'       , units='%', description='Percentage of speed')
         self.opts.add_option(section, 'acc' , 20.0 , tk.DoubleVar(), display_name='Acceleration'   , units='%', description='Percentage of acceleration')
         self.opts.add_option(section, 'ovl' , 100.0, tk.DoubleVar(), display_name='Velocity factor', units='%', description='Velocity scaling factor')
-
-    def _status_check(self, root=None):
-        while True:
-            try:
-                err, [mainerr, suberr] = self.GetRobotErrorCode()
-
-                if self.error_label:
-                    self.error_label.configure(text=f'Main Error: {mainerr} Sub Error: {suberr}')
-
-                if root and (mainerr or suberr) and self.user_input_window is None:
-                    self.user_input_window = tk.Toplevel(root, takefocus=True)
-                    self.user_input_window.geometry("200x100")
-                    self.error_label = tk.Label(self.user_input_window, text=f'Main Error: {mainerr} Sub Error: {suberr}')
-                    self.error_label.grid(row=0, column=0, sticky=tk.NSEW)
-                    tk.Button(self.user_input_window, text='Clear', command=lambda e=None: self._clear_error()).grid(row=1, column=0, sticky=tk.NSEW)
-            except TypeError:
-                pass
-            finally:
-                time.sleep(1)
 
     def home(self):
         self.logger.debug('Moving to home position')
         self.interrupt_threads()
         self.move_joint(self.HOME, in_thread=True)
         self.SetToolCoord(0, [0.0,0.0,0.0, *self.TOOL_RBASE], 0, 0, 0, 0)
-        
 
     def _clear_error(self):
         ierr = self.ResetAllError()
-        if self.user_input_window:
-            self.user_input_window.destroy()
-        self.user_input_window = None
-        self.error_label = None
     
     def move_increment(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0, in_thread=False, move_type='linear'):
         '''
@@ -248,6 +209,7 @@ class RobotCom(RPC):
         '''
         self._check_stop_interrupt()
         self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
+        #self.SingularAvoidStart(1, 0, 0, 10)
 
         desc_pos = self._get_tool_position()
         angle = list(desc_pos[3:])
@@ -260,6 +222,8 @@ class RobotCom(RPC):
         vel = self.opts.get(section, 'vel').value
         acc = self.opts.get(section, 'acc').value
         ovl = self.opts.get(section, 'ovl').value
+
+        self.validate_next_pos(desc_pos + offset)
 
         if move_type == 'linear':
             funct = lambda: self.MoveL(
@@ -288,14 +252,8 @@ class RobotCom(RPC):
                 acc            = acc,
                 ovl            = ovl,
                 )
-        event = threading.Event()
-        if in_thread:
-            self.action_queue.put((funct, event))
-            return event
-        result = funct()
-        if result:
-            result = self._prompt_error_window(funct, event, result)
-        return result
+            
+        return self._queue_function(funct, desc_pos+offset, in_thread)
 
     def move_joint(self, joint_pos, in_thread=False):
         self._check_stop_interrupt()
@@ -319,18 +277,16 @@ class RobotCom(RPC):
                     offset_flag = 0,
                     offset_pos = [0.0,0.0,0.0,0.0,0.0,0.0],
                 )
-        event = threading.Event()
-        if in_thread:
-            self.action_queue.put((funct, event))
-            return event
-        
-        result = funct()
-        if result:
-            result = self._prompt_error_window(funct, event, result)
-        return result
+
+        return self._queue_function(funct, None, in_thread)
 
     def move_position(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False, move_type='linear'):
         self._check_stop_interrupt()
+        try:
+            self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
+        except BaseException as e:
+            print(e)
+        #self.SingularAvoidStart(1, 0, 0, 10)
         
         end_effector_angle = self.end_effector_angle
 
@@ -342,8 +298,6 @@ class RobotCom(RPC):
         desc_pos[3:] = [0.0, 0.0, 0.0]
         self._internal_position = np.array([x, y, z, rx, ry, rz])
 
-        self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
-
         self.logger.debug(f'Queueing Movement to {desc_pos} and {self._internal_position}')
         
         section = 'robot.move'
@@ -351,6 +305,7 @@ class RobotCom(RPC):
         acc = self.opts.get(section, 'acc').value
         ovl = self.opts.get(section, 'ovl').value
 
+        self.validate_next_pos(desc_pos + self._internal_position)
         if move_type == 'linear':
             funct = lambda: self.MoveL(
                         desc_pos,
@@ -377,15 +332,24 @@ class RobotCom(RPC):
                         acc            = acc,
                         ovl            = ovl,
                         )
+            
+        return self._queue_function(funct, desc_pos + self._internal_position, in_thread)
+
+    def _queue_function(self, funct, pos, in_thread=False):
         event = threading.Event()
+        result_var = tk.Variable()
         if in_thread:
-            self.action_queue.put((funct, event))
-            return event
+            self.action_queue.put((funct, pos, event, result_var))
+            return event, result_var
         
+        threading.Thread(target=self.update_live_plots_during_movement, args=(event,), daemon=True, name='UpdateLivePlotters').start()
+
         result = funct()
         if result:
-            result = self._prompt_error_window(funct, event, result)
-        return result
+            result = self._prompt_error_window(funct, event, pos, result)
+
+        event.set()
+        return event, result
 
     @property
     def tool_frame(self):
@@ -395,15 +359,51 @@ class RobotCom(RPC):
     _incriment_move = move_increment
     _joint_move     = move_joint
 
-    def move_to_isocenter(self):
+    def create_path_only_coord(self, path:list[np.ndarray]):
+        updated_path = []
+
+        end_effector_angle = self.end_effector_angle
+        for movement in path:
+            movement_pos = []
+            for pos in movement:
+                rx = end_effector_angle[0]
+                ry = end_effector_angle[1]
+                rz = end_effector_angle[2]
+                movement_pos.append(np.array([*pos, rx, ry, rz]))
+
+            updated_path.append(movement_pos)
+
+        return updated_path
+
+    def precalculate_path(self, path:list[list[np.ndarray]]):
+        joint_path = []
+        joint_pos = self._get_joint_angles(True)
+        for movement in path:
+            movement_joint_pos = []
+            for pos in movement:
+                data = self.GetInverseKinRef(2, pos, joint_pos)
+                if isinstance(data, int):
+                    raise ConnectionError(f'Robot Not connected')
+                
+                ierr, joint_pos = data
+
+                if ierr:
+                    raise ValueError(f'Could not pre-calculate to point {pos}')
+                
+                movement_joint_pos.append(joint_pos)
+            joint_path.append(movement_joint_pos)
+
+        return joint_path
+
+    def move_to_isocenter(self, in_thread=True):
         self.logger.info('Moving to isocenter')
         self.stop()
-        self.move_position(0.0, 0.0, 0.0, in_thread=True)
+        self.move_position(0.0, 0.0, 0.0, in_thread=in_thread)
 
-    def move_to_home(self):
+    def move_to_home(self, in_thread=True):
         self.logger.debug('Moving to home position')
         self.stop()
-        self.move_joint(self.HOME, in_thread=True)
+        self.move_joint(self.HOME, in_thread=in_thread)
 
     def _get_tool_position(self):
         if self.is_connected():
@@ -414,10 +414,13 @@ class RobotCom(RPC):
 
     def _get_joint_angles(self, degrees=True, flag=1):
         try:
-            if degrees:
-                joint_pos = self.GetActualJointPosDegree(flag)
+            if self.is_connected():
+                if degrees:
+                    joint_pos = self.GetActualJointPosDegree(flag)
+                else:
+                    joint_pos = self.GetActualJointPosRadian(flag)
             else:
-                joint_pos = self.GetActualJointPosRadian(flag)
+                joint_pos = -4
             if isinstance(joint_pos, int):
                 return 0, 0, 0, 0, 0, 0
         except:
@@ -462,7 +465,7 @@ class RobotCom(RPC):
             self.action_queue.get()
         self.StopMove()
 
-    def _prompt_error_window(self, funct:object, event=threading.Event, errorcode=None):
+    def _prompt_error_window(self, funct:object, event:threading.Event, pos:np.ndarray, errorcode=None):
         pkg = self.GetRobotRealTimeState()
         state = self.GetRobotEmergencyStopState()
 
@@ -475,27 +478,45 @@ class RobotCom(RPC):
         # Create return variable object that can be used to save values inside lambda function
         return_var = tk.Variable(value=errorcode)
         tk.Label(window, text=f'An error occured while trying to run a movement command!\nError code: {errorcode}\nRobot needs to powercycle: {state}').grid(row=0, column=0, sticky=tk.NSEW, columnspan=5)
-        
+
+        def retry(pos):
+            result = -1
+            if pos is not None:
+                jpos = self._get_joint_angles()
+                err, result = self.GetInverseKinHasSolution(2, pos, jpos)
+                
+                if result:
+                    
+                    joint_pos = self._invk(*pos)
+
+                    self._clear_error()
+                    result = self.move_joint(joint_pos)
+                    
+            return result 
+
         try_again_button = tk.Button(window, text='Retry', state=tk.DISABLED, command=lambda: 
                                      (
-                                    return_var.set(funct()),
-                                        (clear_error_button.configure(state=tk.NORMAL), )
+                                    try_again_button.configure(state=tk.DISABLED),
+                                    return_var.set(retry(pos)),
+                                        (clear_error_button.configure(state=tk.NORMAL), try_again_button.configure(state=tk.DINORMALABLED))
                                         if return_var.get() else 
                                         (clear_error_button.configure(state=tk.DISABLED), window.destroy()), 
-                                    try_again_button.configure(state=tk.DISABLED)
                                     )
-                                     )
+                                    )
         
         clear_error_button = tk.Button(window, text='Clear Error', command=lambda: 
                                        (self._clear_error(),                            # Clear Error
                                         try_again_button.configure(state=tk.NORMAL),    # Allow user to try the function again
                                         clear_error_button.configure(state=tk.DISABLED) # Disable this button, letting the user know that the error was cleared
                                         ))
+        
         clear_error_button.grid(row=1, column=1)
         stop_test_button = tk.Button(window, text='Stop Test', command=lambda: (event.set(),              # Set event so the test thread can be interrupted
-                                                             window.destroy())         # Destroy popup window
+                                                             window.destroy())                            # Destroy popup window
                                                              )
 
+
+        
         # Place buttons
         try_again_button.grid(row=1, column=0)
         clear_error_button.grid(row=1, column=1)
@@ -513,6 +534,11 @@ class RobotCom(RPC):
         # Return value from the movement function
         return return_var.get()
 
+    def validate_next_pos(self, pos):
+        return
+        jpos = self._get_joint_angles()
+        err, result = self.GetInverseKinHasSolution(2, pos, jpos)
+        assert result, f'Could not get inv calculation for pos: {pos} {result}'
 
     def _get_incriment_pos(self, dx=0.0, dy=0.0, dz=0.0, drx=0.0, dry=0.0, drz=0.0):
         desc_pos = self._get_tool_position()
@@ -530,7 +556,7 @@ class RobotCom(RPC):
     def register_live_plotter(self, plotter: plt.Plotter):
         if plotter not in self.plotters:
             joint_pos = self._get_joint_angles(False)
-            plot_line, scatter_line = plotter.plot_robot(self.DH, joint_pos, clear=False, update=True)
+            plot_line, scatter_line = plotter.plot_robot(self.DH, joint_pos, update=True)
 
             self.plotters.append(plotter)
             self.lines.append((plot_line, scatter_line))
@@ -545,6 +571,8 @@ class RobotCom(RPC):
                 # Remove lines from figure
                 plot_line.remove()
                 scatter_line.remove()
+                del plot_line
+                del scatter_line
             except:
                 pass
 
@@ -552,6 +580,7 @@ class RobotCom(RPC):
             plotter.update()
 
     def update_live_plots_during_movement(self, event:threading.Event):
+        self.update_live_plots()
         while not event.is_set():
             time.sleep(0.25)
             self.update_live_plots()
@@ -561,15 +590,66 @@ class RobotCom(RPC):
             return
         
         joint_pos = self._get_joint_angles(False)
+        self.joint_logger.debug(f'Joint Position: {", ".join([f"{angle:>.3f}" for angle in joint_pos])}')
         for plotter, (plot_line, scatter_line) in zip(self.plotters, self.lines):
-            plotter.plot_robot(self.DH, joint_pos, plot_line=plot_line, scatter_line=scatter_line, clear=False, update=True,)
+            plotter.plot_robot(self.DH, joint_pos,plot_line=plot_line, scatter_line=scatter_line, update=True,)
 
     def plot_current_position(self, plotter: plt.Plotter):
         joint_pos = self._get_joint_angles(False)
         plotter.plot_robot(self.DH, joint_pos)
 
-    def plot_new_position(self, new_pos, plotter: plt.Plotter):
-        joint_pos = self.GetInverseKin(0, new_pos)
+    def plot_new_position(self, new_pos, plotter: plt.Plotter, name='Estimated Next Position', color='orange'):
+        
+        joint_pos = self._get_joint_angles(False)
+        new_joint_pos = plt.IterativeInvK(self.DH, joint_pos, np.array(new_pos[:3], dtype=float), 0.5)
+        
+        #joint_pos = self.GetInverseKin(0, new_pos)
         if isinstance(joint_pos, int):
             return 
-        plotter.plot_robot(self.DH, joint_pos)
+        plotter.plot_robot(self.DH, new_joint_pos, name=name, color=color)
+    
+
+if __name__ == '__main__':
+    
+
+    joints = []
+    for i in range(4):
+        joints.append(plt.DenavitHartenbergParameter(i, 0, 10, 0, 0.0, 0, [], 0))
+    
+    trajectory = np.array([
+        [40.000000,  0.000001, 0.0],
+        [40.000000,  1.177778, 0.0],
+        [39.822224,  2.355556, 0.0],
+        [39.822224,  0.711111, 0.0],
+        [39.822224,  0.888889, 0.0],
+        [39.644444,  1.244444, 0.0],
+        [39.644444,  1.600000, 0.0],
+        [39.644444,  1.955556, 0.0],
+        [39.644444,  2.133333, 0.0],
+        [39.466667,  2.133333, 0.0],
+        [39.244444,  2.133333, 0.0],
+        [39.000000,  2.000000, 0.0],
+        [38.244444,  2.133333, 0.0],
+        [38.000000,  2.000000, 0.0],
+        [37.244444,  2.133333, 0.0],
+        [37.000000,  2.000000, 0.0],
+        [40.000000, -0.000001, 0.0],
+        [40.000000, -1.177778, 0.0],
+        [39.822224, -2.355556, 0.0],
+        [39.822224, -0.711111, 0.0],
+        [39.822224, -0.888889, 0.0],
+        [39.644444, -1.244444, 0.0],
+        [39.644444, -1.600000, 0.0],
+        [39.644444, -1.955556, 0.0],
+        [39.644444, -2.133333, 0.0],
+        [39.466667, -2.133333, 0.0],
+        [39.244444, -2.133333, 0.0],
+        [39.000000, -2.000000, 0.0],
+        [38.244444, -2.133333, 0.0],
+        [38.000000, -2.000000, 0.0],
+        [37.244444, -2.133333, 0.0],
+        [37.000000, -2.000000, 0.0],
+    ])
+    current_values = np.array([0.0, 0.0, 0.0, 0.0])
+    for target_pos in trajectory:
+        current_values = plt.IterativeInvK(joints, current_values, target_pos, 0.54)

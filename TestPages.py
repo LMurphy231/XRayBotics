@@ -1,8 +1,8 @@
 import os
-import sys
 import inspect
 import logging
 import struct
+import traceback
 
 import threading
 import tkinter as tk
@@ -16,8 +16,8 @@ import RobotCommunicator as rc
 import LightSensor as lq
 import XRBPlotter as plt
 import settingshandler as settings
-from AutomatedTests import pathsRemade as pr
 import linacTestsAutomatedRemade as LinacTests
+import dataProcessing as dp
 
 
 class BasePage:
@@ -76,10 +76,12 @@ class TestResultsPage(BasePage):
         self.type = type_.lower()
         self.kwargs = kwargs
         self.input_frame = None
-
+        self.lines = {}
         self.current_results = None
         self.loaded_results = []
         self.close_button = tk.Button(self.root, text='Close',)
+        self.show_edge_var = tk.BooleanVar(value=True)
+        self.show_center_var = tk.BooleanVar(value=True)
         self.build()
 
     def add_test(self, test_type, test_name, test_results, inputs):
@@ -133,22 +135,23 @@ class TestResultsPage(BasePage):
     
     def update(self, test_type, test_name, raw_data, inputs):
         self.current_results = (test_type, test_name, raw_data, inputs)
-        self.plotter2d.clear()
-        self.plotter3d.clear()
+
+        self.plotter2d.grid(True)
+        self.plotter3d.grid(True)
 
         xmin = 0.0
         xmax = 0.0
         ymin = 0.0
         ymax = 0.0
         
-        for movement_results in raw_data:
+        for i, movement_results in enumerate(raw_data):
             position, distance, intensities = map(list, zip(*movement_results))
             
-            
-            self.plotter2d.scatter(x=distance, y=intensities)
+            label = f'Movement {i}'
+            self.lines[label+'2d'] = self.plotter2d.plot(distance, intensities, label=label, existing_line=self.lines.get(label+'2d', None))[0]
 
             x, y, z = map(list, zip(*position))
-            self.plotter3d.scatter(x, y, z, c=intensities, cmap='viridis')
+            self.lines[label+'3d'] = self.plotter3d.scatter(x, y, z, c=intensities, cmap='viridis', label=label, existing_line=self.lines.get(label+'3d', None))
 
             xmin = min(xmin, distance[0])
             xmax = max(xmax, distance[-1])
@@ -156,57 +159,81 @@ class TestResultsPage(BasePage):
             ymax = max(ymax, max(intensities))
 
         self.plotter2d._set_axis_limit(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax*1.05)
+        found_angle = None
+
+        try:
+            found_angle, notable_data_3d, notable_data_2d, intensities = dp.calculate_angle(raw_data, test_type)
+
+            if self.show_edge_var.get():
+                rise1, fall1, c1 = zip(*notable_data_3d)
+                label='Rise'
+                self.lines[label] = self.plotter3d.scatter(*zip(*rise1), marker = 'x', s=100, c='orange', label=label, existing_line=self.lines.get(label, None))
+                label='Fall'  
+                self.lines[label] = self.plotter3d.scatter(*zip(*fall1), marker = 'x', s=100, c='pink'  , label=label, existing_line=self.lines.get(label, None))
+                label='Center'
+                self.lines[label] = self.plotter3d.scatter(*zip(*c1)   , marker = 'x', s=100, c='red'   , label=label, existing_line=self.lines.get(label, None))
+
+            rise1, fall1, c1 = zip(*notable_data_2d)
+            for i, (x, center, intensity) in enumerate(zip(zip(rise1, fall1), c1, intensities)):
+                label = f'Edges {i}'
+                self.lines[label] = self.plotter2d.plot(x, intensity, marker = 'x', markersize=10, label=f'Edges {i}', linewidth=0.0, existing_line=self.lines.get(label, None))[0]
+                self.lines[label].set_visible(self.show_edge_var.get())
+
+                label = f'Center {i}'
+                self.lines[label] = self.plotter2d.axvline(center, linestyle='--', label=label, existing_line=self.lines.get(label, None))
+                self.lines[label].set_visible(self.show_center_var.get())
+
+        except BaseException as e:
+            print(traceback.print_exception(e))
+            found_angle = str(e)
+
+        self.plotter2d.legend()
+        self.plotter2d.label_axis(xlabel='Movement Distance (mm)', ylabel='Light Intensity (lumen)')
+
+        self.plotter2d.legend_update()
+        self.plotter3d.legend()
+        self.plotter3d.label_axis(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
 
         self.plotter2d.update(keep_axis=False)
-        self.plotter3d.update()
+        self.plotter3d.update(autoscale=True)
 
-        self.update_comparison_frame(**inputs)
+        self.update_comparison_frame(found_angle, **inputs)
 
-    def update_comparison_frame(self, **kwargs):
-    
+    def update_comparison_frame(self, found_angle=None, **kwargs):
+
+        def create_frame(data, current_id=''):
+            for name, value in data.items():
+
+                if isinstance(value, dict):
+                    new_id = self.results_tree.insert(current_id, tk.END, text=name, open=True)
+                    create_frame(value, new_id)
+                else:
+                    self.results_tree.insert(current_id, tk.END, text=name, values=[value,], open=True)
+
         if self.input_frame is not None:
             self.input_frame.destroy()
-
-        kwargs = {
-                    'Jaw Dimensions': {
-                        'x1'               : 10.0,
-                        'x2'               : 10.0,
-                        'y1'               : 100.0,
-                        'y2'               : 100.0,
-                    },
-                    'LINAC Angles': {
-                        'gantry_angle'     : 45.0,
-                        'collimator_angle' : 276.24,
-                        'couch_angle'      : 15.0,
-                    },
-                    'step_length'      : 0.2,
-                    'umbra'            : 1.0,
-                    'threshold'        : 0.75,
-                    'Navg'             : 5,
-                }
         
         self.input_frame = tk.Frame(self.comparison_frame, borderwidth=2, relief=tk.GROOVE)
         self.input_frame.pack(expand=True, fill=tk.BOTH)
 
+        tk.Label(self.input_frame, text='Parameters used').pack(side=tk.TOP, expand=False, fill=tk.X)
+        self.results_tree = ttk.Treeview(self.input_frame, columns=('Value',), show='tree headings')
         
+        self.results_tree.heading("#0", text="Input", anchor="w")
+        self.results_tree.column("#0", minwidth=200)
+        self.results_tree.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
 
-        def create_frame(frame:tk.Frame, data):
-            max_rows = 3
-            n_internal_frames = 0
-            for index, (name, value) in enumerate(data.items()):
-                index -= n_internal_frames
-                frame.grid_columnconfigure(index%max_rows, weight=1)
-                if isinstance(value, dict):
-                    n_internal_frames += 1
-                    new_frame = tk.LabelFrame(frame, text=name, labelanchor=tk.N)
-                    new_frame.grid(row=n_internal_frames*max_rows, column=2*(n_internal_frames//max_rows), columnspan=2, sticky=tk.NSEW, pady=15)
-                    create_frame(new_frame, value)
-                    continue
-                tk.Label(frame, text=f'{name}:').grid(row=index%max_rows, column=2*(index//max_rows), sticky=tk.W)
-                tk.Label(frame, text=str(value)).grid(row=index%max_rows, column=1+2*(index//max_rows), sticky=tk.W)
+        for i, header in enumerate(('Value',)):
+            self.results_tree.heading(header, text=header)
+            self.results_tree.column(i, width=100, minwidth=100)
 
-        create_frame(self.input_frame, kwargs)
+        create_frame(kwargs)
 
+        if isinstance(found_angle, float):
+            tk.Label(self.input_frame, text=f'Found Angle: {found_angle:.3f} Degrees').pack()
+        else:
+            tk.Label(self.input_frame, text=f'Unable to calculate angle due to:\n{found_angle}').pack()
+                
     def save_results(self, filename=None, tests:list=[]):
         
         if filename is None:
@@ -254,34 +281,35 @@ class TestResultsPage(BasePage):
         plotter_frame = tk.Frame(frame)
         plotter_notebook = ttk.Notebook(plotter_frame)
         plotter_notebook.pack(expand=True, fill=tk.BOTH)
-        #plotter_notebook.grid(row=0, column=0, sticky=tk.NSEW)
 
         plotter_2d_frame = tk.Frame(plotter_notebook)
         plotter_notebook.add(plotter_2d_frame, text='2D Plotter')
         self.plotter2d = plt.Plotter(plotter_2d_frame, row=0, column=0)
-        
+
+        self.plotter2d.add_menu_option(label='Show Edges', command=lambda: self.update(*self.current_results) if self.current_results else None, var=self.show_edge_var)
+        self.plotter2d.add_menu_option(label='Show Centers', command=lambda: self.update(*self.current_results) if self.current_results else None, var=self.show_center_var)
 
         plotter_3d_frame = tk.Frame(plotter_notebook)
         plotter_notebook.add(plotter_3d_frame, text='3D Plotter')
         self.plotter3d = plt.Plotter(plotter_3d_frame, projection='3d', row=0, column=0)
-        #tk.Button(plotter_frame, command=self._test_results, text='Test plotters').grid(row=1, column=0)
-        #tk.Button(plotter_frame, command=self.save_results, text='Save').grid(row=2, column=0)
-        
+
+        self.plotter3d.add_menu_option(label='Show Edges', command=lambda: self.update(*self.current_results) if self.current_results else None, var=self.show_edge_var)
+        self.plotter3d.add_menu_option(label='Show Centers', command=lambda: self.update(*self.current_results) if self.current_results else None, var=self.show_center_var)
         return plotter_frame
 
     def _create_test_selection_frame(self, frame:tk.Frame) -> tk.Frame:
         test_selection_frame = tk.Frame(frame)
+
+        tk.Label(test_selection_frame, text='Test Result Selection').pack(side=tk.TOP, expand=False, fill=tk.X)
         self.test_selection = tk.Listbox(test_selection_frame, selectmode=tk.SINGLE, exportselection=False)
-        self.test_selection.grid(row=0, column=0, sticky=tk.NSEW)
+        self.test_selection.pack(side=tk.TOP, expand=True, fill=tk.X)
         self.test_selection.bind('<<ListboxSelect>>', self._change_selected_test)
 
-        tk.Button(test_selection_frame, command=self.load_results, text='Open').grid(row=1, column=0, sticky=tk.NSEW)
-        tk.Button(test_selection_frame, text='Save Tests', command=self._prompt_save_window).grid(row=2, column=0, sticky=tk.NSEW)
+        tk.Button(test_selection_frame, width=20, text='Open'              ,command=self.load_results,).pack(side=tk.TOP, expand=False, fill=None)
+        tk.Button(test_selection_frame, width=20, text='Save Tests'        , command=self._prompt_save_window).pack(side=tk.TOP, expand=False, fill=None)
+        tk.Button(test_selection_frame, width=20, text='Rename Test'       , command=self._prompt_test_name_change).pack(side=tk.TOP, expand=False, fill=None)
+        tk.Button(test_selection_frame, width=20, text='Clear Current Test', command=lambda: self.clear_tests(self.test_selection.curselection())).pack(side=tk.TOP, expand=False, fill=None)
 
-        tk.Button(test_selection_frame, text='Clear Current Test', command=lambda: self.clear_tests(self.test_selection.curselection())).grid(row=3, column=0, sticky=tk.NSEW)
-
-        tk.Button(test_selection_frame, text='Rename Test', command=self._prompt_test_name_change).grid(row=4, column=0, sticky=tk.NSEW)
-        
         return test_selection_frame
     
     def _change_selected_test(self, event:tk.Event):
@@ -511,9 +539,11 @@ class TestPage(BasePage):
         plotter_frame = tk.Frame(frame)
         
         self.plotter = plt.Plotter(plotter_frame, projection='3d')
+
         if self.robot is not None:
             live_var = tk.BooleanVar(value=False)
-            tk.Checkbutton(plotter_frame, variable=live_var, command=lambda: self.robot.register_live_plotter(self.plotter) if live_var.get() else self.robot.unregister_live_plotter(self.plotter), text='Show Live Robot Posiiton',).pack(side=tk.BOTTOM)#.grid(row=0, column=5)
+            self.plotter.add_menu_option(label='Show Live Robot Posiiton', var=live_var, command=lambda: self.robot.register_live_plotter(self.plotter) if live_var.get() else self.robot.unregister_live_plotter(self.plotter))
+        
                 
         return plotter_frame
 
@@ -555,10 +585,11 @@ class GravityTest(TestPage):
         self.opts.add_option(section, 'step_length', 1.0    , tk.DoubleVar(), display_name='Step length', units='mm' , description='Distance between data recordings.')
         self.opts.add_option(section, 'length'     , 100.0  , tk.DoubleVar(), display_name='Length'     , units='mm' , description='Length of rectangular path.')
         self.opts.add_option(section, 'height'     , 100.0  , tk.DoubleVar(), display_name='Height'     , units='mm' , description='Height of rectangular path.')
-        self.opts.add_option(section, 'side'       , 'right', tk.StringVar(), display_name='Side'       , values=['left', 'right', 'center'], units=''   , description='Side of the robot that the Gravity Test will perform on.')
+        self.opts.add_option(section, 'side'       , 'right', tk.StringVar(), display_name='Side'       , values=['left', 'right', 'front'], units=''   , description='Side of the robot that the Gravity Test will perform on.')
 
         section = 'tests.gravity.variables'
         self.option_sections.append(section)
+        self.opts.add_option(section, 'navg'     , 5, tk.IntVar()      , display_name='Sensor Average Readings', units=''  , description='Number of data points recorded at a single point. The average of these points will be returned.')
         self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
 
     def _create_parameter_frame(self, frame = None):
@@ -593,28 +624,9 @@ class GravityTest(TestPage):
         except:
             return
 
-        isocenter = np.array([0.,0.,0.])
         points = LinacTests.create_gravity_test_path_points(self.robot, self.robot.isocenter[:3], length, height, side)
-        #points = pr.calculate_four_points_rectangle(isocenter, length, height, 'y','z')
-        #points = pr.rotate_points(points, theta, 'y', 'z')
-
-        self.plotter.clear()
-
-        self.plotter.scatter(*isocenter)
-
-
-        try:
-            prev_point = points[0]
-        except BaseException as e:
-            logging.critical(f'{e}')
-            return
-        self.plotter.scatter(*prev_point)
-        for point in points[1:]:
-            self.plotter.scatter(*point)
-            self.plotter.plot(*zip(prev_point, point))
-            prev_point = point
-
-        self.plotter._update()
+        self.plotter.plot_path('gravity path', points, self.robot.isocenter[:3], label='Gravity Path')
+        self.plotter.update()
         
     def start(self):
         try:
@@ -623,11 +635,16 @@ class GravityTest(TestPage):
             length      = self.opts.get(section, 'length').var.get()
             height      = self.opts.get(section, 'height').var.get()
             side        = self.opts.get(section, 'side').var.get()
+
+            section = 'tests.gravity.variables'
+            threshold = self.opts.get(section, 'threshold').var.get()
+            Navg = self.opts.get(section, 'navg').var.get()
+
         except:
             return
         
         self.robot.register_thread()
-        test_results = LinacTests.gravity_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, side, step_length=step_length, length=length, width=height)
+        test_results = LinacTests.gravity_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, side, step_length=step_length, length=length, width=height, Navg=Navg)
 
         
         if self.results_page is not None:
@@ -667,8 +684,10 @@ class CollimatorTest(TestPage):
         self.opts.add_option(section, 'couch'     , 0.0  , tk.DoubleVar()   , display_name='Couch angle'     , units='deg' , description='Angle set for the Couch')
         
         section = 'tests.collimator.path'
-        self.opts.add_option(section, 'step_length', 1.0  , tk.DoubleVar()   , display_name='Step length', units='mm' , description='Distance between data recordings.')
-        self.opts.add_option(section, 'umbra'      , 10   , tk.DoubleVar(), display_name='Umbra'      , units='mm' , description='Distance past x1/x2 that robot will scan')
+        self.opts.add_option(section, 'step_length', 1.0  , tk.DoubleVar(), display_name='Step length' , units='mm' , description='Distance between data recordings.')
+        self.opts.add_option(section, 'w_umbra'    , 1.0 , tk.DoubleVar(), display_name='Width Umbra' , units='mm' , description='Distance past x1/x2 that robot will scan.')
+        self.opts.add_option(section, 'l_umbra'    , 0.75 , tk.DoubleVar(), display_name='Lenght Umbra', units='mm' , description='Distance past y1/y2 that robot will scan.')
+
 
         section = 'tests.collimator.variables'
         self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
@@ -731,9 +750,11 @@ class CollimatorTest(TestPage):
             x2 = self.opts.get(section, 'x2').var.get()
             y1 = self.opts.get(section, 'y1').var.get()
             y2 = self.opts.get(section, 'y2').var.get()
+            
 
             section = 'tests.collimator.path'
-            umbra = self.opts.get(section, 'umbra').var.get()
+            w_umbra = self.opts.get(section, 'w_umbra').var.get()
+            l_umbra = self.opts.get(section, 'l_umbra').var.get()
 
             section = 'linac.angles'
             gantry_angle = self.opts.get(section, 'gantry').var.get()
@@ -742,19 +763,9 @@ class CollimatorTest(TestPage):
         except:
             return
         isocenter = self.robot.isocenter[:3]
-        points = LinacTests.create_collimator_test_path_points(self.robot, isocenter, x1, x2, y1, y2, umbra, gantry_angle, collimator_angle, couch_angle)
-        
-        self.plotter.clear()
+        points = LinacTests.create_collimator_test_path_points(self.robot, isocenter, x1, x2, y1, y2, w_umbra, l_umbra, gantry_angle, collimator_angle, couch_angle)
         self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle-couch_angle)
-        self.plotter.scatter(*isocenter)
-
-        prev_point = points[0]
-        self.plotter.scatter(*prev_point)
-        for point in points[1:]:
-            self.plotter.scatter(*point)
-            self.plotter.plot(*zip(prev_point, point))
-            prev_point = point
-
+        self.plotter.plot_path('Collimator Path', points, isocenter)
         self.plotter._update()
 
     def start(self):
@@ -767,7 +778,8 @@ class CollimatorTest(TestPage):
 
             section = 'tests.collimator.path'
             step_length = self.opts.get(section, 'step_length').var.get()
-            umbra = self.opts.get(section, 'umbra').var.get()
+            w_umbra = self.opts.get(section, 'w_umbra').var.get()
+            l_umbra = self.opts.get(section, 'l_umbra').var.get()
 
             section = 'linac.angles'
             gantry_angle = self.opts.get(section, 'gantry').var.get()
@@ -783,7 +795,7 @@ class CollimatorTest(TestPage):
             raise e
 
         self.robot.register_thread()
-        test_results = LinacTests.collimator_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, umbra, Navg,
+        test_results = LinacTests.collimator_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, w_umbra, l_umbra, Navg,
                                                         threshold, step_length, collimator_angle, gantry_angle, couch_angle)
 
         inputs = {
@@ -792,7 +804,8 @@ class CollimatorTest(TestPage):
             'y1'               : y1,
             'y2'               : y2,
             'step_length'      : step_length,
-            'umbra'            : umbra,
+            'w_umbra'          : w_umbra,
+            'l_umbra'          : l_umbra,
             'gantry_angle'     : gantry_angle,
             'collimator_angle' : collimator_angle,
             'couch_angle'      : couch_angle,
@@ -804,7 +817,7 @@ class CollimatorTest(TestPage):
             self.results_page.add_test('collimator', test_name, test_results, inputs)
 
 class GantryTest(TestPage):
-    def __init__(self, name, root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
+    def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
         description = """
         Description
         ___________
@@ -815,7 +828,8 @@ class GantryTest(TestPage):
 
         Press start.
         """
-        TestPage.__init__(self, name, root, robot, ls, opts, description=description)
+        results_page = CollimatorTestResultsPage(_root)
+        TestPage.__init__(self, name, _root, robot, ls, opts, description=description, results_page=results_page)
     
     def _default_settings(self):
         section = 'linac.jaws'
@@ -830,9 +844,10 @@ class GantryTest(TestPage):
         self.opts.add_option(section, 'couch'     , 0.0  , tk.DoubleVar()   , display_name='Couch angle'     , units='deg' , description='Angle set for the Couch')
 
         section = 'tests.gantry.path'
-        self.opts.add_option(section, 'height'     , 100  , tk.DoubleVar(), display_name='Height'     , units='mm' , description='Height of the path towards the collimator.')
-        self.opts.add_option(section, 'step_length', 1.0  , tk.DoubleVar()   , display_name='Step length', units='mm' , description='Distance between data recordings.')
-        self.opts.add_option(section, 'umbra'      , 10   , tk.DoubleVar(), display_name='Umbra'      , units='mm' , description='Distance past x1/x2 that robot will scan.')
+        self.opts.add_option(section, 'height'     , 100  , tk.DoubleVar(), display_name='Height'      , units='mm' , description='Height of the path towards the collimator.')
+        self.opts.add_option(section, 'step_length', 1.0  , tk.DoubleVar(), display_name='Step length' , units='mm' , description='Distance between data recordings.')
+        self.opts.add_option(section, 'w_umbra'    , 1.0 , tk.DoubleVar(), display_name='Width Umbra' , units='mm' , description='Distance past x1/x2 that robot will scan.')
+        self.opts.add_option(section, 'l_umbra'    , 0.75 , tk.DoubleVar(), display_name='Lenght Umbra', units='mm' , description='Distance past y1/y2 that robot will scan.')
 
         section = 'tests.gantry.variables'
         self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold'        , units='pu', description='Cutoff limit for light intensity readings.')
@@ -895,7 +910,8 @@ class GantryTest(TestPage):
 
             section = 'tests.gantry.path'
             height = self.opts.get(section, 'height').var.get()
-            umbra = self.opts.get(section, 'umbra').var.get()
+            w_umbra = self.opts.get(section, 'w_umbra').var.get()
+            l_umbra = self.opts.get(section, 'l_umbra').var.get()
 
             section = 'linac.angles'
             gantry_angle = self.opts.get(section, 'gantry').var.get()
@@ -905,20 +921,9 @@ class GantryTest(TestPage):
             return
         
         isocenter = self.robot.isocenter[:3]
-        points = LinacTests.create_gantry_test_path_points(self.robot, isocenter, x1, x2, y1, y2, height, umbra, gantry_angle, collimator_angle, couch_angle)
-
-        self.plotter.clear()
-        self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle)
-        
-        self.plotter.scatter(*isocenter)
-
-        prev_point = points[0]
-        self.plotter.scatter(*prev_point)
-        for point in points[1:]:
-            self.plotter.scatter(*point)
-            self.plotter.plot(*zip(prev_point, point))
-            prev_point = point
-
+        points = LinacTests.create_gantry_test_path_points(self.robot, isocenter, x1, x2, y1, y2, gantry_angle, collimator_angle, couch_angle, w_umbra, l_umbra, height)
+        self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle, origin=isocenter)
+        self.plotter.plot_path('Gantry Path', points, isocenter)
         self.plotter._update()
 
     def start(self):
@@ -932,7 +937,8 @@ class GantryTest(TestPage):
             section = 'tests.gantry.path'
             height = self.opts.get(section, 'height').var.get()
             step_length = self.opts.get(section, 'step_length').var.get()
-            umbra = self.opts.get(section, 'umbra').var.get()
+            w_umbra = self.opts.get(section, 'w_umbra').var.get()
+            l_umbra = self.opts.get(section, 'l_umbra').var.get()
 
             section = 'linac.angles'
             gantry_angle = self.opts.get(section, 'gantry').var.get()
@@ -949,7 +955,7 @@ class GantryTest(TestPage):
         
         self.robot.register_thread()
 
-        test_results = LinacTests.gantry_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, height, umbra, 
+        test_results = LinacTests.gantry_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, height, w_umbra, l_umbra, 
                                                         threshold, step_length, Navg, collimator_angle, gantry_angle, couch_angle)
 
         inputs = {
@@ -958,7 +964,8 @@ class GantryTest(TestPage):
                 'y1'               : y1,
                 'y2'               : y2,
                 'step_length'      : step_length,
-                'umbra'            : umbra,
+                'w_umbra'          : w_umbra,
+                'l_umbra'          : l_umbra,
                 'gantry_angle'     : gantry_angle,
                 'collimator_angle' : collimator_angle,
                 'couch_angle'      : couch_angle,

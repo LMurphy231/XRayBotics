@@ -1,10 +1,10 @@
 import time
 import numpy as np
 
-import TestInitialization
+import archive.TestInitialization as TestInitialization
 import Movement
 import MovementPaths
-import LightScanning
+import archive.LightScanning as LightScanning
 
 try:
     from api.farinoAPI.fairino.Robot import *

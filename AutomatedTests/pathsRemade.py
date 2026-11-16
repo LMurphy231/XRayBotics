@@ -71,7 +71,7 @@ def zigzag_path(isocenter: np.ndarray, points: list):
         (path_to_p1, False, p1),
         (path_p1_to_p2, True, p1),
         (path_p2_to_p3, False, p2),
-        (path_p3_to_p4, True, p3)
+        (path_p3_to_p4, True, p4)
     ]
 
     return zigzag_paths

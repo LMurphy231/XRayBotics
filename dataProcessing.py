@@ -6,8 +6,7 @@ import numpy as np
 FIT_HALF_WIDTH = 0.75
 
 # Sanity check that a beam is present: (max - min) of the scan must be at least this many times the
-# sample-to-sample noise. Gravity beams are a narrow bright spike (>100 in the data so far); the dimmer, wider
-# collimator beams come out at about 7-14, so they need a lower threshold.
+# sample-to-sample noise. 
 MIN_SNR = {"gravity": 15.0, "collimator": 6.0, "gantry": 6.0}
 
 
@@ -47,8 +46,7 @@ def _crossing(pos, s, intensity, a, b, decrement):
     Absolute position [x, y, z] where the intensity crosses the 50% decrement between adjacent samples a and b.
     Local line fit: a straight line is fitted (least squares) through the samples within FIT_HALF_WIDTH of the
     two-point crossing (always including a and b) and solved for the decrement. Falls back to the two-point
-    linear interpolation if the window holds only a and b, or if the fit is flat / reversed / lands outside
-    the bracket.
+    linear interpolation if the window holds only a and b
     """
     sc = s[a] + (decrement - intensity[a]) / (intensity[b] - intensity[a]) * (s[b] - s[a])
     idx = np.union1d(np.flatnonzero(np.abs(s - sc) <= FIT_HALF_WIDTH), [a, b])
@@ -95,13 +93,14 @@ def _split_index(intensity, test):
     raise ValueError("test must be 'gravity', 'collimator' or 'gantry'")
 
 
-def locate_center(pos, intensity, test="gravity"):
+def locate_center(pos, intensity, test):
     """
     Beam center [x, y, z] of one scan using the 50% decrement.
     The scan is split in two (see _split_index). In each half the 50% decrement comes from that half's own
     max and min: decrement = (max + min) / 2. The first half gives the rising edge, the second half the falling
     edge, each located by the local line fit in _crossing. The center is the midpoint of the two crossings.
-    Returns (center, rise, fall), each an absolute position [x, y, z].
+    Returns (center, rise, fall, rise_intensity, fall_intensity)
+    center, rise, and fall are [x, y, z] absolute position
     """
     n = len(intensity)
     if test not in MIN_SNR:
@@ -127,22 +126,34 @@ def locate_center(pos, intensity, test="gravity"):
 
     rise = _crossing(pos, s, intensity, i - 1, i, decrement1)
     fall = _crossing(pos, s, intensity, j, j + 1, decrement2)
-    return 0.5 * (rise + fall), rise, fall
+    return 0.5 * (rise + fall), rise, fall, decrement1, decrement2
 
 
-def calculate_angle(data, test="gravity"):
+def calculate_angle(data, test):
     """
     data : [side1, side2]
     test : 'gravity', 'collimator' or 'gantry' (selects how each scan is split, see _split_index)
-    Returns (theta_deg, [[left50,right50,center],[left50,right50,center]]),
-    where each 50% decrement and center is the absolute position [x, y, z]
+    Returns (theta_deg, [[left50,right50,center],[left50,right50,center]], ...
+    [[left50_distance,right50_distance,center_distance],[left50_distance,right50_distance,center_distance]], ...
+    [left50_intensity, right50_intensity], [left50_intensity, right50_intensity]),
     """
     pos1, I1 = unpack_side(data[0])
     pos2, I2 = unpack_side(data[1])
 
     axis1, axis2 = find_test_axis(np.vstack([pos1, pos2]))
-    c1, rise1, fall1 = locate_center(pos1, I1, test)
-    c2, rise2, fall2 = locate_center(pos2, I2, test)
+    c1, rise1, fall1, rise_intensity1, fall_intensity1 = locate_center(pos1, I1, test)
+    c2, rise2, fall2, rise_intensity2, fall_intensity2 = locate_center(pos2, I2, test)
 
-    theta = np.rad2deg(np.arctan((c1[axis2] - c2[axis2]) / (c1[axis1] - c2[axis1])))
-    return theta, ([rise1,fall1,c1],[rise2,fall2,c2])
+    c1_distance = np.linalg.norm(c1-pos1[0])
+    rise1_distance = np.linalg.norm(rise1-pos1[0])
+    fall1_distance = np.linalg.norm(fall1-pos1[0])
+    c2_distance = np.linalg.norm(c2-pos2[0])
+    rise2_distance = np.linalg.norm(rise2-pos2[0])
+    fall2_distance = np.linalg.norm(fall2-pos2[0])
+
+    if test == "gravity":
+        theta = np.rad2deg(np.arctan((c1[axis2] - c2[axis2]) / (c1[axis1] - c2[axis1])))
+    else: # test == collimator or gantry
+        theta = np.rad2deg(np.arctan2(c1[axis1] - c2[axis1],c1[axis2] - c2[axis2]))
+    return theta, ([rise1,fall1,c1],[rise2,fall2,c2]),([rise1_distance,fall1_distance,c1_distance],
+                                                       [rise2_distance,fall2_distance,c2_distance]), ([rise_intensity1,fall_intensity1],[rise_intensity2,fall_intensity2])

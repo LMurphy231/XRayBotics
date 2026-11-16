@@ -143,7 +143,7 @@ class OptionTree:
                 TreeColumn('default'        , 'Default'    , minsize=50, initial_size= 50 , state=False),
                 TreeColumn('value'          , 'Set Value'  , minsize=50, initial_size= 150, state=True),
                 TreeColumn('description'    , 'Description', minsize=50, initial_size= 350, state=False),
-                TreeColumn('save'           , '☐'           , minsize=50, initial_size= 50 , state=False),
+                #TreeColumn('save'           , '☐'           , minsize=50, initial_size= 50 , state=False),
             )
         }
         self.sections = sections if not sections or isinstance(sections, (tuple, list)) else (sections,)
@@ -274,11 +274,6 @@ class OptionTree:
         
 
         widget.focus()
-        
-        
-        # Pre-populate entry with the current value
-        #current_val = self.tree.item(row_id, "values")[col_index]
-        #entry.insert(0, current_val)
         
 
         # Inner function to save the new value
