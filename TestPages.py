@@ -135,8 +135,6 @@ class TestResultsPage(BasePage):
     
     def update(self, test_type, test_name, raw_data, inputs):
         self.current_results = (test_type, test_name, raw_data, inputs)
-        #self.plotter2d.clear()
-        #self.plotter3d.clear()
 
         self.plotter2d.grid(True)
         self.plotter3d.grid(True)
@@ -192,6 +190,7 @@ class TestResultsPage(BasePage):
         self.plotter2d.legend()
         self.plotter2d.label_axis(xlabel='Movement Distance (mm)', ylabel='Light Intensity (lumen)')
 
+        self.plotter2d.legend_update()
         self.plotter3d.legend()
         self.plotter3d.label_axis(xlabel='X (mm)', ylabel='Y (mm)', zlabel='Z (mm)')
 
@@ -542,7 +541,7 @@ class TestPage(BasePage):
         self.plotter = plt.Plotter(plotter_frame, projection='3d')
 
         if self.robot is not None:
-            live_var = tk.BooleanVar(value=True)
+            live_var = tk.BooleanVar(value=False)
             self.plotter.add_menu_option(label='Show Live Robot Posiiton', var=live_var, command=lambda: self.robot.register_live_plotter(self.plotter) if live_var.get() else self.robot.unregister_live_plotter(self.plotter))
         
                 
@@ -586,7 +585,7 @@ class GravityTest(TestPage):
         self.opts.add_option(section, 'step_length', 1.0    , tk.DoubleVar(), display_name='Step length', units='mm' , description='Distance between data recordings.')
         self.opts.add_option(section, 'length'     , 100.0  , tk.DoubleVar(), display_name='Length'     , units='mm' , description='Length of rectangular path.')
         self.opts.add_option(section, 'height'     , 100.0  , tk.DoubleVar(), display_name='Height'     , units='mm' , description='Height of rectangular path.')
-        self.opts.add_option(section, 'side'       , 'right', tk.StringVar(), display_name='Side'       , values=['left', 'right', 'center'], units=''   , description='Side of the robot that the Gravity Test will perform on.')
+        self.opts.add_option(section, 'side'       , 'right', tk.StringVar(), display_name='Side'       , values=['left', 'right', 'front'], units=''   , description='Side of the robot that the Gravity Test will perform on.')
 
         section = 'tests.gravity.variables'
         self.option_sections.append(section)

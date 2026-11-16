@@ -303,7 +303,7 @@ class Plotter:
         self.vlines  = vlines
         self.axvline = axvline
         self.autoscale_view = self.ax.autoscale_view
-   
+
     def _update(self, keep_axis=True, autoscale=False, change_view=True):
         if change_view:
             if autoscale:
@@ -317,13 +317,26 @@ class Plotter:
         
     update = _update
 
+
     def add_menu_option(self, label, command, var=None):
         menu:tk.Menu = self.menu_button.nametowidget(self.menu_button["menu"])
         if not var:
             menu.add_command(label=label, command=command)
         else:
             menu.add_checkbutton(label=label, command=command, variable=var)
+
+    def legend_update(self, state=True, sorted_labels=True, only_visible=True):
+        if not state:
+            self.ax.get_legend().remove()
+        
+        handles, labels = self.ax.get_legend_handles_labels()
+        if sorted_labels:
+            handles, labels = zip(*sorted(zip(handles, labels), key=lambda x: x[-1]))
+
+        
             
+
+
     def _set_axis_limit(self, xmin=None, xmax=None, ymin=None, ymax=None, zmin=None, zmax=None):
         self.xmin = xmin if xmin is not None else self.ax.get_xlim()[0]
         self.xmax = xmax if xmax is not None else self.ax.get_xlim()[1]
@@ -441,7 +454,7 @@ class Plotter:
 
         #scatter_line = self.scatter(*zip(*points), color=color, existing_line=scatter_line)
         plot_line = self.plot(x, y, z, color=color, existing_line=plot_line, label=name, marker='.')[0]
-        endeff_frame_quiver = self.quiver([x[-1]]*3, [y[-1]]*3, [z[-1]]*3, R[0,:3], R[1,:3], R[2,:3], length=100, existing_line=endeff_frame_quiver, color='red')
+        endeff_frame_quiver = self.quiver([x[-1]]*3, [y[-1]]*3, [z[-1]]*3, R[0,:3], R[1,:3], R[2,:3], length=100, existing_line=endeff_frame_quiver, color='red', label=name+' Frame')
         self.lines[name] = (plot_line, scatter_line, endeff_frame_quiver)
 
         #if update:

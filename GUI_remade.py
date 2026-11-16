@@ -112,7 +112,7 @@ class GUI:
         test_setup_frame = tk.Frame(self.page_frame)
          
         self._create_test_setup(test_setup_frame)
-        self.page_frame.add(test_setup_frame, sticky=tk.NSEW, minsize=500)
+        self.page_frame.add(test_setup_frame, sticky=tk.NSEW, minsize=300)
 
         robot_window_frame = tk.LabelFrame(self.page_frame, text='Robot Controller')
         
