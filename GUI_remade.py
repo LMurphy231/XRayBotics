@@ -57,9 +57,11 @@ class GUILogHandler(logging.Handler):
         try:
             msg = self.format(record)
             self.log_text.append((time.time(), record.levelno, msg))
-
-            for text in self.texts:
-                _write_to_textbox(text, msg)
+            try:
+                for text in self.texts:
+                    _write_to_textbox(text, msg)
+            except:
+                return
 
         except Exception:
             self.handleError(record)
@@ -166,18 +168,24 @@ class GUI:
 
     def _create_robot_controller(self, frame:tk.Frame):
         self.robot_vars = {}
-
         frame.rowconfigure(0, weight=1)
-        frame.columnconfigure(2, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        robot_frame = tk.PanedWindow(frame, sashwidth=10, orient=tk.HORIZONTAL)
+        robot_frame.grid(sticky=tk.NSEW)
+
+        left_pane = tk.Frame(robot_frame)
+        plotter_frame = tk.LabelFrame(robot_frame, text='Robot Viewer', font=("Arial", 14, "bold"), labelanchor=tk.N)
+
+        robot_frame.add(left_pane, minsize=100)
+        robot_frame.add(plotter_frame, minsize=100)
         
-        move_type_notebook = ttk.Notebook(frame)
+        move_type_notebook = ttk.Notebook(left_pane)
         move_type_notebook.grid(row=0, column=0, sticky=tk.NSEW)
 
-        button_frame = tk.Frame(frame)
+        button_frame = tk.Frame(left_pane)
         button_frame.grid(row=0, column=1, sticky=tk.NSEW)
-        
-        plotter_frame = tk.Frame(frame)
-        plotter_frame.grid(row=0, column=2, sticky=tk.NSEW)
+
         self.robot_plotter = plt.Plotter(plotter_frame, '3d')
         self.robot_plotter._set_axis_limit(-500,500,-500,500,-500,500)
         self.robot.register_live_plotter(self.robot_plotter)
@@ -186,139 +194,109 @@ class GUI:
         estimated_color = 'orange'
 
 
-        var_names = ['x', 'y', 'z', 'rx', 'ry', 'rz']
+        movement_options  = {
+            'Coordinate Movement' : {
+                'var_names' : ['x', 'y', 'z', 'rx', 'ry', 'rz'],
+                'plot_function' : lambda position_vars: self.robot.plot_new_position(self.robot._get_movement_pos(*[var.get() for var in position_vars]), self.robot_plotter, name=estimated_name, color=estimated_color, is_joint=False),
+                'move_function' : lambda position_vars: self.robot.move_position(*[var.get() for var in position_vars], in_thread=True),
+                'limits': [(-500.0, 500.0),]*3+[(-180, 180),]*3,
+            },
+            'Incremental Movement' : {
+                'var_names' : ['dx', 'dy', 'dz', 'drx', 'dry', 'drz'],
+                'plot_function' : lambda position_vars: self.robot.plot_new_position(self.robot._get_movement_pos(*[var.get() for var in position_vars]), self.robot_plotter, name=estimated_name, color=estimated_color, is_joint=False),
+                'move_function' : lambda position_vars: self.robot.move_increment(*[var.get() for var in position_vars], in_thread=True),
+                'limits': [(-250.0, 250.0),]*3+[(-180, 180),]*3,
+            },
+            'Joint Movement' : {
+                'var_names' : ['Joint 1', 'Joint 2', 'Joint 3', 'Joint 4', 'Joint 5', 'Joint 6'],
+                'plot_function' : lambda position_vars: self.robot.plot_new_position([var.get() for var in position_vars], self.robot_plotter, name=estimated_name, color=estimated_color, is_joint=True),
+                'default': self.robot.HOME,
+                'move_function' : lambda position_vars: self.robot.move_joint([var.get() for var in position_vars], in_thread=True),
+                'limits': self.robot.AXIS_LIMIT,
+            },
+        }
         function_changes = {}
-
-        sub_frame = tk.Frame(move_type_notebook)
-        move_type_notebook.add(sub_frame, text='Coordinate Movement')
-        position_vars = []
-        position_function = lambda e=None: self.robot.plot_new_position(self.robot._get_movement_pos(*[var.get() for var in position_vars]), self.robot_plotter, name=estimated_name, color=estimated_color)
-        for index, var_name in enumerate(var_names):
-            tk.Label(sub_frame, text=f'{var_name}:').grid(row=index%3, column=2*(index//3),sticky=tk.NSEW)
-            var = tk.DoubleVar(value=0.0)
-            entry = tk.Entry(sub_frame, textvariable=var)
-            var.trace_add('write', lambda *args: position_function())
-            entry.grid(row=index%3,column=1+2*(index//3),sticky=tk.NSEW)
-            position_vars.append(var)
-            self.robot_vars[var_name.lower()] = {
-                'var'   : var,
-                'widget': entry,
-            }
-        function_changes['Coordinate Movement'] = (
-                        lambda var_names=var_names, funct=self.robot._position_move: funct(
-                            **{var_name.lower(): self.robot_vars[var_name.lower()]['var'].get() for var_name in var_names},
-                            in_thread=True,
-                        ),
-                        lambda var_names=var_names: (_reset_var(0.0, *(self.robot_vars[var_name.lower()]['var'] for var_name in var_names),incriment_function()))
-                    )
-
-
-        var_names = ['dx', 'dy', 'dz', 'drx', 'dry', 'drz']
-
-        sub_frame = tk.Frame(move_type_notebook)
-        move_type_notebook.add(sub_frame, text='Incrimental Movement')
-        minior_frames = (tk.Frame(sub_frame), tk.Frame(sub_frame))
-        
-        incriment_vars = []
-        incriment_function = lambda e=None: self.robot.plot_new_position(self.robot._get_incriment_pos(*[var.get() for var in incriment_vars]), self.robot_plotter, name=estimated_name, color=estimated_color)
-
-        for index, var_name in enumerate(var_names):
-            var = tk.DoubleVar(value=0.0)
-            for i, minor_frame in enumerate(minior_frames):
-                tk.Label(minor_frame, text=f'{var_name}:').grid(row=index%3, column=2*(index//3),sticky=tk.E)
-                if i == 0:
-                    widget = tk.Entry(minor_frame, textvariable=var)
-                else:
-                    widget = tk.Frame(minor_frame)
-                    tk.Label(widget, textvariable=var, width=5).grid(row=0, column=0,sticky=tk.EW)
-                    tk.Scale(widget, from_=-250.0, to=250.0, orient=tk.HORIZONTAL, width=13, resolution=0.01, variable=var, showvalue=False, command=incriment_function).grid(row=0, column=1, sticky=tk.NSEW)
+        for movement_type, obj in movement_options.items():
+            sub_frame = tk.Frame(move_type_notebook)
+            minior_frames = (tk.Frame(sub_frame), tk.Frame(sub_frame))
+            minior_frames[0].grid(row=0, column=0, sticky=tk.NSEW)
+            bool_var = tk.BooleanVar(value=False)
+            tk.Checkbutton(sub_frame, text='Use Slider', variable=bool_var, command=lambda *args, frames=minior_frames, var=bool_var: 
+                    (frames[0 if var.get() else 1].grid_forget(),
+                    frames[1 if var.get() else 0].grid(row=0, column=0, sticky=tk.NSEW),),
+                    ).grid(row=1, column=0)
+            
+            move_type_notebook.add(sub_frame, text=movement_type)
+            default_values = obj.get('default', [0.0]*len(obj['var_names']))
+            movement_vars = []
+           
+            for index, var_name in enumerate(obj['var_names']):
                 
-                widget.grid(row=index%3,column=1+2*(index//3),sticky=tk.NSEW)
-                minor_frame.columnconfigure(1+2*(index//3), minsize=75)
-
-            incriment_vars.append(var)
-            self.robot_vars[var_name.lower()] = {
-                'var'   : var,
-                'widget': entry,
-            }
-
-
-        bool_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(sub_frame, text='Use Slider', variable=bool_var, command=lambda *args, frames=minior_frames, var=bool_var: 
-                        (frames[0 if var.get() else 1].grid_forget(),
-                        frames[1 if var.get() else 0].grid(row=0, column=0, sticky=tk.NSEW)),
-                        ).grid(row=1, column=0)
-        minior_frames[1 if bool_var.get() else 0].grid(row=0, column=0, sticky=tk.NSEW)
-
-        function_changes['Incrimental Movement'] = (
-                        lambda var_names=var_names, funct=self.robot._incriment_move: funct(
-                            **{var_name.lower(): self.robot_vars[var_name.lower()]['var'].get() for var_name in var_names},
-                            in_thread=True,
-                        ),
-                        lambda var_names=var_names: (_reset_var(0.0, *(self.robot_vars[var_name.lower()]['var'] for var_name in var_names)), incriment_function)
-                    )
-
-        sub_frame = tk.Frame(move_type_notebook)
-        move_type_notebook.add(sub_frame, text='Joint Movement')
-        minior_frames = (tk.Frame(sub_frame), tk.Frame(sub_frame))
-        joint_vars = []
-        joint_function = lambda e=None: self.robot_plotter.plot_robot(self.robot.DH, [np.deg2rad(var.get()) for var in joint_vars], name=estimated_name, color=estimated_color)
-        for index, (set_angle, (min_, max_)) in enumerate(zip(self.robot.HOME, self.robot.AXIS_LIMIT)):
-            var_name = f'joint{index}'
-            var = tk.DoubleVar(value=set_angle)
-            for i, minor_frame in enumerate(minior_frames):
-                tk.Label(minor_frame, text=f'{var_name}:').grid(row=index%3, column=2*(index//3),sticky=tk.E)
-                if i == 0:
-                    widget = tk.Entry(minor_frame, textvariable=var)
-                else:
-                    widget = tk.Frame(minor_frame)
-                    tk.Label(widget, textvariable=var, width=5).grid(row=0, column=0,sticky=tk.EW)
-                    tk.Scale(widget, from_=min_, to=max_, orient=tk.HORIZONTAL, width=13, resolution=0.01, variable=var, showvalue=False, command=joint_function).grid(row=0, column=1, sticky=tk.NSEW)
                 
-                widget.grid(row=index%3,column=1+2*(index//3),sticky=tk.NSEW)
-                minor_frame.columnconfigure(1+2*(index//3), minsize=75)
+                var = tk.DoubleVar(value=default_values[index])
+                movement_vars.append(var)
 
-            joint_vars.append(var)
-            self.robot_vars[var_name.lower()] = {
-                'var'     : var,
-                'widget'  : entry,
-            }
-        joint_function()
+                for i, minor_frame in enumerate(minior_frames):
+                    tk.Label(minor_frame, text=f'{var_name}:').grid(row=index%3, column=2*(index//3),sticky=tk.NSEW)
+                    if i == 0:  
+                        widget = tk.Entry(minor_frame, textvariable=var)
+                    else:
+                        widget = tk.Frame(minor_frame)
+                        tk.Label(widget, textvariable=var, width=5).grid(row=0, column=0,sticky=tk.EW)
+                        from_, to = obj['limits'][i]
+                        tk.Scale(widget, from_=from_, to=to, orient=tk.HORIZONTAL, width=13, resolution=0.01, variable=var, showvalue=False, ).grid(row=0, column=1, sticky=tk.NSEW)#command=lambda *args, vars=movement_vars, obj=obj: obj['plot_function'](vars)
+                    
+                    widget.grid(row=index%3,column=1+2*(index//3),sticky=tk.NSEW)
+                    minor_frame.columnconfigure(1+2*(index//3), minsize=75)
+                
 
-        bool_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(sub_frame, text='Use Slider', variable=bool_var, command=lambda *args, frames=minior_frames, var=bool_var: 
-                        (frames[0 if var.get() else 1].grid_forget(),
-                        frames[1 if var.get() else 0].grid(row=0, column=0, sticky=tk.NSEW),),
-                        ).grid(row=1, column=0)
-        minior_frames[1 if bool_var.get() else 0].grid(row=0, column=0, sticky=tk.NSEW)
+            for var in movement_vars:
+                var.trace_add('write', lambda *args, obj=obj, vars=movement_vars: obj['plot_function'](vars))
 
-        function_changes['Joint Movement'] = (
-                        lambda funct=self.robot._joint_move: funct(
-                            [self.robot_vars[f'joint{i}']['var'].get() for i in range(len(self.robot.HOME))],
-                            in_thread=True,
-                        ),
-                        lambda: ([_reset_var(angle, self.robot_vars[f'joint{i}']['var']) for i, angle in enumerate(self.robot.HOME)], joint_function())
-                    )
+            function_changes[movement_type] = (
+                lambda *args, vars=movement_vars, obj=obj: obj['move_function'](vars),
+                lambda *args, vars=movement_vars, defaults=default_values: [_reset_var(default, var) for default, var in zip(defaults, vars)],
+                )
 
-       
 
-        move_button = tk.Button(button_frame, text='Move')
-        move_button.grid(row=0, column=0, sticky=tk.NSEW)
-        self.robot._disable_move_widgets.append(move_button)
 
-        reset_var_button = tk.Button(button_frame, text='Reset Position')
-        reset_var_button.grid(row=1, column=0, sticky=tk.NSEW)
+        movement_frame = tk.LabelFrame(button_frame, text='Movement Commands')
+        movement_frame.grid(sticky=tk.NSEW)
+
+        move_to_frame = tk.LabelFrame(button_frame, text='Move to Position')
+        move_to_frame.grid(sticky=tk.NSEW)
+
+        var_frame = tk.LabelFrame(button_frame, text='Other')
+        var_frame.grid(sticky=tk.NSEW)
         
-        tk.Button(button_frame, text='Stop Robot'   , command = self.robot.interrupt_threads).grid(row=0, column=1, sticky=tk.NSEW)
-        tk.Button(button_frame, text='Clear Error'  , command = lambda: print(self.robot.ResetAllError())).grid(row=4, column=1, sticky=tk.NSEW)
-        tk.Button(button_frame, text='Got to isocenter'  , command = self.robot.move_to_isocenter).grid(row=1, column=2, sticky=tk.NSEW)
+        button_options = {
+            'width': 10, 
+        } 
+        button_grid_cnf = {
+            'sticky': tk.NSEW,
+            'padx':2,
+            'pady':2,
+        }
+        move_button = tk.Button(movement_frame, text='Move', cnf=button_options)
+        stop_button = tk.Button(movement_frame, text='Stop Robot'   , command = self.robot.interrupt_threads, cnf=button_options)
+        stop_button.grid(row=0, column=1, cnf=button_grid_cnf)
+        move_button.grid(row=0, column=0, cnf=button_grid_cnf)
 
-        isocenter_button = tk.Button(button_frame, text='Set Isocenter', command = lambda: self.robot.set_isocenter(self.robot._get_tool_position()))
-        isocenter_button.grid(row=1, column=1, sticky=tk.NSEW)
-        home_button = tk.Button(button_frame, text='Home'         , command = lambda: self.robot.move_to_home())
-        home_button.grid(row=2, column=1, sticky=tk.NSEW)
+        clear_button = tk.Button(movement_frame, text='Clear Error'  , command = lambda: print(self.robot.ResetAllError()),cnf=button_options)
+        set_isocenter_button = tk.Button(movement_frame, text='Set Isocenter', command = lambda: self.robot.set_isocenter(self.robot._get_tool_position()),cnf=button_options)
+        set_isocenter_button.grid(row=1, column=0, cnf=button_grid_cnf)
+        clear_button.grid(row=1, column=1, cnf=button_grid_cnf)
+        
 
-        self.robot._disable_move_widgets.extend([home_button, isocenter_button])
+        isocenter_button = tk.Button(move_to_frame, text='Isocenter'  , command = self.robot.move_to_isocenter,cnf=button_options)
+        home_button = tk.Button(move_to_frame, text='Home', command = lambda: self.robot.move_to_home(),cnf=button_options)
+        isocenter_button.grid(row=0, column=0, cnf=button_grid_cnf)
+        home_button.grid(row=0, column=1, cnf=button_grid_cnf)
+
+        reset_var_button = tk.Button(var_frame, text='Reset', cnf=button_options)
+        reset_var_button.grid(row=0, column=0, cnf=button_grid_cnf)
+
+        self.robot._disable_move_widgets.extend([move_button, home_button, set_isocenter_button, isocenter_button])
 
         def _change_functions(event:tk.Event):
             if event is None:
@@ -330,7 +308,7 @@ class GUI:
             reset_var_button.configure(command=function_changes[tab][1])
 
         move_type_notebook.bind('<<NotebookTabChanged>>', _change_functions)
-
+    
     def _create_option_window(self, frame:tk.Frame, sections):
         for _, old_widget in list(frame.children.items()):
             old_widget.destroy()
@@ -395,7 +373,7 @@ class GUI:
         tk.Button(frame, text='Close', command=lambda: self.window_pane.remove(frame)).grid(row=0, column=1, sticky=tk.NE)
 
         self.logger_selection = tk.StringVar(value='All')
-        self.level_selection  = tk.StringVar(value='')
+        self.level_selection  = tk.StringVar(value='Debug')
         self.logging_levels = {
             'Debug'   : logging.DEBUG,
             'Info'    : logging.INFO,
@@ -435,15 +413,14 @@ class GUI:
             type_vars[option] = var
             menu.add_checkbutton(label=option, variable=var, command=lambda type_vars=type_vars, menu=menu, option=option: (menu_click(type_vars, menu, menu_frame, option == 'All'), funct()))
 
-        ttk.OptionMenu(frame, self.level_selection , 'Info', *list(self.logging_levels.keys()), command=lambda event=None: self._display_log(self.logging_textbox, [self.logger_selection.get()], self.logging_levels[self.level_selection.get()])).grid(row=1, column=1, sticky=tk.EW, padx=5, pady=5)
-
+        ttk.OptionMenu(frame, self.level_selection , 'Info', *list(self.logging_levels.keys()), command=lambda event=None: funct()).grid(row=1, column=1, sticky=tk.EW, padx=5, pady=5)
 
         message_frame = tk.Frame(frame)
         message_frame.grid(row=2, column=0, columnspan=2, sticky=tk.NSEW)
         
         self.logging_textbox = scrolledtext.ScrolledText(message_frame, wrap=None, state=tk.NORMAL)
         self.logging_textbox.pack(expand=True, fill=tk.BOTH)
-        self._display_log(self.logging_textbox, [self.logger_selection.get()])
+        funct()
 
     def _change_test_page(self, event:tk.Event):
         if event is None:
@@ -483,6 +460,10 @@ class GUI:
         text.delete('1.0', tk.END)
         _write_to_textbox(text, '\n'.join([item[-1] for item in all_text if item[1] >= level]))
 
+def verify_vars(funct:object, vars):
+    pass
+
+    
 def _write_to_textbox(textbox:tk.Text, message, endswith='\n', end_state=tk.DISABLED):
     is_at_bottom = textbox.yview()[1] >= 1.0
     textbox.config(state=tk.NORMAL)

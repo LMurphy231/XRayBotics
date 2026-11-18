@@ -103,16 +103,17 @@ def transformation_matrix(DH:DenavitHartenbergParameter, set_angle=None):
 
 def deltaTheta(Jacobian, deltaX, damping_factor):
     [U, S, Vh] = np.linalg.svd(Jacobian, full_matrices=False,)
-    #print(f'U:\n{U}\nS:\n{S}\nV:\n{V}')
-    
-    #sigma = np.diag(S)
 
-    sigma_inv = S / (S**2 + damping_factor**2)
-    #J_plus = np.matmul(np.matmul(V.T, np.diag(sigma_inv)), U.T)
+    sigma_min = min(S)
+    if sigma_min < 0.05:
+        damping = damping_factor * (1 + (0.05 - sigma_min) / 0.05)
+    else:
+        damping = damping_factor
+    sigma_inv = S / (S**2 + damping**2)
     
     dTheta = Vh.T @ np.diag(sigma_inv) @ U.T @ deltaX
     return dTheta
-    return np.matmul(J_plus, deltaX)
+
 
 def ForwardKinematics(DHArray:list[DenavitHartenbergParameter], set_values:list[float]):
     T = np.eye(4)
@@ -148,19 +149,64 @@ def JacobianMatrix(DHArray:list[DenavitHartenbergParameter], set_values):
     
     return Jacobian
 
-def IterativeInvK(DHArray:list[DenavitHartenbergParameter], current_values, target_position, damping_factor):
-    max_iterations = 1000
-    alpha=0.5
-    target_position = np.transpose(target_position)
+def get_orientation(T):
+    R = T[:3, :3]
+
+    roll = np.arctan2(R[2, 1], R[2, 2])
+
+    pitch = np.arctan2(
+        -R[2, 0],
+        np.sqrt(R[2, 1]**2 + R[2, 2]**2)
+    )
+
+    yaw = np.arctan2(R[1, 0], R[0, 0])
+    return np.array([roll, pitch, yaw])
+
+def pose_jacobian(J, roll, pitch):
+    phi = roll
+    theta = pitch
+    E = np.array([
+        [1, np.sin(phi)*np.tan(theta), np.cos(phi)*np.tan(theta)],
+        [0, np.cos(phi),              -np.sin(phi)],
+        [0, np.sin(phi)/np.cos(theta), np.cos(phi)/np.cos(theta)]
+    ])
+
+    J_linear = J[:3, :]
+    J_angular = J[3:6, :]
+
+    return np.vstack((
+        J_linear,
+        E @ J_angular
+    ))
+
+def IterativeInvK(DHArray:list[DenavitHartenbergParameter], current_values, target_position, damping_factor, target_orientation=None, max_iterations=1000, alpha=0.5):
     
+    target_position = np.transpose(target_position)
+    if target_orientation is not None:
+        target_orientation = np.transpose(target_orientation)
+        
     for i in range(max_iterations):
         T = ForwardKinematics(DHArray, current_values)
         n = len(T)-1
         X_A = T[:-1, -1]
+
         deltaX = target_position - X_A
+
+        if target_orientation is not None:
+            current_orientation = get_orientation(T)
+            delta_orientation = target_orientation - current_orientation
+            delta_orientation = np.arctan2(
+                np.sin(delta_orientation),
+                np.cos(delta_orientation)
+            )
+            deltaX = np.concatenate((deltaX, delta_orientation))
 
         Jacobian = JacobianMatrix(DHArray, current_values)
         Jacobian_pos = Jacobian[:n, :]
+
+        if target_orientation is not None:
+            Jacobian_pos = pose_jacobian(Jacobian, current_orientation[0], current_orientation[1])
+
         dTheta = deltaTheta(Jacobian_pos, deltaX, damping_factor)
         
         current_values = current_values + alpha * dTheta
@@ -168,7 +214,6 @@ def IterativeInvK(DHArray:list[DenavitHartenbergParameter], current_values, targ
         T = ForwardKinematics(DHArray, current_values)
         n = len(T)-1
         X_A = T[:-1, -1]
-        
         if np.linalg.norm(dTheta) <= 1e-3:
             return current_values
         
@@ -198,8 +243,10 @@ class Plotter:
         self.menu_button.pack(side=tk.RIGHT)
         
         menu = tk.Menu(self.menu_button, tearoff=0)
+        self.legend_variable = tk.BooleanVar(value=True)
         self.menu_button['menu'] = menu
         menu.add_command(label="Edit Lines", command=lambda: self.root.add(self.edit_frame, minsize=100))
+        menu.add_checkbutton(label="Show Legend", variable=self.legend_variable, command=lambda: self.legend_update(self.legend_variable.get()))
 
         self.edit_frame = tk.Frame(self.root)
 
@@ -240,9 +287,11 @@ class Plotter:
         def scatter(*args, existing_line=None, **kwargs):
             new_artist = self.ax.scatter(*args, **kwargs)
             if existing_line is not None and existing_line.axes is not None:
-                new_artist.update_from(existing_line)
+                if self._projection != '3d':
+                    new_artist.update_from(existing_line)
                 existing_line.remove()
             self._update_artist_selection_widget()
+            self.legend_update(self.legend_variable.get())
             return new_artist
 
         @copy_params(self.ax.plot)
@@ -253,6 +302,7 @@ class Plotter:
                     artist.update_from(existing_line)
                 existing_line.remove()
             self._update_artist_selection_widget()
+            self.legend_update(self.legend_variable.get())
             return new_artists
 
         @copy_params(self.ax.quiver)
@@ -262,6 +312,7 @@ class Plotter:
                 new_artist.update_from(existing_line)
                 existing_line.remove()
             self._update_artist_selection_widget()
+            self.legend_update(self.legend_variable.get())
             return new_artist
         
         @copy_params(self.ax.vlines)
@@ -271,6 +322,7 @@ class Plotter:
                 new_artist.update_from(existing_line)
                 existing_line.remove()
             self._update_artist_selection_widget()
+            self.legend_update(self.legend_variable.get())
             return new_artist
         
         @copy_params(self.ax.axvline)
@@ -280,6 +332,7 @@ class Plotter:
                 new_artist.update_from(existing_line)
                 existing_line.remove()
             self._update_artist_selection_widget()
+            self.legend_update(self.legend_variable.get())
             return new_artist
 
         if self._projection == '3d':
@@ -291,6 +344,7 @@ class Plotter:
                         artist.update_from(existing_line)
                     existing_line.remove()
                 self._update_artist_selection_widget()
+                self.legend_update(self.legend_variable.get())
                 return new_artists
             
             self.add_collection3d = add_collection3d
@@ -313,7 +367,10 @@ class Plotter:
                     self._set_axis_limit(self._user_xmin, self._user_xmax, self._user_ymin, self._user_ymax, self._user_zmin, self._user_zmax)
                 else:
                     self._set_axis_limit(self.xmin, self.xmax, self.ymin, self.ymax, self.zmin, self.zmax)
-        self.canvas.draw()
+        try:
+            self.canvas.draw()
+        except BaseException as e:
+            print(e)
         
     update = _update
 
@@ -326,28 +383,36 @@ class Plotter:
             menu.add_checkbutton(label=label, command=command, variable=var)
 
     def legend_update(self, state=True, sorted_labels=True, only_visible=True):
+        self.legend_variable.set(state)
+        legend = self.ax.get_legend()
         if not state:
-            self.ax.get_legend().remove()
+            if legend is not None:
+                legend.remove()
+            self.canvas.draw_idle()
+            return
         
+        legend = self.ax.legend()
+        legend = legend.set_draggable(True)
         handles, labels = self.ax.get_legend_handles_labels()
+        
         if sorted_labels:
             handles, labels = zip(*sorted(zip(handles, labels), key=lambda x: x[-1]))
 
-        
-            
+        self.ax.legend(handles, labels)
+        self.canvas.draw_idle()   
 
 
-    def _set_axis_limit(self, xmin=None, xmax=None, ymin=None, ymax=None, zmin=None, zmax=None):
-        self.xmin = xmin if xmin is not None else self.ax.get_xlim()[0]
-        self.xmax = xmax if xmax is not None else self.ax.get_xlim()[1]
-        self.ymin = ymin if ymin is not None else self.ax.get_ylim()[0]
-        self.ymax = ymax if ymax is not None else self.ax.get_ylim()[1]
+    def _set_axis_limit(self, xmin=None, xmax=None, ymin=None, ymax=None, zmin=None, zmax=None, center=[0.0,0.0,0.0]):
+        self.xmin = (xmin if xmin is not None else self.ax.get_xlim()[0]) + center[0]
+        self.xmax = (xmax if xmax is not None else self.ax.get_xlim()[1]) + center[0]
+        self.ymin = (ymin if ymin is not None else self.ax.get_ylim()[0]) + center[1]
+        self.ymax = (ymax if ymax is not None else self.ax.get_ylim()[1]) + center[1]
 
         self.ax.set_xlim(self.xmin, self.xmax)
         self.ax.set_ylim(self.ymin, self.ymax)
         if self._projection == '3d':
-            self.zmin = zmin if zmin is not None else self.ax.get_zlim()[0]
-            self.zmax = zmax if zmax is not None else self.ax.get_zlim()[1]
+            self.zmin = (zmin if zmin is not None else self.ax.get_zlim()[0]) + center[2]
+            self.zmax = (zmax if zmax is not None else self.ax.get_zlim()[1]) + center[2]
             self.ax.set_zlim(self.zmin, self.zmax)
         
     def _focus_view(self, x, y, z, x_dist, y_dist, z_dist):

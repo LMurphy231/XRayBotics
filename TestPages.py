@@ -136,6 +136,7 @@ class TestResultsPage(BasePage):
     def update(self, test_type, test_name, raw_data, inputs):
         self.current_results = (test_type, test_name, raw_data, inputs)
 
+        self.plotter_frame.configure(text=f'{test_type.capitalize()} Results Graph')
         self.plotter2d.grid(True)
         self.plotter3d.grid(True)
 
@@ -143,12 +144,15 @@ class TestResultsPage(BasePage):
         xmax = 0.0
         ymin = 0.0
         ymax = 0.0
+
+        min_3d = 0.0
+        max_3d = 0.0
         
         for i, movement_results in enumerate(raw_data):
             position, distance, intensities = map(list, zip(*movement_results))
             
             label = f'Movement {i}'
-            self.lines[label+'2d'] = self.plotter2d.plot(distance, intensities, label=label, existing_line=self.lines.get(label+'2d', None))[0]
+            self.lines[label+'2d'] = self.plotter2d.plot(distance, intensities, label=label, marker='o', existing_line=self.lines.get(label+'2d', None))[0]
 
             x, y, z = map(list, zip(*position))
             self.lines[label+'3d'] = self.plotter3d.scatter(x, y, z, c=intensities, cmap='viridis', label=label, existing_line=self.lines.get(label+'3d', None))
@@ -158,7 +162,13 @@ class TestResultsPage(BasePage):
             ymin = min(ymin, min(intensities))
             ymax = max(ymax, max(intensities))
 
+            min_3d = min(min_3d, min(x), min(y), min(z))
+            max_3d = max(max_3d, max(x), max(y), max(z))
+
         self.plotter2d._set_axis_limit(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax*1.05)
+        offset = 1.25
+        dist = max_3d - min_3d
+        self.plotter3d._set_axis_limit(xmin=-dist, xmax=dist, ymin=-dist, ymax=dist, zmin=-dist, zmax=dist)
         found_angle = None
 
         try:
@@ -273,12 +283,12 @@ class TestResultsPage(BasePage):
         self.test_selection.selection_set(len(self.loaded_results)-1)
         self.test_selection.event_generate("<<ListboxSelect>>")
 
-    def _create_comparison_frame(self, frame:tk.Frame) -> tk.Frame:
+    def _create_comparison_frame(self, frame:tk.Frame):
         comparison_frame = tk.Frame(frame)
         return comparison_frame
     
-    def _create_plotter_frame(self, frame:tk.Frame) -> tk.Frame:
-        plotter_frame = tk.Frame(frame)
+    def _create_plotter_frame(self, frame:tk.Frame):
+        plotter_frame = tk.LabelFrame(frame, text='Test Results Graph', font=("Arial", 14, "bold"), labelanchor=tk.N)
         plotter_notebook = ttk.Notebook(plotter_frame)
         plotter_notebook.pack(expand=True, fill=tk.BOTH)
 
@@ -297,7 +307,7 @@ class TestResultsPage(BasePage):
         self.plotter3d.add_menu_option(label='Show Centers', command=lambda: self.update(*self.current_results) if self.current_results else None, var=self.show_center_var)
         return plotter_frame
 
-    def _create_test_selection_frame(self, frame:tk.Frame) -> tk.Frame:
+    def _create_test_selection_frame(self, frame:tk.Frame):
         test_selection_frame = tk.Frame(frame)
 
         tk.Label(test_selection_frame, text='Test Result Selection').pack(side=tk.TOP, expand=False, fill=tk.X)
@@ -536,7 +546,7 @@ class TestPage(BasePage):
 
         Default None
         """
-        plotter_frame = tk.Frame(frame)
+        plotter_frame = tk.LabelFrame(frame, text='Simulated Path', font=("Arial", 14, "bold"), labelanchor=tk.N)
         
         self.plotter = plt.Plotter(plotter_frame, projection='3d')
 
@@ -582,14 +592,14 @@ class GravityTest(TestPage):
 
         section = 'tests.gravity.path'
         self.option_sections.append(section)
-        self.opts.add_option(section, 'step_length', 1.0    , tk.DoubleVar(), display_name='Step length', units='mm' , description='Distance between data recordings.')
-        self.opts.add_option(section, 'length'     , 100.0  , tk.DoubleVar(), display_name='Length'     , units='mm' , description='Length of rectangular path.')
-        self.opts.add_option(section, 'height'     , 100.0  , tk.DoubleVar(), display_name='Height'     , units='mm' , description='Height of rectangular path.')
+        self.opts.add_option(section, 'step_length', 1.0    , tk.DoubleVar(), display_name='Step length', min_value=0.0, max_value=500.0, units='mm' , description='Distance between data recordings.')
+        self.opts.add_option(section, 'length'     , 100.0  , tk.DoubleVar(), display_name='Length'     , min_value=0.0, max_value=500.0, units='mm' , description='Length of rectangular path.')
+        self.opts.add_option(section, 'height'     , 100.0  , tk.DoubleVar(), display_name='Height'     , min_value=0.0, max_value=500.0, units='mm' , description='Height of rectangular path.')
         self.opts.add_option(section, 'side'       , 'right', tk.StringVar(), display_name='Side'       , values=['left', 'right', 'front'], units=''   , description='Side of the robot that the Gravity Test will perform on.')
 
         section = 'tests.gravity.variables'
         self.option_sections.append(section)
-        self.opts.add_option(section, 'navg'     , 5, tk.IntVar()      , display_name='Sensor Average Readings', units=''  , description='Number of data points recorded at a single point. The average of these points will be returned.')
+        self.opts.add_option(section, 'navg'     , 5, tk.IntVar()      , display_name='Sensor Average Readings', units=''  , min_value=1, description='Number of data points recorded at a single point. The average of these points will be returned.')
         self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold', units='pu', description='Cutoff limit for light intensity readings.')
 
     def _create_parameter_frame(self, frame = None):
@@ -618,9 +628,9 @@ class GravityTest(TestPage):
 
         try:
             section = 'tests.gravity.path'
-            length = self.opts.get(section, 'length').var.get()
-            height = self.opts.get(section, 'height').var.get()
-            side   = self.opts.get(section, 'side').var.get()
+            length = self.opts.get(section, 'length').value
+            height = self.opts.get(section, 'height').value
+            side   = self.opts.get(section, 'side').value
         except:
             return
 
@@ -631,14 +641,14 @@ class GravityTest(TestPage):
     def start(self):
         try:
             section = 'tests.gravity.path'
-            step_length = self.opts.get(section, 'step_length').var.get()
-            length      = self.opts.get(section, 'length').var.get()
-            height      = self.opts.get(section, 'height').var.get()
-            side        = self.opts.get(section, 'side').var.get()
+            step_length = self.opts.get(section, 'step_length').value
+            length      = self.opts.get(section, 'length').value
+            height      = self.opts.get(section, 'height').value
+            side        = self.opts.get(section, 'side').value
 
             section = 'tests.gravity.variables'
-            threshold = self.opts.get(section, 'threshold').var.get()
-            Navg = self.opts.get(section, 'navg').var.get()
+            threshold = self.opts.get(section, 'threshold').value
+            Navg = self.opts.get(section, 'navg').value
 
         except:
             return
@@ -673,20 +683,20 @@ class CollimatorTest(TestPage):
     
     def _default_settings(self):
         section = 'linac.jaws'
-        self.opts.add_option(section, 'x1', 10.0  , tk.DoubleVar()   , display_name='X1', units='mm' , description='X1 length of light field at 100 cm')
-        self.opts.add_option(section, 'x2', 10.0  , tk.DoubleVar()   , display_name='X2', units='mm' , description='X2 length of light field at 100 cm')
-        self.opts.add_option(section, 'y1', 100.0  , tk.DoubleVar()   , display_name='Y1', units='mm' , description='Y1 length of light field at 100 cm')
-        self.opts.add_option(section, 'y2', 100.0  , tk.DoubleVar()   , display_name='Y2', units='mm' , description='Y2 length of light field at 100 cm')
+        self.opts.add_option(section, 'x1', 10.0  , tk.DoubleVar() , display_name='X1', min_value=0.0, max_value=500.0, units='mm' , description='X1 length of light field at 100 cm')
+        self.opts.add_option(section, 'x2', 10.0  , tk.DoubleVar() , display_name='X2', min_value=0.0, max_value=500.0, units='mm' , description='X2 length of light field at 100 cm')
+        self.opts.add_option(section, 'y1', 100.0  , tk.DoubleVar(), display_name='Y1', min_value=0.0, max_value=500.0, units='mm' , description='Y1 length of light field at 100 cm')
+        self.opts.add_option(section, 'y2', 100.0  , tk.DoubleVar(), display_name='Y2', min_value=0.0, max_value=500.0, units='mm' , description='Y2 length of light field at 100 cm')
         
         section = 'linac.angles'
-        self.opts.add_option(section, 'gantry'    , 0.0  , tk.DoubleVar()   , display_name='Gantry angle'    , units='deg' , description='Angle set for the Gantry')
-        self.opts.add_option(section, 'collimator', 0.0  , tk.DoubleVar()   , display_name='Collimator angle', units='deg' , description='Angle set for the collimator')
-        self.opts.add_option(section, 'couch'     , 0.0  , tk.DoubleVar()   , display_name='Couch angle'     , units='deg' , description='Angle set for the Couch')
+        self.opts.add_option(section, 'gantry'    , 0.0  , tk.DoubleVar()   , display_name='Gantry angle'    , min_value=-360.0, max_value=360.0, units='deg' , description='Angle set for the Gantry')
+        self.opts.add_option(section, 'collimator', 0.0  , tk.DoubleVar()   , display_name='Collimator angle', min_value=-360.0, max_value=360.0, units='deg' , description='Angle set for the collimator')
+        self.opts.add_option(section, 'couch'     , 0.0  , tk.DoubleVar()   , display_name='Couch angle'     , min_value=-360.0, max_value=360.0, units='deg' , description='Angle set for the Couch')
         
         section = 'tests.collimator.path'
-        self.opts.add_option(section, 'step_length', 1.0  , tk.DoubleVar(), display_name='Step length' , units='mm' , description='Distance between data recordings.')
-        self.opts.add_option(section, 'w_umbra'    , 1.0 , tk.DoubleVar(), display_name='Width Umbra' , units='mm' , description='Distance past x1/x2 that robot will scan.')
-        self.opts.add_option(section, 'l_umbra'    , 0.75 , tk.DoubleVar(), display_name='Lenght Umbra', units='mm' , description='Distance past y1/y2 that robot will scan.')
+        self.opts.add_option(section, 'step_length', 1.0  , tk.DoubleVar(), display_name='Step length'  , units='mm' , min_value=0.0, description='Distance between data recordings.')
+        self.opts.add_option(section, 'w_umbra'    , 1.0  , tk.DoubleVar() , display_name='Width Umbra' , units='mm' , min_value=0.0, description='Distance past x1/x2 that robot will scan.')
+        self.opts.add_option(section, 'l_umbra'    , 0.75 , tk.DoubleVar(), display_name='Length Umbra' , units='mm' , min_value=0.0, description='Distance past y1/y2 that robot will scan.')
 
 
         section = 'tests.collimator.variables'
@@ -746,20 +756,20 @@ class CollimatorTest(TestPage):
         
         try:
             section = 'linac.jaws'
-            x1 = self.opts.get(section, 'x1').var.get()
-            x2 = self.opts.get(section, 'x2').var.get()
-            y1 = self.opts.get(section, 'y1').var.get()
-            y2 = self.opts.get(section, 'y2').var.get()
+            x1 = self.opts.get(section, 'x1').value
+            x2 = self.opts.get(section, 'x2').value
+            y1 = self.opts.get(section, 'y1').value
+            y2 = self.opts.get(section, 'y2').value
             
 
             section = 'tests.collimator.path'
-            w_umbra = self.opts.get(section, 'w_umbra').var.get()
-            l_umbra = self.opts.get(section, 'l_umbra').var.get()
+            w_umbra = self.opts.get(section, 'w_umbra').value
+            l_umbra = self.opts.get(section, 'l_umbra').value
 
             section = 'linac.angles'
-            gantry_angle = self.opts.get(section, 'gantry').var.get()
-            collimator_angle = self.opts.get(section, 'collimator').var.get()
-            couch_angle = self.opts.get(section, 'couch').var.get()
+            gantry_angle = self.opts.get(section, 'gantry').value
+            collimator_angle = self.opts.get(section, 'collimator').value
+            couch_angle = self.opts.get(section, 'couch').value
         except:
             return
         isocenter = self.robot.isocenter[:3]
@@ -771,24 +781,24 @@ class CollimatorTest(TestPage):
     def start(self):
         try:
             section = 'linac.jaws'
-            x1 = self.opts.get(section, 'x1').var.get()
-            x2 = self.opts.get(section, 'x2').var.get()
-            y1 = self.opts.get(section, 'y1').var.get()
-            y2 = self.opts.get(section, 'y2').var.get()
+            x1 = self.opts.get(section, 'x1').value
+            x2 = self.opts.get(section, 'x2').value
+            y1 = self.opts.get(section, 'y1').value
+            y2 = self.opts.get(section, 'y2').value
 
             section = 'tests.collimator.path'
-            step_length = self.opts.get(section, 'step_length').var.get()
-            w_umbra = self.opts.get(section, 'w_umbra').var.get()
-            l_umbra = self.opts.get(section, 'l_umbra').var.get()
+            step_length = self.opts.get(section, 'step_length').value
+            w_umbra = self.opts.get(section, 'w_umbra').value
+            l_umbra = self.opts.get(section, 'l_umbra').value
 
             section = 'linac.angles'
-            gantry_angle = self.opts.get(section, 'gantry').var.get()
-            collimator_angle = self.opts.get(section, 'collimator').var.get()
-            couch_angle = self.opts.get(section, 'couch').var.get()
+            gantry_angle = self.opts.get(section, 'gantry').value
+            collimator_angle = self.opts.get(section, 'collimator').value
+            couch_angle = self.opts.get(section, 'couch').value
 
             section = 'tests.collimator.variables'
-            threshold = self.opts.get(section, 'threshold').var.get()
-            Navg = self.opts.get(section, 'navg').var.get()
+            threshold = self.opts.get(section, 'threshold').value
+            Navg = self.opts.get(section, 'navg').value
 
         except Exception as e:
             logging.critical(f'Could not start Gantry Test:\n{e}')
@@ -833,25 +843,25 @@ class GantryTest(TestPage):
     
     def _default_settings(self):
         section = 'linac.jaws'
-        self.opts.add_option(section, 'x1', 10.0  , tk.DoubleVar()   , display_name='X1', units='mm' , description='X1 length of light field at 100 cm')
-        self.opts.add_option(section, 'x2', 10.0  , tk.DoubleVar()   , display_name='X2', units='mm' , description='X2 length of light field at 100 cm')
-        self.opts.add_option(section, 'y1', 100.0  , tk.DoubleVar()   , display_name='Y1', units='mm' , description='Y1 length of light field at 100 cm')
-        self.opts.add_option(section, 'y2', 100.0  , tk.DoubleVar()   , display_name='Y2', units='mm' , description='Y2 length of light field at 100 cm')
+        self.opts.add_option(section, 'x1', 10.0  , tk.DoubleVar() , display_name='X1', min_value=0.0, max_value=500.0, units='mm' , description='X1 length of light field at 100 cm')
+        self.opts.add_option(section, 'x2', 10.0  , tk.DoubleVar() , display_name='X2', min_value=0.0, max_value=500.0, units='mm' , description='X2 length of light field at 100 cm')
+        self.opts.add_option(section, 'y1', 100.0  , tk.DoubleVar(), display_name='Y1', min_value=0.0, max_value=500.0, units='mm' , description='Y1 length of light field at 100 cm')
+        self.opts.add_option(section, 'y2', 100.0  , tk.DoubleVar(), display_name='Y2', min_value=0.0, max_value=500.0, units='mm' , description='Y2 length of light field at 100 cm')
         
         section = 'linac.angles'
-        self.opts.add_option(section, 'gantry'    , 0.0  , tk.DoubleVar()   , display_name='Gantry angle'    , units='deg' , description='Angle set for the Gantry')
-        self.opts.add_option(section, 'collimator', 0.0  , tk.DoubleVar()   , display_name='Collimator angle', units='deg' , description='Angle set for the collimator')
-        self.opts.add_option(section, 'couch'     , 0.0  , tk.DoubleVar()   , display_name='Couch angle'     , units='deg' , description='Angle set for the Couch')
+        self.opts.add_option(section, 'gantry'    , 0.0  , tk.DoubleVar(), display_name='Gantry angle'    , min_value=-360.0, max_value=360.0, units='deg' , description='Angle set for the Gantry')
+        self.opts.add_option(section, 'collimator', 0.0  , tk.DoubleVar(), display_name='Collimator angle', min_value=-360.0, max_value=360.0, units='deg' , description='Angle set for the collimator')
+        self.opts.add_option(section, 'couch'     , 0.0  , tk.DoubleVar(), display_name='Couch angle'     , min_value=-360.0, max_value=360.0, units='deg' , description='Angle set for the Couch')
 
         section = 'tests.gantry.path'
-        self.opts.add_option(section, 'height'     , 100  , tk.DoubleVar(), display_name='Height'      , units='mm' , description='Height of the path towards the collimator.')
-        self.opts.add_option(section, 'step_length', 1.0  , tk.DoubleVar(), display_name='Step length' , units='mm' , description='Distance between data recordings.')
-        self.opts.add_option(section, 'w_umbra'    , 1.0 , tk.DoubleVar(), display_name='Width Umbra' , units='mm' , description='Distance past x1/x2 that robot will scan.')
-        self.opts.add_option(section, 'l_umbra'    , 0.75 , tk.DoubleVar(), display_name='Lenght Umbra', units='mm' , description='Distance past y1/y2 that robot will scan.')
+        self.opts.add_option(section, 'height'     , 100  , tk.DoubleVar(), display_name='Height'      , units='mm' , min_value=0.0, description='Height of the path towards the collimator.')
+        self.opts.add_option(section, 'step_length', 1.0  , tk.DoubleVar(), display_name='Step length' , units='mm' , min_value=0.0, description='Distance between data recordings.')
+        self.opts.add_option(section, 'w_umbra'    , 1.0 , tk.DoubleVar() , display_name='Width Umbra' , units='mm' , min_value=0.0, description='Distance past x1/x2 that robot will scan.')
+        self.opts.add_option(section, 'l_umbra'    , 0.75 , tk.DoubleVar(), display_name='Length Umbra', units='mm' , min_value=0.0, description='Distance past y1/y2 that robot will scan.')
 
         section = 'tests.gantry.variables'
-        self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold'        , units='pu', description='Cutoff limit for light intensity readings.')
-        self.opts.add_option(section, 'navg'     , 5, tk.IntVar()      , display_name='Sensor Average Readings', units=''  , description='Number of data points recorded at a single point. The average of these points will be returned.')
+        self.opts.add_option(section, 'threshold', 0.75, tk.DoubleVar(), display_name='Light Threshold'        , units='pu', min_value=0.0, max_value=1.0, description='Cutoff limit for light intensity readings.')
+        self.opts.add_option(section, 'navg'     , 5, tk.IntVar()      , display_name='Sensor Average Readings', units=''  , min_value=1, description='Number of data points recorded at a single point. The average of these points will be returned.')
 
 
         self.option_sections.append('linac')
@@ -903,20 +913,20 @@ class GantryTest(TestPage):
     def _update_test_demo(self):
         try:
             section = 'linac.jaws'
-            x1 = self.opts.get(section, 'x1').var.get()
-            x2 = self.opts.get(section, 'x2').var.get()
-            y1 = self.opts.get(section, 'y1').var.get()
-            y2 = self.opts.get(section, 'y2').var.get()
+            x1 = self.opts.get(section, 'x1').value
+            x2 = self.opts.get(section, 'x2').value
+            y1 = self.opts.get(section, 'y1').value
+            y2 = self.opts.get(section, 'y2').value
 
             section = 'tests.gantry.path'
-            height = self.opts.get(section, 'height').var.get()
-            w_umbra = self.opts.get(section, 'w_umbra').var.get()
-            l_umbra = self.opts.get(section, 'l_umbra').var.get()
+            height = self.opts.get(section, 'height').value
+            w_umbra = self.opts.get(section, 'w_umbra').value
+            l_umbra = self.opts.get(section, 'l_umbra').value
 
             section = 'linac.angles'
-            gantry_angle = self.opts.get(section, 'gantry').var.get()
-            collimator_angle = self.opts.get(section, 'collimator').var.get()
-            couch_angle = self.opts.get(section, 'couch').var.get()
+            gantry_angle = self.opts.get(section, 'gantry').value
+            collimator_angle = self.opts.get(section, 'collimator').value
+            couch_angle = self.opts.get(section, 'couch').value
         except:
             return
         
@@ -929,25 +939,25 @@ class GantryTest(TestPage):
     def start(self):
         try:
             section = 'linac.jaws'
-            x1 = self.opts.get(section, 'x1').var.get()
-            x2 = self.opts.get(section, 'x2').var.get()
-            y1 = self.opts.get(section, 'y1').var.get()
-            y2 = self.opts.get(section, 'y2').var.get()
+            x1 = self.opts.get(section, 'x1').value
+            x2 = self.opts.get(section, 'x2').value
+            y1 = self.opts.get(section, 'y1').value
+            y2 = self.opts.get(section, 'y2').value
 
             section = 'tests.gantry.path'
-            height = self.opts.get(section, 'height').var.get()
-            step_length = self.opts.get(section, 'step_length').var.get()
-            w_umbra = self.opts.get(section, 'w_umbra').var.get()
-            l_umbra = self.opts.get(section, 'l_umbra').var.get()
+            height = self.opts.get(section, 'height').value
+            step_length = self.opts.get(section, 'step_length').value
+            w_umbra = self.opts.get(section, 'w_umbra').value
+            l_umbra = self.opts.get(section, 'l_umbra').value
 
             section = 'linac.angles'
-            gantry_angle = self.opts.get(section, 'gantry').var.get()
-            collimator_angle = self.opts.get(section, 'collimator').var.get()
-            couch_angle = self.opts.get(section, 'couch').var.get()
+            gantry_angle = self.opts.get(section, 'gantry').value
+            collimator_angle = self.opts.get(section, 'collimator').value
+            couch_angle = self.opts.get(section, 'couch').value
 
             section = 'tests.gantry.variables'
-            threshold = self.opts.get(section, 'threshold').var.get()
-            Navg = self.opts.get(section, 'navg').var.get()
+            threshold = self.opts.get(section, 'threshold').value
+            Navg = self.opts.get(section, 'navg').value
 
         except Exception as e:
             logging.critical(f'Could not start Gantry Test:\n{e}')

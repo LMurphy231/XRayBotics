@@ -260,7 +260,7 @@ class RPC():
         thread.daemon = True
         thread.start()
         time.sleep(1)
-        print(self.robot)
+        print('here ', self.robot)
 
 
         try:

@@ -15,6 +15,7 @@ import XRBPlotter as plt
 class RobotCom(RPC):
     HOME = [90, -45, -135, -90, 90, 0]
     TOOL_RBASE = np.array([0, 180, 180])
+    #TOOL_RBASE = np.array([0, 180, 0])
     AXIS_LIMIT = [
         (-175, 175),
         (-265, 85),
@@ -23,7 +24,7 @@ class RobotCom(RPC):
         (-175, 175),
         (-175, 175),
     ]
-
+    
     DH = [
     plt.DenavitHartenbergParameter(1, 0, 0   , 152,  np.pi/2, 4.64 , np.array([-0.19 , -18.28, 2.26  ])),
     plt.DenavitHartenbergParameter(2, 0, -425, 0  , 0       , 10.08, np.array([212.47, 0     , 121.2 ])),
@@ -38,20 +39,27 @@ class RobotCom(RPC):
         self.joint_logger = logging.getLogger('Joint Positions')
         
         self.opts = opts
-        self.is_conect = False
+
+        # Doesnt always set back to true 
+        #self.is_conect = False
 
         self.plotters: list[plt.Plotter] = []
         self.lines   : list[tuple]       = []
 
+        self.plotter_lock = threading.Lock()
         self._move_lock = threading.Lock()
         self._stop_event = threading.Event()
         self.monitored_threads: set[threading.Thread] = set()
 
         self.cur_tool = 0
         self.isocenter = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self._internal_position = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.end_effector_offset = np.array([0.0, 0.0, 0.0])
+
+
         self.offsets:list[tuple[str, np.ndarray[float, float]]] = []
         self._end_eff_angle = np.array([0.0, 0.0, 0.0])
-        self._internal_position = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        
         self._disable_move_widgets: list[tk.BaseWidget] = []
 
         self.set_widget_statuses(False)
@@ -60,32 +68,33 @@ class RobotCom(RPC):
         
         threading.Thread(target=self.startup, args=(ip,), daemon=True).start()
         self.action_queue:queue.Queue[tuple[object, np.ndarray, threading.Event, tk.Variable]] = queue.Queue()
-        
         threading.Thread(target=self._queue_runner, name='robot movement queue',daemon=True).start()
 
     def startup(self, ip):
         self.logger.info('Connecting to Farino FR5')
         RPC.__init__(self, ip)
-
+        #self.offset_add("Gravity", drx = 10)
         while not self.is_connected():
-            self.reconnect()
+            time.sleep(1)
+            #self.reconnect()
         
         self.set_isocenter(self._get_tool_position())
 
-        end_effector_offset = np.array([0.0, 0.0, 0.0])
+        
 
         # Change current tool
         self.cur_tool = 2
 
         # Set tool coordinate frame to match the 
-        self.SetToolCoord(self.cur_tool, [*end_effector_offset, *self.TOOL_RBASE], 0, 0, 0, 0)
-        self.SetToolList(self.cur_tool , [*end_effector_offset, *self.TOOL_RBASE], 0, 0, 0)
+        self.set_end_effector_frame()
 
         self.set_widget_statuses(True)
+        
         
     def offset_add(self, reason, x=0.0, y=0.0, z=0.0, drx=0.0, dry=0.0, drz=0.0):
         """Add an offset to future movements"""
         self.offsets.append((reason, np.array([x, y, z, drx, dry, drz]))) 
+        print(f'Adding offsets {np.array([x, y, z, drx, dry, drz])}')
 
     @property
     def offset(self):
@@ -143,9 +152,9 @@ class RobotCom(RPC):
             raise InterruptedError(f'{threading.current_thread().name} was interrupted.')
         
     def is_connected(self):
-        return self.is_conect
+        #return self.is_conect
         try:
-            err, [mainerr, suberr] = self.GetRobotErrorCode()
+            err, [mainerr, suberr] = self.GetSDKComState()
             return True
         except:
             return False
@@ -180,15 +189,15 @@ class RobotCom(RPC):
     def _default_options(self):
         # Default Variables
         section = 'robot.move'
-        self.opts.add_option(section, 'vel' , 10.0 , tk.DoubleVar(), display_name='Velocity'       , units='%', description='Percentage of speed')
-        self.opts.add_option(section, 'acc' , 20.0 , tk.DoubleVar(), display_name='Acceleration'   , units='%', description='Percentage of acceleration')
-        self.opts.add_option(section, 'ovl' , 100.0, tk.DoubleVar(), display_name='Velocity factor', units='%', description='Velocity scaling factor')
+        self.opts.add_option(section, 'vel' , 10.0 , tk.DoubleVar(), display_name='Velocity'       , min_value=0.1, max_value=100.0, units='%', description='Percentage of speed')
+        self.opts.add_option(section, 'acc' , 20.0 , tk.DoubleVar(), display_name='Acceleration'   , min_value=0.1, max_value=100.0, units='%', description='Percentage of acceleration')
+        self.opts.add_option(section, 'ovl' , 100.0, tk.DoubleVar(), display_name='Velocity factor', min_value=0.1, max_value=100.0, units='%', description='Velocity scaling factor')
 
     def home(self):
         self.logger.debug('Moving to home position')
         self.interrupt_threads()
         self.move_joint(self.HOME, in_thread=True)
-        self.SetToolCoord(0, [0.0,0.0,0.0, *self.TOOL_RBASE], 0, 0, 0, 0)
+        self.set_end_effector_frame()
 
     def _clear_error(self):
         ierr = self.ResetAllError()
@@ -208,10 +217,12 @@ class RobotCom(RPC):
         acc: Acceleration - default: 100.0
         '''
         self._check_stop_interrupt()
-        self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
+        #self.set_end_effector_frame()
         #self.SingularAvoidStart(1, 0, 0, 10)
+        self.set_end_effector_frame()
 
         desc_pos = self._get_tool_position()
+        
         angle = list(desc_pos[3:])
         desc_pos[3:] = [0.0, 0.0, 0.0]
         offset = np.array([dx, dy, dz, angle[0]+drx, angle[1]+dry, angle[2]+drz])
@@ -279,20 +290,18 @@ class RobotCom(RPC):
                 )
 
         return self._queue_function(funct, None, in_thread)
-
-    def move_position(self, x, y, z, rx=None, ry=None, rz=None, in_thread=False, move_type='linear'):
+    
+    def move_position(self, x, y, z, rx=0.0, ry=0.0, rz=0.0, in_thread=False, move_type='linear'):
         self._check_stop_interrupt()
-        try:
-            self.SetToolCoord(self.cur_tool, [0., 0., 0., *self.tool_frame], 0, 0, 0, 0)
-        except BaseException as e:
-            print(e)
+
+        self.set_end_effector_frame()
         #self.SingularAvoidStart(1, 0, 0, 10)
         
         end_effector_angle = self.end_effector_angle
 
-        rx = end_effector_angle[0] if rx is None else rx
-        ry = end_effector_angle[1] if ry is None else ry
-        rz = end_effector_angle[2] if rz is None else rz
+        rx = end_effector_angle[0] + rx#*2 + rx#if rx is None else rx
+        ry = end_effector_angle[1] + ry#*2 + ry#if ry is None else ry
+        rz = end_effector_angle[2] + rz#*2 + rz#if rz is None else rz
         
         desc_pos = self.isocenter.copy()
         desc_pos[3:] = [0.0, 0.0, 0.0]
@@ -351,9 +360,14 @@ class RobotCom(RPC):
         event.set()
         return event, result
 
+    def set_end_effector_frame(self):
+        angle = np.array(self.TOOL_RBASE, dtype=float) #- self.end_effector_angle
+        self.SetToolCoord(self.cur_tool, [*self.end_effector_offset, *angle], 0, 0, 0, 0)
+        self.SetToolList(self.cur_tool , [*self.end_effector_offset, *angle], 0, 0, 0)
+
     @property
     def tool_frame(self):
-        return np.array(self.TOOL_RBASE) + self.offset[3:]
+        return np.array(self.TOOL_RBASE) #+ self.offset[3:]
     
     _position_move  = move_position
     _incriment_move = move_increment
@@ -422,9 +436,12 @@ class RobotCom(RPC):
             else:
                 joint_pos = -4
             if isinstance(joint_pos, int):
-                return 0, 0, 0, 0, 0, 0
+                if degrees:
+                    return self.HOME
+                else:
+                    return np.deg2rad(self.HOME)
         except:
-            return 0, 0, 0, 0, 0, 0
+            return self.HOME
         return joint_pos[1]
 
     def _invk(self, x, y, z, rx, ry, rz, type=0):
@@ -481,17 +498,19 @@ class RobotCom(RPC):
 
         def retry(pos):
             result = -1
-            if pos is not None:
-                jpos = self._get_joint_angles()
-                err, result = self.GetInverseKinHasSolution(2, pos, jpos)
-                
-                if result:
+            try:
+                if pos is not None:
+                    jpos = self._get_joint_angles()
+                    err, result = self.GetInverseKinHasSolution(2, pos, jpos)
                     
-                    joint_pos = self._invk(*pos)
+                    if result:
+                        
+                        joint_pos = self._invk(*pos)
 
-                    self._clear_error()
-                    result = self.move_joint(joint_pos)
-                    
+                        self._clear_error()
+                        result = self.move_joint(joint_pos)
+            except:
+                pass
             return result 
 
         try_again_button = tk.Button(window, text='Retry', state=tk.DISABLED, command=lambda: 
@@ -598,19 +617,34 @@ class RobotCom(RPC):
         joint_pos = self._get_joint_angles(False)
         plotter.plot_robot(self.DH, joint_pos)
 
-    def plot_new_position(self, new_pos, plotter: plt.Plotter, name='Estimated Next Position', color='orange'):
-        
-        joint_pos = self._get_joint_angles(False)
-        new_joint_pos = plt.IterativeInvK(self.DH, joint_pos, np.array(new_pos[:3], dtype=float), 0.5)
-        
-        #joint_pos = self.GetInverseKin(0, new_pos)
-        if isinstance(joint_pos, int):
-            return 
-        plotter.plot_robot(self.DH, new_joint_pos, name=name, color=color)
+    def plot_new_position(self, new_pos, plotter: plt.Plotter, name='Estimated Next Position', color='orange', is_joint=False, in_degrees=True):
+        return
+        if not self.is_connected():
+            if is_joint:
+                new_joint_pos = np.deg2rad(new_pos) if in_degrees else new_pos
+            else:
+                joint_pos = self._get_joint_angles(False)
+                new_joint_pos = plt.IterativeInvK(self.DH, joint_pos, np.array(new_pos[:3], dtype=float), 0.1, alpha=0.1, max_iterations=100, )#target_orientation=np.array(new_pos[3:], dtype=float))
+                
+            if new_joint_pos is None:
+                return
+        else:
+            new_joint_pos = self.GetInverseKin(0, new_pos)
+            if isinstance(new_joint_pos, int):
+                return
+            new_joint_pos = new_joint_pos[-1]
+
+        with self.plotter_lock:
+            
+            plotter.plot_robot(self.DH, new_joint_pos, name=name, color=color)
     
 
 if __name__ == '__main__':
-    
+    #tk.Tk()
+    #robot = RobotCom()
+    #time.sleep(20)
+    #print(robot.is_connected())
+    #exit()
 
     joints = []
     for i in range(4):
@@ -650,6 +684,9 @@ if __name__ == '__main__':
         [37.244444, -2.133333, 0.0],
         [37.000000, -2.000000, 0.0],
     ])
-    current_values = np.array([0.0, 0.0, 0.0, 0.0])
+    
+    current_values = np.array([np.pi/2, 0.0, 0.0, 0.0])
+    target_angle = np.array([0.0, 0.0, 0.0])
     for target_pos in trajectory:
-        current_values = plt.IterativeInvK(joints, current_values, target_pos, 0.54)
+        
+        current_values = plt.IterativeInvK(joints, current_values, target_pos, 0.54, target_angle)
