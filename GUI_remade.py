@@ -284,9 +284,10 @@ class GUI:
 
         clear_button = tk.Button(movement_frame, text='Clear Error'  , command = lambda: print(self.robot.ResetAllError()),cnf=button_options)
         set_isocenter_button = tk.Button(movement_frame, text='Set Isocenter', command = lambda: self.robot.set_isocenter(self.robot._get_tool_position()),cnf=button_options)
+        tool_position_button = tk.Button(movement_frame, text='Set Tool Position', command = lambda: self.robot.set_end_effector_frame(), cnf=button_options)
         set_isocenter_button.grid(row=1, column=0, cnf=button_grid_cnf)
         clear_button.grid(row=1, column=1, cnf=button_grid_cnf)
-        
+        tool_position_button.grid(row=2, column=0, cnf=button_grid_cnf)
 
         isocenter_button = tk.Button(move_to_frame, text='Isocenter'  , command = self.robot.move_to_isocenter,cnf=button_options)
         home_button = tk.Button(move_to_frame, text='Home', command = lambda: self.robot.move_to_home(),cnf=button_options)

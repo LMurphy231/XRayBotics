@@ -74,10 +74,10 @@ class RobotCom(RPC):
         self.logger.info('Connecting to Farino FR5')
         RPC.__init__(self, ip)
         #self.offset_add("Gravity", drx = 10)
-        while not self.is_connected():
-            time.sleep(1)
+        #while not self.is_connected():
+        #    time.sleep(1)
             #self.reconnect()
-        
+        print('started')
         self.set_isocenter(self._get_tool_position())
 
         
@@ -299,9 +299,9 @@ class RobotCom(RPC):
         
         end_effector_angle = self.end_effector_angle
 
-        rx = end_effector_angle[0] + rx#*2 + rx#if rx is None else rx
-        ry = end_effector_angle[1] + ry#*2 + ry#if ry is None else ry
-        rz = end_effector_angle[2] + rz#*2 + rz#if rz is None else rz
+        rx = end_effector_angle[0] #+ rx#*2 + rx#if rx is None else rx
+        ry = end_effector_angle[1] #+ ry#*2 + ry#if ry is None else ry
+        rz = end_effector_angle[2] #+ rz#*2 + rz#if rz is None else rz
         
         desc_pos = self.isocenter.copy()
         desc_pos[3:] = [0.0, 0.0, 0.0]
@@ -485,7 +485,6 @@ class RobotCom(RPC):
     def _prompt_error_window(self, funct:object, event:threading.Event, pos:np.ndarray, errorcode=None):
         pkg = self.GetRobotRealTimeState()
         state = self.GetRobotEmergencyStopState()
-
         # Create popup window
         window = tk.Toplevel()
 
@@ -497,6 +496,7 @@ class RobotCom(RPC):
         tk.Label(window, text=f'An error occured while trying to run a movement command!\nError code: {errorcode}\nRobot needs to powercycle: {state}').grid(row=0, column=0, sticky=tk.NSEW, columnspan=5)
 
         def retry(pos):
+            return -1
             result = -1
             try:
                 if pos is not None:
@@ -517,7 +517,7 @@ class RobotCom(RPC):
                                      (
                                     try_again_button.configure(state=tk.DISABLED),
                                     return_var.set(retry(pos)),
-                                        (clear_error_button.configure(state=tk.NORMAL), try_again_button.configure(state=tk.DINORMALABLED))
+                                        (clear_error_button.configure(state=tk.NORMAL), try_again_button.configure(state=tk.DISABLED))
                                         if return_var.get() else 
                                         (clear_error_button.configure(state=tk.DISABLED), window.destroy()), 
                                     )
