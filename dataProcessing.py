@@ -155,5 +155,8 @@ def calculate_angle(data, test):
         theta = np.rad2deg(np.arctan((c1[axis2] - c2[axis2]) / (c1[axis1] - c2[axis1])))
     else: # test == collimator or gantry
         theta = np.rad2deg(np.arctan2(c1[axis1] - c2[axis1],c1[axis2] - c2[axis2]))
+        if test == 'collimator':
+            theta *= -1
+
     return theta, ([rise1,fall1,c1],[rise2,fall2,c2]),([rise1_distance,fall1_distance,c1_distance],
                                                        [rise2_distance,fall2_distance,c2_distance]), ([rise_intensity1,fall_intensity1],[rise_intensity2,fall_intensity2])

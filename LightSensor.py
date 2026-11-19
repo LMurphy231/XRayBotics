@@ -70,17 +70,21 @@ class SensorManager:
 def open_labquest(exit_flag: threading.Event):
     try:
         ls = lq.LabQuest()
+        print(f'Trying to Open')
         state = ls.open()
         while state:
             if exit_flag.is_set():
                 break
             ls = lq.LabQuest()
             state = ls.open()
+            print(f'Trying to Open {state}')
             time.sleep(0.1)
+        print(f'LabQuest Open')
         ls.select_sensors(ch1="lq_sensor")
         ls.start(period = 0.01)
         yield ls
     finally:
+        print(f'Closing Labquest')
         ls.stop()
         ls.close()
 

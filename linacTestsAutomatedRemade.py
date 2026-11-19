@@ -117,7 +117,7 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
     atl_logger.info('MOVING TO ESTIMATED ISOCENTER')
     est_isocenter: np.ndarray = np.array([x, y, z])
 
-
+    drx, dry, drz = fr5.offset[3:]
     end_effector_direction = 90
     fr5.set_end_effector_angle(end_effector_direction, gantry_angle, 0.0)
 
@@ -137,7 +137,7 @@ def collimator_test_automated(fr5: RC.RobotCom, ls: lq.SensorManager, x: float, 
         
         atl_logger.info(f'COLLIMATOR TEST RESULTS: Offset angle about axis (CW): {dr_offset:.4f} degrees')
         
-        fr5.offset_add("collimator", drz = collimator_angle - dr_offset)  # Store offset for angle needed to adjust about x to align robot z-axis with true z-axis (gravity)  
+        fr5.offset_add("collimator", drz = collimator_angle -  drz - dr_offset)  # Store offset for angle needed to adjust about x to align robot z-axis with true z-axis (gravity)  
     
     except BaseException as e:
         print(f'ERROR IN COLLIMATOR TEST: {e}')
@@ -307,8 +307,8 @@ def create_collimator_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarr
     #end_effector_direction: float = 90
     #fr5.set_end_effector_angle(end_effector_direction + gantry_angle + rx_offset,  ry_offset, collimator_angle - couch_angle + rz_offset)
 
-    rx_matrix: np.ndarray = paths.get_rotation_matrix("x", gantry_angle, rx_offset)                     # Rotate path about x axis (Rotation about x axis to match with true z)
-    ry_matrix: np.ndarray = paths.get_rotation_matrix("y", 0.0, ry_offset)                              # Rotate path about y axis (Rotation about y axis to match with true z)
+    rx_matrix: np.ndarray = paths.get_rotation_matrix("x", 0.0, rx_offset)                     # Rotate path about x axis (Rotation about x axis to match with true z)
+    ry_matrix: np.ndarray = paths.get_rotation_matrix("y", gantry_angle, ry_offset)                              # Rotate path about y axis (Rotation about y axis to match with true z)
     rz_matrix: np.ndarray = paths.get_rotation_matrix("z", collimator_angle - couch_angle, rz_offset)   # Rotate path about z axis (Rotation about z axis to match with couch angle)
 
     # Rotate about x0, Rotate about y0, rotate about x2, rotate about z3
@@ -340,7 +340,7 @@ def create_gantry_test_path_points(fr5: RC.RobotCom, est_isocenter: np.ndarray,
     #est_isocenter = est_isocenter + np.array([0.0, 0.0, y1+umbra/2])
     
     #basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, height, dy=height/2) # Liam's old code
-    basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width, dy=height/2)
+    basis_points: list = paths.basis_plane_calculate_four_points(est_isocenter, length, width, dy=-height/2)
 
     # Get axis offsets found from previous tests
     rx_offset, ry_offset, rz_offset = fr5.offset[3:] # Floats

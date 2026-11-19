@@ -298,6 +298,7 @@ class Plotter:
         def plot(*args, existing_line=None, **kwargs):
             new_artists = self.ax.plot(*args, **kwargs)
             if existing_line is not None and existing_line.axes is not None:
+                #if self._projection != '3d':
                 for artist in new_artists:
                     artist.update_from(existing_line)
                 existing_line.remove()
@@ -309,6 +310,7 @@ class Plotter:
         def quiver(*args, existing_line=None, **kwargs):
             new_artist = self.ax.quiver(*args, **kwargs)
             if existing_line is not None and existing_line.axes is not None:
+                #if self._projection != '3d':
                 new_artist.update_from(existing_line)
                 existing_line.remove()
             self._update_artist_selection_widget()
@@ -319,6 +321,7 @@ class Plotter:
         def vlines(*args, existing_line=None, **kwargs):
             new_artist = self.ax.vlines(*args, **kwargs)
             if existing_line is not None and existing_line.axes is not None:
+                #if self._projection != '3d':
                 new_artist.update_from(existing_line)
                 existing_line.remove()
             self._update_artist_selection_widget()
@@ -329,6 +332,7 @@ class Plotter:
         def axvline(*args, existing_line=None, **kwargs):
             new_artist = self.ax.axvline(*args, **kwargs)
             if existing_line is not None and existing_line.axes is not None:
+                #if self._projection != '3d':
                 new_artist.update_from(existing_line)
                 existing_line.remove()
             self._update_artist_selection_widget()
@@ -340,8 +344,9 @@ class Plotter:
             def add_collection3d(*args, existing_line=None, **kwargs):
                 new_artists = self.ax.add_collection3d(*args, **kwargs)
                 if existing_line is not None and existing_line.axes is not None:
-                    for artist in new_artists:
-                        artist.update_from(existing_line)
+                    #if self._projection != '3d':
+                    #for artist in new_artists:
+                    #    artist.update_from(existing_line)
                     existing_line.remove()
                 self._update_artist_selection_widget()
                 self.legend_update(self.legend_variable.get())

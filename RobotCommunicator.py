@@ -78,6 +78,7 @@ class RobotCom(RPC):
         #    time.sleep(1)
             #self.reconnect()
         print('started')
+        self.set_end_effector_frame()
         self.set_isocenter(self._get_tool_position())
 
         
@@ -86,7 +87,7 @@ class RobotCom(RPC):
         self.cur_tool = 2
 
         # Set tool coordinate frame to match the 
-        self.set_end_effector_frame()
+        
 
         self.set_widget_statuses(True)
         
@@ -136,6 +137,7 @@ class RobotCom(RPC):
 
     def register_thread(self):
         """Add current thread to threads that """
+        self.set_widget_statuses(False)
         self.monitored_threads.add(threading.current_thread())
 
     def interrupt_threads(self):
@@ -154,7 +156,7 @@ class RobotCom(RPC):
     def is_connected(self):
         #return self.is_conect
         try:
-            err, [mainerr, suberr] = self.GetSDKComState()
+            err, err = self.GetSDKComState()
             return True
         except:
             return False
@@ -167,7 +169,7 @@ class RobotCom(RPC):
     def _queue_runner(self):
         """Runs movement commands sent to a queue so that the main thread can """
         while True:
-            self.set_widget_statuses(True)
+            self.set_widget_statuses(not any(self.monitored_threads))
             funct, pos, event, variable = self.action_queue.get()
             self.set_widget_statuses(False)
 
@@ -299,9 +301,9 @@ class RobotCom(RPC):
         
         end_effector_angle = self.end_effector_angle
 
-        rx = end_effector_angle[0] #+ rx#*2 + rx#if rx is None else rx
-        ry = end_effector_angle[1] #+ ry#*2 + ry#if ry is None else ry
-        rz = end_effector_angle[2] #+ rz#*2 + rz#if rz is None else rz
+        rx = end_effector_angle[0] + rx #if rx is None else rx
+        ry = end_effector_angle[1] + ry #if ry is None else ry
+        rz = end_effector_angle[2] + rz #if rz is None else rz
         
         desc_pos = self.isocenter.copy()
         desc_pos[3:] = [0.0, 0.0, 0.0]
@@ -347,23 +349,26 @@ class RobotCom(RPC):
     def _queue_function(self, funct, pos, in_thread=False):
         event = threading.Event()
         result_var = tk.Variable()
+        self.update_live_plots()
         if in_thread:
             self.action_queue.put((funct, pos, event, result_var))
             return event, result_var
         
         threading.Thread(target=self.update_live_plots_during_movement, args=(event,), daemon=True, name='UpdateLivePlotters').start()
-
+        
         result = funct()
+        self.update_live_plots()
         if result:
             result = self._prompt_error_window(funct, event, pos, result)
 
         event.set()
+        
         return event, result
 
     def set_end_effector_frame(self):
         angle = np.array(self.TOOL_RBASE, dtype=float) #- self.end_effector_angle
         self.SetToolCoord(self.cur_tool, [*self.end_effector_offset, *angle], 0, 0, 0, 0)
-        self.SetToolList(self.cur_tool , [*self.end_effector_offset, *angle], 0, 0, 0)
+        #self.SetToolList(self.cur_tool , [*self.end_effector_offset, *angle], 0, 0, 0)
 
     @property
     def tool_frame(self):
@@ -516,30 +521,32 @@ class RobotCom(RPC):
         try_again_button = tk.Button(window, text='Retry', state=tk.DISABLED, command=lambda: 
                                      (
                                     try_again_button.configure(state=tk.DISABLED),
-                                    return_var.set(retry(pos)),
+                                    return_var.set(funct()),
                                         (clear_error_button.configure(state=tk.NORMAL), try_again_button.configure(state=tk.DISABLED))
                                         if return_var.get() else 
                                         (clear_error_button.configure(state=tk.DISABLED), window.destroy()), 
                                     )
                                     )
+
         
+
         clear_error_button = tk.Button(window, text='Clear Error', command=lambda: 
                                        (self._clear_error(),                            # Clear Error
                                         try_again_button.configure(state=tk.NORMAL),    # Allow user to try the function again
-                                        clear_error_button.configure(state=tk.DISABLED) # Disable this button, letting the user know that the error was cleared
+                                        clear_error_button.configure(state=tk.DISABLED), # Disable this button, letting the user know that the error was cleared
+                                        isocenter_button.configure(state=tk.NORMAL),
                                         ))
-        
-        clear_error_button.grid(row=1, column=1)
         stop_test_button = tk.Button(window, text='Stop Test', command=lambda: (event.set(),              # Set event so the test thread can be interrupted
                                                              window.destroy())                            # Destroy popup window
                                                              )
 
-
+        isocenter_button = tk.Button(window, text='Move to Isocenter', command=lambda: self.move_to_isocenter(), state=tk.DISABLED)
         
         # Place buttons
         try_again_button.grid(row=1, column=0)
-        clear_error_button.grid(row=1, column=1)
-        stop_test_button.grid(row=1, column=2)
+        isocenter_button.grid(row=1, column=1)
+        clear_error_button.grid(row=1, column=2)
+        stop_test_button.grid(row=1, column=3)
 
         window.protocol('WM_DELETE_WINDOW', lambda: (event.set(), window.destroy()))
         # Wait on user to close window
@@ -599,6 +606,7 @@ class RobotCom(RPC):
             plotter.update()
 
     def update_live_plots_during_movement(self, event:threading.Event):
+        return
         self.update_live_plots()
         while not event.is_set():
             time.sleep(0.25)
@@ -607,19 +615,23 @@ class RobotCom(RPC):
     def update_live_plots(self):
         if not self.plotters:
             return
-        
-        joint_pos = self._get_joint_angles(False)
-        self.joint_logger.debug(f'Joint Position: {", ".join([f"{angle:>.3f}" for angle in joint_pos])}')
-        for plotter, (plot_line, scatter_line) in zip(self.plotters, self.lines):
-            plotter.plot_robot(self.DH, joint_pos,plot_line=plot_line, scatter_line=scatter_line, update=True,)
 
+        try:
+            joint_pos = self._get_joint_angles(False)
+            self.joint_logger.debug(f'Joint Position: {", ".join([f"{angle:>.3f}" for angle in joint_pos])}')
+            for plotter, (plot_line, scatter_line) in zip(self.plotters, self.lines):
+                plotter.plot_robot(self.DH, joint_pos,plot_line=plot_line, scatter_line=scatter_line, update=True,)
+        except BaseException as e:
+            print(e)
+            
     def plot_current_position(self, plotter: plt.Plotter):
         joint_pos = self._get_joint_angles(False)
         plotter.plot_robot(self.DH, joint_pos)
 
     def plot_new_position(self, new_pos, plotter: plt.Plotter, name='Estimated Next Position', color='orange', is_joint=False, in_degrees=True):
-        return
-        if not self.is_connected():
+        
+        
+        if not self.is_connected() or any(self.monitored_threads):
             if is_joint:
                 new_joint_pos = np.deg2rad(new_pos) if in_degrees else new_pos
             else:
@@ -632,7 +644,7 @@ class RobotCom(RPC):
             new_joint_pos = self.GetInverseKin(0, new_pos)
             if isinstance(new_joint_pos, int):
                 return
-            new_joint_pos = new_joint_pos[-1]
+            new_joint_pos = np.deg2rad(new_joint_pos[-1])
 
         with self.plotter_lock:
             

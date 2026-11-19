@@ -84,9 +84,9 @@ class TestResultsPage(BasePage):
         self.show_center_var = tk.BooleanVar(value=True)
         self.build()
 
-    def add_test(self, test_type, test_name, test_results, inputs):
+    def add_test(self, test_type, test_name, test_results, inputs, **extra_data):
         test_type = test_type.lower()
-        self.loaded_results.append((test_type, test_name, test_results, inputs))
+        self.loaded_results.append((test_type, test_name, test_results, inputs, extra_data))
         self.test_selection.insert(tk.END, test_name)
 
     def build(self):
@@ -133,8 +133,8 @@ class TestResultsPage(BasePage):
         self.close_button.grid(row=0, column=2, sticky=tk.NE)
         self.close_button.configure(command=lambda: test_page._toggle_results(False))
     
-    def update(self, test_type, test_name, raw_data, inputs):
-        self.current_results = (test_type, test_name, raw_data, inputs)
+    def update(self, test_type, test_name, raw_data, inputs, extra_data):
+        self.current_results = (test_type, test_name, raw_data, inputs, extra_data)
 
         self.plotter_frame.configure(text=f'{test_type.capitalize()} Results Graph')
         self.plotter2d.grid(True)
@@ -169,10 +169,10 @@ class TestResultsPage(BasePage):
         offset = 1.25
         dist = max_3d - min_3d
         self.plotter3d._set_axis_limit(xmin=-dist, xmax=dist, ymin=-dist, ymax=dist, zmin=-dist, zmax=dist)
+        base_angle = None
         found_angle = None
-
         try:
-            found_angle, notable_data_3d, notable_data_2d, intensities = dp.calculate_angle(raw_data, test_type)
+            base_angle, notable_data_3d, notable_data_2d, intensities = dp.calculate_angle(raw_data, test_type)
 
             if self.show_edge_var.get():
                 rise1, fall1, c1 = zip(*notable_data_3d)
@@ -207,9 +207,25 @@ class TestResultsPage(BasePage):
         self.plotter2d.update(keep_axis=False)
         self.plotter3d.update(autoscale=True)
 
-        self.update_comparison_frame(found_angle, **inputs)
+        offset = extra_data.get('offset', np.array([0.0]*6))
 
-    def update_comparison_frame(self, found_angle=None, **kwargs):
+        
+        if base_angle is not None:
+            if test_type == 'gravity':
+                grav_offset = {
+                    'left':  offset[3],
+                    'right': -offset[3],
+                    'front': offset[4],
+                }
+                found_angle = base_angle - grav_offset[inputs['side']]
+            elif test_type == 'collimator':
+                found_angle = base_angle - offset[5]
+            elif test_type == 'gantry':
+                found_angle = base_angle - offset[4]
+
+        self.update_comparison_frame(base_angle, found_angle, **inputs)
+
+    def update_comparison_frame(self, base_angle, found_angle, **kwargs):
 
         def create_frame(data, current_id=''):
             for name, value in data.items():
@@ -240,7 +256,8 @@ class TestResultsPage(BasePage):
         create_frame(kwargs)
 
         if isinstance(found_angle, float):
-            tk.Label(self.input_frame, text=f'Found Angle: {found_angle:.3f} Degrees').pack()
+            tk.Label(self.input_frame, text=f'Found Angle: {base_angle:.3f} Degrees').pack()
+            tk.Label(self.input_frame, text=f'Found accounting for offsets: {found_angle:.3f} Degrees').pack()
         else:
             tk.Label(self.input_frame, text=f'Unable to calculate angle due to:\n{found_angle}').pack()
                 
@@ -276,8 +293,8 @@ class TestResultsPage(BasePage):
             filenames = (filenames,)
 
         for filename in filenames:
-            for test_type, test_name, current_results, inputs in parse_xrb_file(filename):
-                self.add_test(test_type, test_name, current_results, inputs)
+            for test_type, test_name, current_results, inputs, extra_data in parse_xrb_file(filename):
+                self.add_test(test_type, test_name, current_results, inputs, **extra_data)
 
         self.test_selection.selection_clear(0, tk.END)
         self.test_selection.selection_set(len(self.loaded_results)-1)
@@ -335,9 +352,9 @@ class TestResultsPage(BasePage):
             self.plotter3d.update()
             return 
         
-        test_type, test_name, raw_data, inputs = self.loaded_results[selections[-1]]
+        test_type, test_name, raw_data, inputs, extra_data = self.loaded_results[selections[-1]]
         
-        self.update(test_type, test_name, raw_data, inputs)
+        self.update(test_type, test_name, raw_data, inputs, extra_data)
 
     def _prompt_save_window(self):
         window = tk.Toplevel(takefocus=True)
@@ -376,9 +393,9 @@ class TestResultsPage(BasePage):
         tk.Button(window, text='Save', command=lambda: self._rename_test(var.get(), index)==window.destroy()).grid(row=1, column=1, sticky=tk.NSEW)
 
     def _rename_test(self, new_name:str, index:int):
-        test_type, test_name, raw_data, inputs = self.loaded_results[index]
+        test_type, test_name, raw_data, inputs, extra_data = self.loaded_results[index]
 
-        self.loaded_results[index] = (test_type, new_name, tuple(raw_data), inputs)
+        self.loaded_results[index] = (test_type, new_name, tuple(raw_data), inputs, extra_data)
 
         self.test_selection.delete(index)
 
@@ -652,19 +669,27 @@ class GravityTest(TestPage):
 
         except:
             return
-        
-        self.robot.register_thread()
-        test_results = LinacTests.gravity_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, side, step_length=step_length, length=length, width=height, Navg=Navg)
 
+        offset = self.robot.offset.copy()
+        self.robot.register_thread()
+        try:
+            test_results = LinacTests.gravity_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, side, step_length=step_length, length=length, width=height, Navg=Navg)
+        finally:
+            self.robot.set_widget_statuses(True)
         
         if self.results_page is not None:
+
+            extra_data = {
+                'offset': offset,
+            }
+
             inputs = {'step_length': step_length,
                       'length'     : length,
                       'height'     : height,
                       'side'       : side,
                       }
             test_name = f'Gravity_{side}'
-            self.results_page.add_test('gravity', test_name, test_results, inputs)
+            self.results_page.add_test('gravity', test_name, test_results, inputs, **extra_data)
 
 class CollimatorTest(TestPage):
     def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
@@ -774,7 +799,7 @@ class CollimatorTest(TestPage):
             return
         isocenter = self.robot.isocenter[:3]
         points = LinacTests.create_collimator_test_path_points(self.robot, isocenter, x1, x2, y1, y2, w_umbra, l_umbra, gantry_angle, collimator_angle, couch_angle)
-        self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle-couch_angle)
+        self.plotter.display_light_field(x1, x2, y1, y2, gantry_angle, collimator_angle-couch_angle, isocenter)
         self.plotter.plot_path('Collimator Path', points, isocenter)
         self.plotter._update()
 
@@ -804,10 +829,17 @@ class CollimatorTest(TestPage):
             logging.critical(f'Could not start Gantry Test:\n{e}')
             raise e
 
+        offset = self.robot.offset.copy()
         self.robot.register_thread()
-        test_results = LinacTests.collimator_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, w_umbra, l_umbra, Navg,
+        try:
+            test_results = LinacTests.collimator_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, w_umbra, l_umbra, Navg,
                                                         threshold, step_length, collimator_angle, gantry_angle, couch_angle)
-
+        finally:
+            self.robot.set_widget_statuses(True)
+        extra_data = {
+            'offset': offset,
+        }
+        
         inputs = {
             'x1'               : x1,
             'x2'               : x2,
@@ -823,8 +855,9 @@ class CollimatorTest(TestPage):
             'Navg'             : Navg,
         }
         if self.results_page is not None:
+            
             test_name = f'Collimator_{collimator_angle}Deg'
-            self.results_page.add_test('collimator', test_name, test_results, inputs)
+            self.results_page.add_test('collimator', test_name, test_results, inputs, **extra_data)
 
 class GantryTest(TestPage):
     def __init__(self, name, _root:tk.Frame, robot:rc.RobotCom, ls: lq.SensorManager, opts:settings.OptionDict):
@@ -965,9 +998,17 @@ class GantryTest(TestPage):
         
         self.robot.register_thread()
 
-        test_results = LinacTests.gantry_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, height, w_umbra, l_umbra, 
+        offset = self.robot.offset.copy()
+        try:
+            test_results = LinacTests.gantry_test_automated(self.robot, self.ls, 0.0, 0.0, 0.0, x1, x2, y1, y2, height, w_umbra, l_umbra, 
                                                         threshold, step_length, Navg, collimator_angle, gantry_angle, couch_angle)
-
+        finally:
+            self.robot.set_widget_statuses(True)
+        
+        extra_data = {
+            'offset': offset,
+        }
+        
         inputs = {
                 'x1'               : x1,
                 'x2'               : x2,
@@ -985,8 +1026,8 @@ class GantryTest(TestPage):
         
         test_name = f'Gantry_{gantry_angle}Deg'
         if self.results_page is not None:
-            self.results_page.add_test('gantry', test_name, test_results, inputs)
-    
+            self.results_page.add_test('gantry', test_name, test_results, inputs, **extra_data)
+        
 
 INDENT = '\t'
 
@@ -999,24 +1040,26 @@ def parse_xrb_file(filename):
         byte_length, arr = _decode_int(arr)
         test_bytes = arr[:byte_length]
         arr = arr[byte_length:]
-        test_type, test_name, current_results, inputs = _results_file_read(test_bytes)
-        tests.append((test_type, test_name, current_results, inputs))
+        test_type, test_name, current_results, inputs, extra_data = _results_file_read(test_bytes)
+        tests.append((test_type, test_name, current_results, inputs, extra_data))
 
     return tests
 
 
 # region Test Save
 
-__VERSION__ = '1.0'
+__VERSION__ = '1.1'
 
-def _results_file_text(test_type, test_name, raw_data, inputs):
+def _results_file_text(test_type, test_name, raw_data, inputs, extra_data):
     byte_data = b''
     # Current version
     byte_data += _encode_string(__VERSION__)
-
+    
     # Test info
     byte_data += _encode_string(test_type)
     byte_data += _encode_string(test_name)
+
+    byte_data += extra_data.get('offsets', np.array([0.0]*6)).tobytes()
 
     # Parse through single level dictionary of inputs
     byte_data += _encode_int(len(inputs))
@@ -1045,6 +1088,14 @@ def _results_file_read(arr:bytearray):
     test_type, arr    = _decode_string(arr)
     test_name, arr    = _decode_string(arr)
 
+    extra_data = {}
+
+    if test_version >= '1.1':
+        offset_arr = arr[:6*8]
+        arr = arr[6*8:]
+        offset = np.frombuffer(offset_arr, dtype=np.float64)
+        extra_data['offset'] = offset
+
     inputs = {}
     n_inputs, arr = _decode_int(arr)
     for i in range(n_inputs):
@@ -1069,7 +1120,7 @@ def _results_file_read(arr:bytearray):
         movement_data = [raw_result_data[:, :3], raw_result_data[:,3], raw_result_data[:,4]]
         raw_data.append(tuple(zip(*movement_data)))
 
-    return test_type, test_name, raw_data, inputs
+    return test_type, test_name, raw_data, inputs, extra_data
 
 def _wrap_test_bytes(test_type, test_name, arr):
     return _encode_string(test_type) + _encode_string(test_name) + _encode_int(len(arr)) + arr
@@ -1136,8 +1187,8 @@ def _decode_int(arr:bytearray):
 def save_tests_to_xrb(xrb_file:str, tests):
     with open(xrb_file, 'wb') as f:
                     
-        for test_type, test_name, raw_data, inputs in tests:
-            byte_data = _results_file_text(test_type, test_name, raw_data, inputs)
+        for test_type, test_name, raw_data, inputs, extra_data in tests:
+            byte_data = _results_file_text(test_type, test_name, raw_data, inputs, extra_data)
             
             f.write(byte_data)
 
@@ -1148,7 +1199,7 @@ def save_tests_to_xlsx(xlsx: str, tests):
     
     with xlsxwriter.Workbook(xlsx) as wb:
         
-        for test_type, test_name, raw_data, inputs in tests:
+        for test_type, test_name, raw_data, inputs, extra_data in tests:
             test_name = test_name.strip().replace(' ', '_')
             counter = 0
             sheet_name = test_name
